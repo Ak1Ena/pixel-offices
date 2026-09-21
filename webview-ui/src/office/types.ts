@@ -143,6 +143,9 @@ export interface AreaDefinition {
   label: string;
   /** Hex color (e.g. "#ff6b6b"). RGB only — alpha applied at render time. */
   color: string;
+  /** A team room: glass walls are drawn around it, and a team that forms
+   *  (a lead plus its teammates) moves into the first free one. */
+  teamRoom?: boolean;
 }
 
 export interface OfficeLayout {

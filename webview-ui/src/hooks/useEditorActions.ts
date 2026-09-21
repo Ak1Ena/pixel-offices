@@ -5,6 +5,7 @@ import {
   CARPET_DEFAULT_ACCENT_COLOR,
   CARPET_DEFAULT_COLOR,
   LAYOUT_SAVE_DEBOUNCE_MS,
+  TEAM_ROOM_AREA_COLOR,
   ZOOM_DEFAULT_DPR_FACTOR,
   ZOOM_MAX,
   ZOOM_MIN,
@@ -95,6 +96,8 @@ interface EditorActions {
   selectedAreaLabel: string | null;
   handleSelectArea: (label: string | null) => void;
   handleAddArea: (label: string, color: string) => void;
+  /** Create a team room and switch to painting its floor. */
+  handleAddTeamRoom: (label: string) => void;
   handleRemoveArea: (label: string) => void;
   handleRenameArea: (oldLabel: string, newLabel: string) => void;
   handleAreaColorChange: (label: string, color: string) => void;
@@ -278,6 +281,20 @@ export function useEditorActions(
       }
     },
     [getOfficeState, applyEdit],
+  );
+
+  const handleAddTeamRoom = useCallback(
+    (label: string) => {
+      const os = getOfficeState();
+      const layout = os.getLayout();
+      const next = addArea(layout, label, TEAM_ROOM_AREA_COLOR, true);
+      if (next === layout) return;
+      if (!editorState.isEditMode) handleToggleEditMode();
+      applyEdit(next);
+      editorState.activeTool = EditTool.AREA_PAINT;
+      handleSelectArea(label.trim());
+    },
+    [getOfficeState, applyEdit, editorState, handleToggleEditMode, handleSelectArea],
   );
 
   const handleRemoveArea = useCallback(
@@ -972,6 +989,7 @@ export function useEditorActions(
     selectedAreaLabel,
     handleSelectArea,
     handleAddArea,
+    handleAddTeamRoom,
     handleRemoveArea,
     handleRenameArea,
     handleAreaColorChange,

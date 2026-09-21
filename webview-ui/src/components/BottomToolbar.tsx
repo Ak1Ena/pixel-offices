@@ -16,6 +16,7 @@ interface BottomToolbarProps {
   onToggleBoard: () => void;
   /** Standalone office: open the Add agent dialog (absent when it can't start agents). */
   onAddAgent?: () => void;
+  onAddRoom: () => void;
   workspaceFolders: WorkspaceFolder[];
 }
 
@@ -28,6 +29,7 @@ export function BottomToolbar({
   isBoardOpen,
   onToggleBoard,
   onAddAgent,
+  onAddRoom,
   workspaceFolders,
 }: BottomToolbarProps) {
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -137,6 +139,9 @@ export function BottomToolbar({
           + Agent
         </Button>
       )}
+      <Button onClick={onAddRoom} title="Add a team room" data-testid="add-room">
+        + Room
+      </Button>
       <Button
         variant={isEditMode ? 'active' : 'default'}
         onClick={onToggleEditMode}

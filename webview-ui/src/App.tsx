@@ -14,6 +14,7 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
+import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { WhiteboardRail } from './components/WhiteboardRail.js';
@@ -121,6 +122,7 @@ function App() {
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
   const [viewedPinId, setViewedPinId] = useState<string | null>(null);
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
+  const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
   const chat = useOfficeChat(chatAgentId);
 
   const {
@@ -717,6 +719,7 @@ function App() {
         isBoardOpen={isBoardOpen}
         onToggleBoard={() => setIsBoardOpen((v) => !v)}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
+        onAddRoom={() => setRoomNameDraft('')}
         workspaceFolders={workspaceFolders}
       />
 
@@ -725,6 +728,48 @@ function App() {
         onClose={() => setIsAddAgentOpen(false)}
         recentFolders={chat.recentFolders}
       />
+
+      <Modal
+        isOpen={roomNameDraft !== null}
+        onClose={() => setRoomNameDraft(null)}
+        title="Add team room"
+        zIndex={54}
+      >
+        <form
+          className="flex flex-col gap-8 px-10 pb-8"
+          onKeyDown={(e) => e.stopPropagation()}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = (roomNameDraft ?? '').trim();
+            if (!name) return;
+            editor.handleAddTeamRoom(name);
+            setRoomNameDraft(null);
+          }}
+        >
+          <label className="flex flex-col gap-2 text-sm">
+            Room name
+            <input
+              autoFocus
+              value={roomNameDraft ?? ''}
+              maxLength={32}
+              placeholder="Team Payments"
+              onChange={(e) => setRoomNameDraft(e.target.value)}
+              className="px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent"
+              data-testid="room-name"
+            />
+          </label>
+          <p className="m-0 text-2xs text-text-muted max-w-sm">
+            Next, drag over the floor to paint the room, including the desks and chairs the team
+            will use, then press Save. When a lead starts teammates, the whole team walks into the
+            first free team room.
+          </p>
+          <div className="flex justify-end">
+            <Button type="submit" size="md" variant="accent" data-testid="room-create">
+              Create and paint
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       <VersionIndicator
         currentVersion={extensionVersion}

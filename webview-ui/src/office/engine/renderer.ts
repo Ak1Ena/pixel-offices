@@ -44,6 +44,11 @@ import {
   SELECTED_OUTLINE_ALPHA,
   SELECTION_DASH_PATTERN,
   SELECTION_HIGHLIGHT_COLOR,
+  TEAM_ROOM_GLASS,
+  TEAM_ROOM_LABEL_COLOR,
+  TEAM_ROOM_LABEL_PX,
+  TEAM_ROOM_TINT,
+  TEAM_ROOM_WALL_PX,
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
@@ -229,6 +234,67 @@ export function renderAreaOverlay(
       ctx.fillStyle = color;
       ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s);
     }
+  }
+  ctx.restore();
+}
+
+/**
+ * Team rooms: glass walls along the edge of every `teamRoom` area, a light
+ * tint inside, and a name tab at its top-left. Drawn over the floor and under
+ * furniture and characters, and always — unlike the area color wash, which is
+ * an editing aid behind the Show Areas setting.
+ *
+ * @internal
+ */
+export function renderTeamRooms(
+  ctx: CanvasRenderingContext2D,
+  areaTiles: Array<string | null> | undefined,
+  areas: AreaDefinition[] | undefined,
+  cols: number,
+  rows: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  if (!areaTiles || areaTiles.length === 0 || !areas) return;
+  const rooms = new Set(areas.filter((a) => a.teamRoom).map((a) => a.label));
+  if (rooms.size === 0) return;
+
+  const s = TILE_SIZE * zoom;
+  const wall = Math.max(2, Math.round(TEAM_ROOM_WALL_PX * zoom));
+  const at = (c: number, r: number) =>
+    c < 0 || r < 0 || c >= cols || r >= rows ? null : areaTiles[r * cols + c];
+  const tabAt = new Map<string, { c: number; r: number }>();
+
+  ctx.save();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const label = at(c, r);
+      if (!label || !rooms.has(label)) continue;
+      const x = offsetX + c * s;
+      const y = offsetY + r * s;
+      ctx.fillStyle = TEAM_ROOM_TINT;
+      ctx.fillRect(x, y, s, s);
+      ctx.fillStyle = TEAM_ROOM_GLASS;
+      if (at(c, r - 1) !== label) ctx.fillRect(x, y, s, wall);
+      if (at(c, r + 1) !== label) ctx.fillRect(x, y + s - wall, s, wall);
+      if (at(c - 1, r) !== label) ctx.fillRect(x, y, wall, s);
+      if (at(c + 1, r) !== label) ctx.fillRect(x + s - wall, y, wall, s);
+      if (!tabAt.has(label)) tabAt.set(label, { c, r }); // first tile in reading order
+    }
+  }
+  ctx.font = `${Math.max(8, Math.round(TEAM_ROOM_LABEL_PX * zoom))}px "FS Pixel Sans", sans-serif`;
+  ctx.textBaseline = 'top';
+  for (const [label, { c, r }] of tabAt) {
+    const pad = 2 * zoom;
+    const textW = ctx.measureText(label).width;
+    const tabH = Math.round(TEAM_ROOM_LABEL_PX * zoom) + pad * 2;
+    const x = offsetX + c * s;
+    const y = offsetY + r * s - tabH;
+    ctx.fillStyle = TEAM_ROOM_GLASS;
+    ctx.fillRect(x, y, textW + pad * 2, tabH);
+    ctx.fillStyle = TEAM_ROOM_LABEL_COLOR;
+    ctx.fillText(label, x + pad, y + pad);
   }
   ctx.restore();
 }
@@ -961,6 +1027,9 @@ export function renderFrame(
   if (carpetTiles && carpetTiles.length > 0) {
     renderCarpetLayer(ctx, carpetTiles, cols, rows, offsetX, offsetY, zoom);
   }
+
+  // Team rooms (glass walls) — always drawn
+  renderTeamRooms(ctx, areaTiles, areas, cols, rows, offsetX, offsetY, zoom);
 
   // Area overlay (translucent color wash) — above carpets, below seat indicators
   if (showAreas) {

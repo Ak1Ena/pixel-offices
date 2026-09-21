@@ -290,12 +290,20 @@ export function eraseArea(layout: OfficeLayout, col: number, row: number): Offic
 }
 
 /** Add a new Area definition. No-op on empty label or duplicate. */
-export function addArea(layout: OfficeLayout, label: string, color: string): OfficeLayout {
+export function addArea(
+  layout: OfficeLayout,
+  label: string,
+  color: string,
+  teamRoom = false,
+): OfficeLayout {
   const trimmed = label.trim();
   if (!trimmed) return layout;
   const existing = layout.areas ?? [];
   if (existing.some((a) => a.label === trimmed)) return layout;
-  const areas: AreaDefinition[] = [...existing, { label: trimmed, color }];
+  const areas: AreaDefinition[] = [
+    ...existing,
+    teamRoom ? { label: trimmed, color, teamRoom: true } : { label: trimmed, color },
+  ];
   return { ...layout, areas };
 }
 

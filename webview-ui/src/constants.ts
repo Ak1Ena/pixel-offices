@@ -368,3 +368,13 @@ export const DOC_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 export const DOCX_FRAME_CSS =
   'body{margin:0;padding:40px 48px;font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#1f242b;background:#ffffff}' +
   'img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #c9ccd1;padding:4px 8px}a{color:#1f5a94}';
+
+// ── Team rooms ──────────────────────────────────────────────
+export const TEAM_ROOM_GLASS = '#3f7fa8';
+export const TEAM_ROOM_TINT = 'rgba(190, 215, 235, 0.16)';
+export const TEAM_ROOM_LABEL_COLOR = '#ffffff';
+/** Glass wall thickness and name-tab text size, in sprite pixels. */
+export const TEAM_ROOM_WALL_PX = 1;
+export const TEAM_ROOM_LABEL_PX = 5;
+/** Color given to a new team room's area (its editing overlay). */
+export const TEAM_ROOM_AREA_COLOR = '#3f7fa8';

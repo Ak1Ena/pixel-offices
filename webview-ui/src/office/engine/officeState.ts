@@ -101,6 +101,57 @@ export class OfficeState {
    *  overlay's per-frame updates stop re-centering. Reset on spawn/despawn. */
   private greeterCameraCancelled = false;
 
+  // ── Team rooms ──────────────────────────────────────────────
+
+  /** Which team room each team holds, keyed by the lead's agent id. */
+  private readonly teamRoomOf = new Map<number, string>();
+
+  /** The team room an agent's team holds (its own if it leads, else its lead's), or null. */
+  getTeamRoom(agentId: number): string | null {
+    const ch = this.characters.get(agentId);
+    if (!ch) return null;
+    const leadId = ch.isTeamLead ? agentId : ch.leadAgentId;
+    return leadId === undefined ? null : (this.teamRoomOf.get(leadId) ?? null);
+  }
+
+  private freeSeatsIn(room: string): string[] {
+    return [...this.seats.entries()]
+      .filter(([uid, seat]) => !seat.assigned && this.seatZone(uid) === room)
+      .map(([uid]) => uid);
+  }
+
+  /**
+   * Put a team member into its team's room. The first time a team is seen it
+   * takes the first team room nobody holds that still has a free seat; with
+   * none free, the team stays where it is (clustered next to its lead).
+   */
+  private moveIntoTeamRoom(agentId: number): void {
+    const ch = this.characters.get(agentId);
+    if (!ch || ch.isSubagent) return;
+    const leadId = ch.isTeamLead ? agentId : ch.leadAgentId;
+    if (leadId === undefined) return;
+
+    let room = this.teamRoomOf.get(leadId);
+    if (!room) {
+      const held = new Set(this.teamRoomOf.values());
+      room = (this.layout.areas ?? [])
+        .filter((a) => a.teamRoom && !held.has(a.label))
+        .map((a) => a.label)
+        .find((label) => this.freeSeatsIn(label).length > 0);
+      if (!room) return;
+      this.teamRoomOf.set(leadId, room);
+      // Members that linked before the room was taken come along.
+      for (const other of this.characters.values()) {
+        if (other.id !== agentId && (other.id === leadId || other.leadAgentId === leadId)) {
+          this.moveIntoTeamRoom(other.id);
+        }
+      }
+    }
+    if (ch.seatId && this.seatZone(ch.seatId) === room) return;
+    const seat = this.freeSeatsIn(room)[0];
+    if (seat) this.reassignSeat(agentId, seat);
+  }
+
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
   }
@@ -554,6 +605,7 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (!ch) return;
     if (ch.matrixEffect === 'despawn') return; // already despawning
+    this.teamRoomOf.delete(id); // a departing lead frees its team room
     // Free seat and clear selection immediately
     if (ch.seatId) {
       const seat = this.seats.get(ch.seatId);
@@ -1070,6 +1122,8 @@ export class OfficeState {
     if (wasUnlinked && leadAgentId !== undefined && !isTeamLead) {
       this.reseatNextToLead(id, leadAgentId);
     }
+    // Teams work in a team room when the layout has a free one.
+    if (isTeamLead || leadAgentId !== undefined) this.moveIntoTeamRoom(id);
   }
 
   /** Mark an agent as headless (adopted, no terminal to focus). */
