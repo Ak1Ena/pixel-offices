@@ -11,6 +11,8 @@ import {
   BUBBLE_FADE_DURATION_SEC,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
+  BURN_EFFECT_OFFSET_PX,
+  BURN_FRAME_MS,
   BUTTON_ICON_COLOR,
   BUTTON_ICON_SIZE_FACTOR,
   BUTTON_LINE_WIDTH_MIN,
@@ -23,6 +25,7 @@ import {
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
+  FIRE_GLOW_COLOR,
   GHOST_BORDER_HOVER_FILL,
   GHOST_BORDER_HOVER_STROKE,
   GHOST_BORDER_STROKE,
@@ -57,7 +60,9 @@ import {
   BUBBLE_HEART_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
   BUBBLE_WAITING_SPRITE,
+  FLAME_SPRITES,
   getCharacterSprites,
+  SMOKE_SPRITES,
 } from '../sprites/spriteData.js';
 import type {
   AreaDefinition,
@@ -763,6 +768,40 @@ function renderRotateButton(
   return { cx, cy, radius };
 }
 
+// ── Token burn (flames / smoke) ─────────────────────────────────
+
+/**
+ * Flames over agents burning tokens fast, smoke over warm ones (burnLevel,
+ * from the agent's token burn rate). Drawn after the scene and before speech
+ * bubbles, so a permission bubble still reads on top of the fire.
+ */
+function renderBurnEffects(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const frame = Math.floor(Date.now() / BURN_FRAME_MS) % 2;
+  for (const ch of characters) {
+    const level = ch.burnLevel ?? 0;
+    if (level === 0 || ch.matrixEffect) continue;
+    const sprites = level === 2 ? FLAME_SPRITES : SMOKE_SPRITES;
+    const cached = getCachedSprite(sprites[frame], zoom);
+    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
+    const x = Math.round(offsetX + ch.x * zoom - cached.width / 2);
+    const baseY = offsetY + (ch.y + sittingOff - BURN_EFFECT_OFFSET_PX) * zoom;
+    const y = Math.round(baseY - cached.height);
+    if (level === 2) {
+      ctx.save();
+      ctx.fillStyle = FIRE_GLOW_COLOR;
+      ctx.fillRect(x - 4 * zoom, y, cached.width + 8 * zoom, cached.height + 24 * zoom);
+      ctx.restore();
+    }
+    ctx.drawImage(cached, x, y);
+  }
+}
+
 // ── Speech bubbles ──────────────────────────────────────────────
 
 function renderBubbles(
@@ -961,7 +1000,8 @@ export function renderFrame(
     pets ?? [],
   );
 
-  // Speech bubbles (always on top of characters)
+  // Token burn effects, then speech bubbles (always on top of characters)
+  renderBurnEffects(ctx, characters, offsetX, offsetY, zoom);
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
   // Pet heart bubbles (same overlay pass)
   if (pets && pets.length > 0) {

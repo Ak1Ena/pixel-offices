@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { BoardPin, ChatEntry } from '../../../core/src/messages.js';
+import type { AgentTokenUsage, BoardPin, ChatEntry } from '../../../core/src/messages.js';
 import {
+  AGENT_NAME_INPUT_MAX_CHARS,
   CHAT_CARD_EDGE_MARGIN_PX,
   CHAT_CARD_GAP_PX,
   CHAT_CARD_HEIGHT_PX,
@@ -11,6 +12,7 @@ import {
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { overlayProjection } from '../office/projection.js';
+import { burnLevelFor, formatTokens } from '../officeChat.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
 
@@ -34,6 +36,10 @@ interface ChatCardProps {
   onClose: () => void;
   /** Present only where a terminal can be shown (VS Code). */
   onOpenTerminal?: () => void;
+  usage: AgentTokenUsage | undefined;
+  /** The user-given name, '' when none (then `title` is the default label). */
+  customName: string;
+  onRename: (name: string) => void;
 }
 
 function timeLabel(timestamp: string | undefined): string {
@@ -85,8 +91,32 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
       >
         {entry.text}
       </div>
+      {entry.usage && (
+        <div className="flex gap-8 text-2xs text-text-muted" data-testid="chat-usage">
+          <span>in {formatTokens(entry.usage.input + entry.usage.cacheCreation)}</span>
+          <span>out {formatTokens(entry.usage.output)}</span>
+          <span>cached {formatTokens(entry.usage.cacheRead)}</span>
+          <span className="text-text">
+            ={' '}
+            {formatTokens(
+              entry.usage.input +
+                entry.usage.cacheCreation +
+                entry.usage.cacheRead +
+                entry.usage.output,
+            )}
+          </span>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Context meter color by how full the window is. */
+function contextColor(ratio: number): string {
+  if (ratio >= 0.9) return 'var(--color-danger)';
+  if (ratio >= 0.75) return 'var(--color-warning)';
+  if (ratio >= 0.5) return 'var(--color-status-permission)';
+  return 'var(--color-status-active)';
 }
 
 /**
@@ -111,8 +141,12 @@ export function ChatCard({
   onCancel,
   onClose,
   onOpenTerminal,
+  usage,
+  customName,
+  onRename,
 }: ChatCardProps) {
   const [draft, setDraft] = useState('');
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -229,7 +263,66 @@ export function ChatCard({
                 : 'var(--color-status-success)',
           }}
         />
-        <span className="text-base overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>
+        {nameDraft === null ? (
+          <>
+            <span
+              className="text-base overflow-hidden text-ellipsis whitespace-nowrap"
+              onDoubleClick={() => setNameDraft(customName || title)}
+              data-testid="chat-title"
+            >
+              {title}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setNameDraft(customName || title)}
+              aria-label="Rename character"
+              title="Rename"
+              data-testid="chat-rename"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 14 14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M2 12 L2 9 L9 2 L12 5 L5 12 Z" />
+              </svg>
+            </Button>
+          </>
+        ) : (
+          <form
+            className="flex items-center gap-4 min-w-0"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onRename(nameDraft);
+              setNameDraft(null);
+            }}
+          >
+            <label htmlFor={`rename-${agentId}`} className="sr-only">
+              Character name
+            </label>
+            <input
+              id={`rename-${agentId}`}
+              autoFocus
+              value={nameDraft}
+              maxLength={AGENT_NAME_INPUT_MAX_CHARS}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.stopPropagation();
+                  setNameDraft(null);
+                }
+              }}
+              onBlur={() => setNameDraft(null)}
+              className="min-w-0 w-160 px-4 bg-bg text-text text-base border-2 border-accent rounded-none outline-none"
+              data-testid="chat-rename-input"
+            />
+          </form>
+        )}
         {readOnlyReason && (
           <span className="text-2xs px-4 border border-border text-text-muted shrink-0">
             READ-ONLY
@@ -244,6 +337,60 @@ export function ChatCard({
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close chat" title="Close">
           ×
         </Button>
+      </div>
+
+      <div
+        className="grid grid-cols-3 gap-8 px-10 py-4 bg-bg-dark border-b-2 border-bg-thumb text-2xs"
+        data-testid="chat-stats"
+      >
+        <div className="flex flex-col gap-2 min-w-0">
+          <span className="text-xs">CONTEXT</span>
+          {ch.contextTokens > 0 ? (
+            <>
+              <div
+                role="meter"
+                aria-label="Context used"
+                aria-valuenow={Math.round((ch.contextTokens / ch.maxContextTokens) * 100)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="h-6 bg-bg border border-border"
+              >
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${Math.min(100, (ch.contextTokens / ch.maxContextTokens) * 100)}%`,
+                    background: contextColor(ch.contextTokens / ch.maxContextTokens),
+                  }}
+                />
+              </div>
+              <span className="text-text-muted">
+                {formatTokens(ch.contextTokens)} / {formatTokens(ch.maxContextTokens)}
+              </span>
+            </>
+          ) : (
+            <span className="text-text-muted">no turn yet</span>
+          )}
+        </div>
+        <div className="flex flex-col gap-2 min-w-0">
+          <span className="text-xs">SESSION</span>
+          <span className="text-sm">
+            {usage ? `${formatTokens(usage.totalTokens)} tokens` : '—'}
+          </span>
+          <span className="text-text-muted">
+            {usage
+              ? `${usage.requests} requests · out ${formatTokens(usage.outputTokens)}${usage.partial ? ' · recent only' : ''}`
+              : 'no usage yet'}
+          </span>
+        </div>
+        <div className="flex flex-col gap-2 min-w-0">
+          <span
+            className={`text-xs ${burnLevelFor(usage?.burnPerMinute ?? 0) === 2 ? 'text-danger' : burnLevelFor(usage?.burnPerMinute ?? 0) === 1 ? 'text-warning' : ''}`}
+          >
+            {burnLevelFor(usage?.burnPerMinute ?? 0) === 2 ? 'ON FIRE' : 'BURN'}
+          </span>
+          <span className="text-sm">{formatTokens(usage?.burnPerMinute ?? 0)} tok/min</span>
+          <span className="text-text-muted">new tokens, last 5 min</span>
+        </div>
       </div>
 
       <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-6 p-10">

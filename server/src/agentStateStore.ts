@@ -173,6 +173,7 @@ export class AgentStateStore {
           agent.backgroundAgentToolIds.size > 0 ? [...agent.backgroundAgentToolIds] : undefined,
         palette: agent.palette,
         hueShift: agent.hueShift,
+        displayName: agent.displayName,
       });
     }
     this.adapter.saveAgents(persisted);

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import type { ChatEntry } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { CHAT_ENTRY_MAX_CHARS, CHAT_HISTORY_LIMIT, CHAT_SEED_TAIL_BYTES } from './constants.js';
+import { usageOf } from './tokenUsage.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -143,11 +144,13 @@ export function extractChatDelta(
     }
     if (texts.length > 0 && record.uuid) {
       // Text first: the model writes its sentence before calling the tool.
+      const usage = usageOf(record);
       delta.entries.unshift({
         ...base,
         entryId: record.uuid,
         role: 'assistant',
         text: clip(texts.join('\n\n')),
+        ...(usage ? { usage } : {}),
       });
     }
   }

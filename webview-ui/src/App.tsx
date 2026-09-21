@@ -31,7 +31,7 @@ import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout } from './office/types.js';
-import { composeMessage, pinsForAgent } from './officeChat.js';
+import { burnLevelFor, composeMessage, pinsForAgent } from './officeChat.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
@@ -55,6 +55,7 @@ function getOfficeState(): OfficeState {
 /** How a session is named in its chat card, the whiteboard and pin scopes. */
 function agentLabel(id: number): string {
   const ch = getOfficeState().characters.get(id);
+  if (ch?.displayName) return ch.displayName;
   if (ch?.agentName) return ch.agentName;
   if (ch?.folderName) return `${ch.folderName} #${id}`;
   return `Agent #${id}`;
@@ -285,6 +286,16 @@ function App() {
     os.cameraFollowId = null;
     setChatAgentId(null);
   }, []);
+
+  // Names and burn levels live on the characters (label, flames, typing speed).
+  // Re-applied when agents appear, since a message can land before its character.
+  useEffect(() => {
+    const os = getOfficeState();
+    for (const id of agents) {
+      os.setDisplayName(id, chat.names[id] ?? '');
+      os.setBurnLevel(id, burnLevelFor(chat.usage[id]?.burnPerMinute ?? 0));
+    }
+  }, [agents, chat.names, chat.usage]);
 
   // A closed agent takes its chat card with it.
   useEffect(() => {
@@ -560,6 +571,9 @@ function App() {
                     setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
                   }}
                   onCancel={(queueId) => chat.cancelMessage(id, queueId)}
+                  usage={chat.usage[id]}
+                  customName={chat.names[id] ?? ''}
+                  onRename={(name) => chat.renameAgent(id, name)}
                   onClose={closeChat}
                   onOpenTerminal={
                     isBrowserRuntime ? undefined : () => transport.send({ type: 'focusAgent', id })

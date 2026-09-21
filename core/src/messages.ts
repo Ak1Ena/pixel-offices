@@ -29,6 +29,8 @@ export type ServerMessage =
   | AgentChatHistory
   | AgentChatQueue
   | AgentChatSendable
+  | AgentTokenUsage
+  | AgentRenamed
   | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
@@ -71,7 +73,8 @@ export type ClientMessage =
   | SendChatMessage
   | CancelChatMessage
   | SaveBoardPin
-  | RemoveBoardPin;
+  | RemoveBoardPin
+  | RenameAgent;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -209,12 +212,20 @@ export interface ChatEntry {
   text: string;
   source?: ChatSource;
   toolDone?: boolean;
+  usage?: TokenUsage;
   timestamp?: string;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
 
 export type ChatSource = 'terminal' | 'office';
+
+export interface TokenUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheCreation: number;
+}
 
 export interface AgentChatHistory {
   type: 'agentChatHistory';
@@ -238,6 +249,22 @@ export interface AgentChatSendable {
   type: 'agentChatSendable';
   id: number;
   sendable: boolean;
+}
+
+export interface AgentTokenUsage {
+  type: 'agentTokenUsage';
+  id: number;
+  totalTokens: number;
+  outputTokens: number;
+  requests: number;
+  burnPerMinute: number;
+  partial?: boolean;
+}
+
+export interface AgentRenamed {
+  type: 'agentRenamed';
+  id: number;
+  name: string;
 }
 
 export interface BoardLoaded {
@@ -518,4 +545,10 @@ export interface SaveBoardPin {
 export interface RemoveBoardPin {
   type: 'removeBoardPin';
   pinId: string;
+}
+
+export interface RenameAgent {
+  type: 'renameAgent';
+  id: number;
+  name: string;
 }

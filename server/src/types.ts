@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 
 import type { ChatEntry } from '../../core/src/messages.js';
+import type { TokenMeter } from './tokenUsage.js';
 
 export interface AgentState {
   id: number;
@@ -70,6 +71,11 @@ export interface AgentState {
    *  the chat tag them `office` instead of `terminal` when they come back. */
   pendingOfficeTexts?: string[];
 
+  /** Session token totals + burn rate (server/src/tokenUsage.ts). */
+  tokenMeter?: TokenMeter;
+  /** User-given character name (renameAgent). Persisted. */
+  displayName?: string;
+
   // -- Agent Teams --
   teamName?: string;
   agentName?: string;
@@ -126,4 +132,6 @@ export interface PersistedAgent {
   palette?: number;
   /** Hue shift in degrees (0-360). Persisted alongside palette. */
   hueShift?: number;
+  /** User-given character name. */
+  displayName?: string;
 }

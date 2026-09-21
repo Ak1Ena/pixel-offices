@@ -1,5 +1,10 @@
 import type { BoardPin, ChatEntry } from '../../core/src/messages.js';
-import { CHAT_CLIENT_HISTORY_LIMIT, CHAT_PEEK_MAX_CHARS } from './constants.js';
+import {
+  BURN_FIRE_PER_MIN,
+  BURN_WARM_PER_MIN,
+  CHAT_CLIENT_HISTORY_LIMIT,
+  CHAT_PEEK_MAX_CHARS,
+} from './constants.js';
 
 /**
  * Pure helpers for the office chat and whiteboard (DOM-free, Node-testable).
@@ -65,4 +70,18 @@ export function newPinId(): string {
       ? crypto.randomUUID().replace(/-/g, '')
       : Math.random().toString(36).slice(2);
   return `pin_${random}`.slice(0, 64);
+}
+
+/** Compact token count: 950, 12.4k, 3.8M. */
+export function formatTokens(n: number): string {
+  if (n < 1_000) return String(n);
+  if (n < 1_000_000) return `${(n / 1_000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+/** Burn level from new tokens per minute: 0 normal, 1 warm, 2 on fire. */
+export function burnLevelFor(burnPerMinute: number): 0 | 1 | 2 {
+  if (burnPerMinute >= BURN_FIRE_PER_MIN) return 2;
+  if (burnPerMinute >= BURN_WARM_PER_MIN) return 1;
+  return 0;
 }

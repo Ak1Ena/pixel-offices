@@ -294,6 +294,7 @@ export function persistAgents(agents: AgentStateStore, adapter: StateAdapter): v
       teamUsesTmux: agent.teamUsesTmux,
       backgroundAgentToolIds:
         agent.backgroundAgentToolIds.size > 0 ? [...agent.backgroundAgentToolIds] : undefined,
+      displayName: agent.displayName,
     });
   }
   adapter.saveAgents(persisted);
@@ -393,6 +394,7 @@ export function restoreAgents(
       teamUsesTmux: p.teamUsesTmux,
       palette: p.palette,
       hueShift: p.hueShift,
+      displayName: p.displayName,
     };
 
     assignPaletteIfNeeded(agent, store);

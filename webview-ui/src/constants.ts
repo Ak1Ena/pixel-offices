@@ -54,6 +54,20 @@ export const BUTTON_LINE_WIDTH_ZOOM_FACTOR = 0.5;
 export const BUBBLE_FADE_DURATION_SEC = 0.5;
 export const BUBBLE_SITTING_OFFSET_PX = 10;
 export const BUBBLE_VERTICAL_OFFSET_PX = 24;
+
+// ── Token burn ("on fire") ──────────────────────────────────
+/** New tokens per minute at which an agent starts smoking. */
+export const BURN_WARM_PER_MIN = 20_000;
+/** New tokens per minute at which an agent catches fire. */
+export const BURN_FIRE_PER_MIN = 60_000;
+/** Typing-animation speed multiplier per burn level (idle/working, warm, on fire). */
+export const BURN_TYPING_SPEED = [1, 1.5, 3] as const;
+/** How long each flame/smoke frame shows (ms). */
+export const BURN_FRAME_MS = 140;
+/** How far above the character's feet the flame's base sits (world px). */
+export const BURN_EFFECT_OFFSET_PX = 20;
+/** Warm glow drawn behind a burning character. */
+export const FIRE_GLOW_COLOR = 'rgba(255, 120, 40, 0.18)';
 export const FALLBACK_FLOOR_COLOR = '#808080';
 
 // ── Rendering - Overlay Colors (canvas, not CSS) ─────────────
@@ -332,3 +346,5 @@ export const CHAT_PEEK_MAX_CHARS = 80;
 export const CHAT_CLIENT_HISTORY_LIMIT = 200;
 /** DataTransfer type carrying a whiteboard pin id while it is dragged. */
 export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';
+/** Longest character name the rename box accepts (the server caps it too). */
+export const AGENT_NAME_INPUT_MAX_CHARS = 32;

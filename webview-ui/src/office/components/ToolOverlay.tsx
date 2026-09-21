@@ -202,7 +202,11 @@ export function ToolOverlay({
         }
 
         // Team info
-        const teamRoleLabel = ch.isTeamLead ? 'LEAD' : ch.agentName || null;
+        const teamRoleLabel = ch.isTeamLead
+          ? ch.displayName
+            ? `${ch.displayName} · LEAD`
+            : 'LEAD'
+          : ch.displayName || ch.agentName || null;
         const hasExtraLines = !!(ch.folderName || teamRoleLabel);
 
         // Context gauge. Every agent gets one — lead, teammate, adopted,

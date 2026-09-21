@@ -1,4 +1,5 @@
 import {
+  BURN_TYPING_SPEED,
   DEFAULT_MAX_CONTEXT_TOKENS,
   SEAT_REST_MAX_SEC,
   SEAT_REST_MIN_SEC,
@@ -101,8 +102,10 @@ export function updateCharacter(
 
   switch (ch.state) {
     case CharacterState.TYPE: {
-      if (ch.frameTimer >= TYPE_FRAME_DURATION_SEC) {
-        ch.frameTimer -= TYPE_FRAME_DURATION_SEC;
+      // A character burning tokens types faster (BURN_TYPING_SPEED).
+      const typeFrameSec = TYPE_FRAME_DURATION_SEC / BURN_TYPING_SPEED[ch.burnLevel ?? 0];
+      if (ch.frameTimer >= typeFrameSec) {
+        ch.frameTimer -= typeFrameSec;
         ch.frame = (ch.frame + 1) % 2;
       }
       // If no longer active, stand up and start wandering (after seatTimer expires)

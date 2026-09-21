@@ -479,6 +479,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.runtime.chatSender.send(message.id, message.text);
       } else if (message.type === 'cancelChatMessage') {
         this.runtime.chatSender.cancel(message.id, message.queueId);
+      } else if (message.type === 'renameAgent') {
+        this.runtime.renameAgent(message.id, message.name);
       } else if (message.type === 'saveBoardPin') {
         this.runtime.board.savePin(message.pin);
       } else if (message.type === 'removeBoardPin') {

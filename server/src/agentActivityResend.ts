@@ -1,6 +1,7 @@
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
+import { tokenUsageMessage } from './tokenUsage.js';
 
 /**
  * Replay an agent's active state to a connecting client.
@@ -11,7 +12,8 @@ import { hasPromotedBackgroundAgent } from './teamUtils.js';
  * 3. Background tools with runInBackground + isTeammateSpawn flags, skipping promoted spawns
  * 4. Waiting status
  * 5. Context usage
- * 6. Session chat
+ * 6. Name + token usage
+ * 7. Session chat
  */
 export function resendAgentActivity(
   send: (message: Record<string, unknown>) => void,
@@ -87,7 +89,12 @@ export function resendAgentActivity(
       });
     }
 
-    // 6. Session chat
+    // 6. Name + token usage
+    if (agent.displayName) send({ type: 'agentRenamed', id, name: agent.displayName });
+    const usage = tokenUsageMessage(id, agent);
+    if (usage) send(usage);
+
+    // 7. Session chat
     if (agent.chatLog && agent.chatLog.length > 0) {
       send({
         type: 'agentChatHistory',

@@ -280,6 +280,10 @@ export function handleClientMessage(
       if (typeof msg.id === 'number') runtime?.chatSender.cancel(msg.id, msg.queueId);
       break;
 
+    case 'renameAgent':
+      runtime?.renameAgent(msg.id, msg.name);
+      break;
+
     case 'saveBoardPin':
       runtime?.board.savePin(msg.pin);
       break;

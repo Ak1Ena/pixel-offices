@@ -16,7 +16,11 @@ import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { BoardStore } from './boardStore.js';
 import { ChatSender } from './chatSender.js';
-import { DEFAULT_MAX_CONTEXT_TOKENS } from './constants.js';
+import {
+  AGENT_NAME_MAX_CHARS,
+  DEFAULT_MAX_CONTEXT_TOKENS,
+  TOKEN_BURN_TICK_MS,
+} from './constants.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
@@ -44,6 +48,7 @@ import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
+import { tickTokenBurn } from './tokenUsage.js';
 import {
   setBackgroundAgentCompletedCallback,
   setBackgroundAgentDetectedCallback,
@@ -90,6 +95,7 @@ export class AgentRuntime {
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
+  private readonly tokenBurnTimer: ReturnType<typeof setInterval>;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
 
@@ -104,6 +110,8 @@ export class AgentRuntime {
     this.subagentWatch = new SubagentWatch(store);
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
+    this.tokenBurnTimer = setInterval(() => tickTokenBurn(this.store), TOKEN_BURN_TICK_MS);
+    this.tokenBurnTimer.unref?.();
     this.launchers = new LauncherHub(() => this.chatSender.refreshSendable());
     this.chatSender.addWriter(this.launchers.writer);
     if (provider.team) {
@@ -528,6 +536,7 @@ export class AgentRuntime {
         teamUsesTmux: p.teamUsesTmux,
         palette: p.palette,
         hueShift: p.hueShift,
+        displayName: p.displayName,
       };
 
       assignPaletteIfNeeded(agent, this.store);
@@ -563,6 +572,22 @@ export class AgentRuntime {
     }
 
     this.store.persist();
+  }
+
+  // ── Naming ──
+
+  /** Give an agent's character a user-chosen name; empty clears it. Persisted. */
+  renameAgent(agentId: unknown, rawName: unknown): void {
+    if (typeof agentId !== 'number' || typeof rawName !== 'string') return;
+    const agent = this.store.get(agentId);
+    if (!agent) return;
+    const name = rawName
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .trim()
+      .slice(0, AGENT_NAME_MAX_CHARS);
+    agent.displayName = name || undefined;
+    this.store.persist();
+    this.store.broadcast({ type: 'agentRenamed', id: agentId, name });
   }
 
   // ── Launched sessions ──
@@ -618,6 +643,7 @@ export class AgentRuntime {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
     this.chatSender.dispose();
+    clearInterval(this.tokenBurnTimer);
     this.launchers.dispose();
     this.boardStore?.dispose();
 

@@ -13,6 +13,7 @@ import {
   startPermissionTimer,
   startWaitingTimer,
 } from './timerManager.js';
+import { recordTokenUsage } from './tokenUsage.js';
 import type { AgentState } from './types.js';
 
 /** Empty set used as safe fallback when no HookProvider is registered. */
@@ -138,6 +139,9 @@ export function processTranscriptLine(
 
     // -- Session chat (the office chat card) --
     recordChat(agentId, agent, agents, record, formatToolStatus);
+
+    // -- Token totals + burn rate (chat header, "on fire" effect) --
+    recordTokenUsage(agentId, agent, agents, record);
 
     // Resilient content extraction: support both record.message.content and record.content
     // Claude Code may change the JSONL structure across versions

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { BoardPin, ChatEntry, QueuedChatMessage } from '../../../core/src/messages.js';
+import type {
+  AgentTokenUsage,
+  BoardPin,
+  ChatEntry,
+  QueuedChatMessage,
+} from '../../../core/src/messages.js';
 import { mergeChatEntries } from '../officeChat.js';
 import { transport } from '../transport/index.js';
 
@@ -17,6 +22,11 @@ export interface OfficeChatState {
   unread: Record<number, boolean>;
   /** Agents the office can type into (server-decided: agentChatSendable). */
   sendable: Record<number, boolean>;
+  /** Session token totals + burn rate per agent. */
+  usage: Record<number, AgentTokenUsage>;
+  /** User-given character names. */
+  names: Record<number, string>;
+  renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
   sendMessage: (agentId: number, text: string) => void;
   cancelMessage: (agentId: number, queueId: string) => void;
@@ -35,6 +45,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [queues, setQueues] = useState<Record<number, ChatQueueState>>({});
   const [unread, setUnread] = useState<Record<number, boolean>>({});
   const [sendable, setSendable] = useState<Record<number, boolean>>({});
+  const [usage, setUsage] = useState<Record<number, AgentTokenUsage>>({});
+  const [names, setNames] = useState<Record<number, string>>({});
   const [pins, setPins] = useState<BoardPin[]>([]);
 
   useEffect(() => {
@@ -47,6 +59,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setChats((prev) => ({ ...prev, [msg.id]: mergeChatEntries([], msg.entries) }));
       } else if (msg.type === 'agentChatQueue') {
         setQueues((prev) => ({ ...prev, [msg.id]: { queued: msg.queued, error: msg.error } }));
+      } else if (msg.type === 'agentTokenUsage') {
+        setUsage((prev) => ({ ...prev, [msg.id]: msg }));
+      } else if (msg.type === 'agentRenamed') {
+        setNames((prev) => ({ ...prev, [msg.id]: msg.name }));
       } else if (msg.type === 'agentChatSendable') {
         setSendable((prev) => ({ ...prev, [msg.id]: msg.sendable }));
       } else if (msg.type === 'boardLoaded') {
@@ -62,6 +78,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setQueues(drop);
         setUnread(drop);
         setSendable(drop);
+        setUsage(drop);
+        setNames(drop);
       }
     });
   }, []);
@@ -90,6 +108,12 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'saveBoardPin', pin });
   }, []);
 
+  const renameAgent = useCallback((agentId: number, name: string) => {
+    // Optimistic: the server echoes agentRenamed with the cleaned-up name.
+    setNames((prev) => ({ ...prev, [agentId]: name.trim() }));
+    transport.send({ type: 'renameAgent', id: agentId, name });
+  }, []);
+
   const removePin = useCallback((pinId: string) => {
     transport.send({ type: 'removeBoardPin', pinId });
   }, []);
@@ -99,6 +123,9 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     queues,
     unread,
     sendable,
+    usage,
+    names,
+    renameAgent,
     pins,
     sendMessage,
     cancelMessage,

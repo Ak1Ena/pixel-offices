@@ -1079,6 +1079,16 @@ export class OfficeState {
     ch.isHeadless = headless;
   }
 
+  setBurnLevel(id: number, level: 0 | 1 | 2): void {
+    const ch = this.characters.get(id);
+    if (ch) ch.burnLevel = level;
+  }
+
+  setDisplayName(id: number, name: string): void {
+    const ch = this.characters.get(id);
+    if (ch) ch.displayName = name || undefined;
+  }
+
   setAgentContext(id: number, contextTokens: number, maxContextTokens: number): void {
     const ch = this.characters.get(id);
     if (!ch) return;

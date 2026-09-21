@@ -6,6 +6,10 @@ import { Direction as Dir } from '../types.js';
 import bubblePermissionData from './bubble-permission.json';
 import bubblePetData from './bubble-pet.json';
 import bubbleWaitingData from './bubble-waiting.json';
+import flame1Data from './flame-1.json';
+import flame2Data from './flame-2.json';
+import smoke1Data from './smoke-1.json';
+import smoke2Data from './smoke-2.json';
 
 // ── Speech Bubble Sprites ───────────────────────────────────────
 
@@ -26,6 +30,18 @@ export const BUBBLE_WAITING_SPRITE: SpriteData = resolveBubbleSprite(bubbleWaiti
 
 /** Heart bubble: pet petting feedback (11x13) */
 export const BUBBLE_HEART_SPRITE: SpriteData = resolveBubbleSprite(bubblePetData);
+
+/** Flames over an agent burning tokens fast (12x14, two flicker frames). */
+export const FLAME_SPRITES: readonly SpriteData[] = [
+  resolveBubbleSprite(flame1Data),
+  resolveBubbleSprite(flame2Data),
+];
+
+/** Smoke puffs over a warm agent (8x10, two frames). */
+export const SMOKE_SPRITES: readonly SpriteData[] = [
+  resolveBubbleSprite(smoke1Data),
+  resolveBubbleSprite(smoke2Data),
+];
 
 // ════════════════════════════════════════════════════════════════
 // Loaded character sprites (from PNG assets)

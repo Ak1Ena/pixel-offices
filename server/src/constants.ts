@@ -75,6 +75,18 @@ export const PROMPT_TYPING_CHUNK_DELAY_MS = 4;
 /** Pause after the last chunk before pressing Enter, so the TUI has caught up. */
 export const PROMPT_SUBMIT_DELAY_MS = 80;
 
+// ── Token usage (tokenUsage.ts) ─────────────────────────────
+/** Window the burn rate (new tokens per minute) is measured over. */
+export const TOKEN_BURN_WINDOW_MS = 5 * 60_000;
+/** Recent message ids remembered for counting each request once. */
+export const TOKEN_DEDUPE_MESSAGES = 64;
+/** Most transcript read back to total a session's usage on adoption/restore. */
+export const TOKEN_SEED_MAX_BYTES = 32 * 1024 * 1024;
+/** How often decaying burn rates are re-sent. */
+export const TOKEN_BURN_TICK_MS = 5_000;
+/** Longest user-given character name. */
+export const AGENT_NAME_MAX_CHARS = 32;
+
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;

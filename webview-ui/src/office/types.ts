@@ -252,6 +252,12 @@ export interface Character {
   contextTokens: number;
   /** Window `contextTokens` is measured against. */
   maxContextTokens: number;
+
+  // -- Token burn + naming --
+  /** 0 = normal, 1 = warm (smoke), 2 = on fire. From agentTokenUsage burn rate. */
+  burnLevel?: 0 | 1 | 2;
+  /** User-given name (renameAgent); shown instead of the default label. */
+  displayName?: string;
 }
 
 export const PetState = { IDLE: 'idle', WALK: 'walk', FOLLOW: 'follow' } as const;
