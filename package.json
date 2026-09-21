@@ -2,15 +2,15 @@
   "name": "@ak1ena/pixel-office",
   "displayName": "Pixel Office",
   "description": "Pixel art office for your Claude Code agents, with session chat, a shared whiteboard, token usage and more. A fork of Pixel Agents.",
-  "version": "1.5.0",
+  "version": "1.0.0",
   "publisher": "ak1ena",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Ak1Ena/pixel-agents"
+    "url": "https://github.com/Ak1Ena/pixel-offices"
   },
-  "homepage": "https://github.com/Ak1Ena/pixel-agents#readme",
+  "homepage": "https://github.com/Ak1Ena/pixel-offices#readme",
   "bugs": {
-    "url": "https://github.com/Ak1Ena/pixel-agents/issues"
+    "url": "https://github.com/Ak1Ena/pixel-offices/issues"
   },
   "workspaces": [
     "server",
