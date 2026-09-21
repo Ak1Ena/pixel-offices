@@ -2,7 +2,7 @@
   "name": "@ak1ena/pixel-office",
   "displayName": "Pixel Office",
   "description": "Pixel art office for your Claude Code agents, with session chat, a shared whiteboard, token usage and more. A fork of Pixel Agents.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "ak1ena",
   "repository": {
     "type": "git",
