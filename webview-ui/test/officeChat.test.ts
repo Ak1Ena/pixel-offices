@@ -74,3 +74,11 @@ test('scoped pins show only for their sessions', () => {
 test('pin ids satisfy the server rule', () => {
   assert.match(newPinId(), /^[A-Za-z0-9_-]{1,64}$/);
 });
+
+test('an attached pin carries its detail', () => {
+  assert.equal(
+    composeMessage('go', [pin({ detail: 'Section 3 is the one' })]),
+    'Spec: https://x.dev\n(Section 3 is the one)\n\ngo',
+  );
+  assert.equal(composeMessage('', [pin({ detail: '  ' })]), 'Spec: https://x.dev');
+});

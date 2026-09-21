@@ -11,10 +11,13 @@ import {
   MOBILE_BREAKPOINT_PX,
   PIN_DRAG_MIME,
 } from '../constants.js';
+import { canSendChatFiles, dragHasFiles, withFileMentions } from '../fileUpload.js';
+import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { overlayProjection } from '../office/projection.js';
 import { burnLevelFor, formatTokens } from '../officeChat.js';
+import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
 
@@ -106,7 +109,7 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
             : 'bg-bg-dark border-bg-thumb'
         }`}
       >
-        {entry.text}
+        {isUser ? <MessageText text={entry.text} /> : entry.text}
       </div>
       {entry.usage && (
         <div className="flex gap-8 text-2xs text-text-muted" data-testid="chat-usage">
@@ -170,6 +173,8 @@ export function ChatCard({
   const [draft, setDraft] = useState('');
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
+  const [isFileDropTarget, setIsFileDropTarget] = useState(false);
+  const attachments = useFileAttachments();
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -236,12 +241,18 @@ export function ChatCard({
   const showTail = !isSheet && left === rawLeft;
 
   const canSend = readOnlyReason === null;
-  const hasContent = draft.trim().length > 0 || attachedPins.length > 0;
-  const submit = () => {
-    if (!canSend || !hasContent) return;
-    onSend(draft);
-    setDraft('');
+  const filesEnabled = canSend && canSendChatFiles();
+  const hasContent =
+    draft.trim().length > 0 || attachedPins.length > 0 || attachments.files.length > 0;
+  const submit = async () => {
+    if (!canSend || !hasContent || attachments.uploading) return;
+    const text = draft;
+    const paths = await attachments.upload();
+    if (!paths) return; // error shown; draft and files kept
+    onSend(withFileMentions(paths, text));
+    setDraft((current) => (current === text ? '' : current));
   };
+  const acceptsFiles = (e: React.DragEvent) => filesEnabled && dragHasFiles(e);
 
   const acceptsPin = (e: React.DragEvent) =>
     canSend && e.dataTransfer.types.includes(PIN_DRAG_MIME);
@@ -261,7 +272,29 @@ export function ChatCard({
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
+      onDragOver={(e) => {
+        if (!acceptsFiles(e)) return;
+        e.preventDefault();
+        setIsFileDropTarget(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsFileDropTarget(false);
+      }}
+      onDrop={(e) => {
+        setIsFileDropTarget(false);
+        if (!acceptsFiles(e)) return;
+        e.preventDefault();
+        attachments.add(e.dataTransfer.files);
+      }}
     >
+      {isFileDropTarget && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
+          data-testid="chat-file-drop"
+        >
+          Drop files to send them to {title}
+        </div>
+      )}
       {showTail && (
         <div
           className="absolute w-0 h-0"
@@ -591,9 +624,11 @@ export function ChatCard({
               ))}
             </div>
           )}
+          <FileChips attachments={attachments} />
           {queue?.error && <div className="text-2xs text-danger">{queue.error}</div>}
           <label htmlFor={`chat-input-${agentId}`} className="text-2xs text-text-muted">
-            Message {title} · Enter sends, Shift+Enter new line · drop a pin to attach
+            Message {title} · Enter sends, Shift+Enter new line · drop a pin
+            {filesEnabled ? ' or files' : ''} to attach
           </label>
           <div className="flex gap-6 items-end">
             <textarea
@@ -605,7 +640,7 @@ export function ChatCard({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  submit();
+                  void submit();
                 }
               }}
               className={`flex-1 min-w-0 resize-none p-6 bg-bg text-text text-sm border-2 rounded-none outline-none ${
@@ -613,14 +648,19 @@ export function ChatCard({
               }`}
               data-testid="chat-input"
             />
+            {filesEnabled && <AttachFileButton attachments={attachments} />}
             <Button
-              variant={hasContent ? 'accent' : 'disabled'}
+              variant={hasContent && !attachments.uploading ? 'accent' : 'disabled'}
               size="md"
-              disabled={!hasContent}
-              onClick={submit}
+              disabled={!hasContent || attachments.uploading}
+              onClick={() => void submit()}
               data-testid="chat-send"
             >
-              {ch.isActive || needsApproval ? 'Queue' : 'Send'}
+              {attachments.uploading
+                ? 'Uploading'
+                : ch.isActive || needsApproval
+                  ? 'Queue'
+                  : 'Send'}
             </Button>
           </div>
         </div>

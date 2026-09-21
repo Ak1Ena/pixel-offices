@@ -15,6 +15,7 @@
  * a hardcoded number silently becomes a lie the next time the list changes.
  */
 
+import { PERMISSION_WAIT_MS } from '../../../constants.js';
 import { CLAUDE_HOOK_EVENTS, SETTINGS_BACKUP_SUFFIX } from './constants.js';
 
 const SETTINGS_FILE = '~/.claude/settings.json';
@@ -36,7 +37,8 @@ export const CONSENT_FACT_WHAT =
 export const CONSENT_FACT_DATA =
   'Claude Code will send those events - including tool names and tool inputs - to a Pixel Agents ' +
   'server on this machine. Everything stays local - the server listens only on 127.0.0.1 - unless ' +
-  'you explicitly start it with --host to expose it on your network.';
+  'you explicitly start it with --host to expose it on your network. While the office is open, ' +
+  `permission prompts wait there for your Allow or Deny (up to ${PERMISSION_WAIT_MS / 60_000} minutes) before showing in the terminal.`;
 
 /** HOW to undo it. */
 export const CONSENT_FACT_REVERSIBLE =

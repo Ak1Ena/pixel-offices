@@ -9,7 +9,14 @@ import * as fs from 'fs';
 import type { BoardPin } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import { isViewableName, resolvePinFile, saveUploadedFile } from './boardFiles.js';
+import {
+  isViewableName,
+  resolveChatImage,
+  resolvePinFile,
+  saveChatFile,
+  saveUploadedFile,
+} from './boardFiles.js';
+import { pinFromInput } from './boardStore.js';
 import type {
   AssetCache,
   ReloadAssetsSideEffect,
@@ -19,16 +26,23 @@ import { handleClientMessage } from './clientMessageHandler.js';
 import {
   BOARD_FILE_API_PREFIX,
   BOARD_FILE_MAX_BYTES,
+  BOARD_NO_SUCH_PIN_ERROR,
+  BOARD_PINS_API_PATH,
+  CHAT_FILE_API_PREFIX,
+  CHAT_FILE_NAME_PATTERN,
   HOOK_API_PREFIX,
   LAUNCHER_API_PREFIX,
   LAUNCHER_POLL_TIMEOUT_MS,
   LAUNCHER_SESSION_ID_PATTERN,
   MAX_HOOK_BODY_SIZE,
+  PERMISSION_POLL_MS,
+  PERMISSION_POLL_SEGMENT,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
 import type { LauncherHub } from './launcherHub.js';
 import type { OfficeSessions } from './officeSessions.js';
+import { isPermissionRequestId } from './permissionBroker.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -63,6 +77,10 @@ export interface HttpServerOptions {
   getBoardPins?: () => BoardPin[];
   /** Add a whiteboard pin (used when a file is uploaded). Returns false when rejected. */
   saveBoardPin?: (pin: BoardPin) => boolean;
+  /** Remove a whiteboard pin by id. Returns false when there is no such pin. */
+  removeBoardPin?: (pinId: string) => boolean;
+  /** Resolve an agent's display/agent name to its id, for `scope` names on POSTed pins. */
+  resolveBoardAgent?: (name: string) => number | undefined;
   /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession). */
   onLauncherPoll?: (sessionId: string, cwd: string) => void;
 }
@@ -110,7 +128,13 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerHookRoute(app, options);
   registerLauncherRoutes(app, options);
   registerBoardFileRoute(app, options);
+  // Uploads send the raw file bytes; one parser serves both upload routes.
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) =>
+    done(null, body),
+  );
   registerBoardUploadRoute(app, options);
+  registerBoardPinRoutes(app, options);
+  registerChatFileRoute(app, options);
   registerWebSocketRoute(app, options);
 
   // ── Listen ──────────────────────────────────────────────────
@@ -158,9 +182,35 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
 
       if (event.session_id && event.hook_event_name) {
         options.onHookEvent?.(providerId, event);
+        // A permission prompt the hook script is holding open: tell it whether
+        // to wait for an answer from this office (it then polls below).
+        if (isPermissionRequestId(event.pixel_request_id)) {
+          reply.send({ await: options.runtime?.askPermission(providerId, event) === true });
+          return;
+        }
       }
 
       reply.send('ok');
+    },
+  );
+
+  // The hook script's long-poll for the decision on a held permission prompt.
+  app.get<{ Params: { providerId: string; requestId: string } }>(
+    `${HOOK_API_PREFIX}/:providerId/${PERMISSION_POLL_SEGMENT}/:requestId`,
+    { preHandler: bearerAuth(options.token) },
+    async (request, reply) => {
+      // Only the hook script asks; a browser never answers a prompt this way.
+      if (request.headers.origin !== undefined) {
+        reply.code(403).send('forbidden');
+        return;
+      }
+      const broker = options.runtime?.permissions;
+      const { requestId } = request.params;
+      const decision =
+        broker && isPermissionRequestId(requestId)
+          ? await broker.wait(requestId, PERMISSION_POLL_MS)
+          : 'terminal';
+      reply.send({ decision });
     },
   );
 }
@@ -257,9 +307,6 @@ function registerBoardFileRoute(app: FastifyInstance, options: HttpServerOptions
 function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptions): void {
   const { saveBoardPin } = options;
   if (!saveBoardPin) return;
-  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) =>
-    done(null, body),
-  );
   app.post<{ Querystring: { name?: string }; Body: Buffer }>(
     BOARD_FILE_API_PREFIX,
     {
@@ -298,6 +345,129 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
   );
 }
 
+/**
+ * Send a file to an agent from the office chat: stored under ~/.pixel-agents/files
+ * and its absolute path returned, for the message to name as `@<path>`. Any type
+ * is stored, no pin; only images are served back (for inline display). Token required.
+ */
+function registerChatFileRoute(app: FastifyInstance, options: HttpServerOptions): void {
+  app.post<{ Querystring: { name?: string }; Body: Buffer }>(
+    CHAT_FILE_API_PREFIX,
+    {
+      preHandler: bearerAuth(options.token),
+      bodyLimit: BOARD_FILE_MAX_BYTES,
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: { name: { type: 'string', minLength: 1, maxLength: 255 } },
+          required: ['name'],
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: 'No file sent.' });
+      let filePath: string | null;
+      try {
+        filePath = saveChatFile(request.query.name ?? '', request.body);
+      } catch {
+        filePath = null;
+      }
+      if (!filePath) return reply.code(400).send({ error: 'Could not store that file.' });
+      return { path: filePath };
+    },
+  );
+
+  // The chat shows uploaded IMAGES inline, fetched by stored name (see resolveChatImage).
+  app.get<{ Params: { name: string } }>(
+    `${CHAT_FILE_API_PREFIX}/:name`,
+    {
+      preHandler: bearerAuth(options.token),
+      schema: {
+        params: {
+          type: 'object',
+          properties: { name: { type: 'string', pattern: CHAT_FILE_NAME_PATTERN } },
+          required: ['name'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const file = resolveChatImage(request.params.name);
+      if (!file.ok) return reply.code(file.status).send({ error: file.error });
+      return reply
+        .header('Content-Type', file.contentType)
+        .header('Content-Length', file.size)
+        .header('X-Content-Type-Options', 'nosniff')
+        .header('Content-Disposition', 'inline')
+        .header('Cache-Control', 'no-store')
+        .send(fs.createReadStream(file.filePath));
+    },
+  );
+}
+
+/**
+ * The whiteboard for AGENTS (`pixel-office board …`, curl, any harness):
+ * list, add, annotate (detail) and remove pins. Bearer token required (read from the 0600
+ * registry entry), and browsers are refused like the launcher routes — the
+ * office UI edits the board over /ws, so an Origin header is never ours.
+ */
+function registerBoardPinRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const { getBoardPins, saveBoardPin, removeBoardPin } = options;
+  if (!getBoardPins || !saveBoardPin || !removeBoardPin) return;
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  const preHandler = [noBrowsers, bearerAuth(options.token)];
+
+  app.get(BOARD_PINS_API_PATH, { preHandler }, async () => ({ pins: getBoardPins() }));
+
+  app.post<{ Body: unknown }>(BOARD_PINS_API_PATH, { preHandler }, async (request, reply) => {
+    const result = pinFromInput(request.body, options.resolveBoardAgent);
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    if (!saveBoardPin(result.pin)) {
+      return reply.code(409).send({ error: 'The whiteboard is full.' });
+    }
+    return { pin: result.pin };
+  });
+
+  app.delete<{ Params: { pinId: string } }>(
+    `${BOARD_PINS_API_PATH}/:pinId`,
+    {
+      preHandler,
+      schema: {
+        params: {
+          type: 'object',
+          properties: { pinId: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
+          required: ['pinId'],
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!removeBoardPin(request.params.pinId)) {
+        return reply.code(404).send({ error: BOARD_NO_SUCH_PIN_ERROR });
+      }
+      return { ok: true };
+    },
+  );
+
+  // Add, change or clear (empty string) a pin's detail.
+  app.patch<{ Params: { pinId: string }; Body: unknown }>(
+    `${BOARD_PINS_API_PATH}/:pinId`,
+    { preHandler },
+    async (request, reply) => {
+      const pin = getBoardPins().find((p) => p.id === request.params.pinId);
+      if (!pin) return reply.code(404).send({ error: BOARD_NO_SUCH_PIN_ERROR });
+      const detail = (request.body as { detail?: unknown } | null)?.detail;
+      if (typeof detail !== 'string') {
+        return reply.code(400).send({ error: 'detail must be a string.' });
+      }
+      const next = { ...pin, detail };
+      if (!saveBoardPin(next))
+        return reply.code(400).send({ error: 'Detail rejected (too long).' });
+      return { pin: getBoardPins().find((p) => p.id === pin.id) ?? next };
+    },
+  );
+}
+
 // ── WebSocket ──────────────────────────────────────────────────
 
 function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions): void {
@@ -325,6 +495,8 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
     const privileged = options.embedded || standaloneTokenValid(request.url, options.token);
 
     const { store } = options;
+    // A privileged client can answer permission prompts, so hooks may wait for it.
+    const removeDecider = privileged ? options.runtime?.permissions.addDecider() : undefined;
 
     // Pipe store events to WebSocket client
     const onAgentAdded = (id: number, agent: AgentState) => {
@@ -377,6 +549,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
     });
 
     socket.on('close', () => {
+      removeDecider?.();
       store.off('agentAdded', onAgentAdded);
       store.off('agentRemoved', onAgentRemoved);
       store.off('broadcast', onBroadcast);

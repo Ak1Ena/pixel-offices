@@ -113,6 +113,9 @@ components:
         - $ref: '#/components/schemas/AgentScreen'
         - $ref: '#/components/schemas/StartAgentResult'
         - $ref: '#/components/schemas/AgentRelayState'
+        - $ref: '#/components/schemas/AgentPermissionAsk'
+        - $ref: '#/components/schemas/AgentPermissionAnswered'
+        - $ref: '#/components/schemas/FolderListing'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         # Layout
@@ -167,6 +170,8 @@ components:
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
         - $ref: '#/components/schemas/SetAgentRelay'
+        - $ref: '#/components/schemas/AnswerPermission'
+        - $ref: '#/components/schemas/ListFolder'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -596,6 +601,11 @@ components:
           const: officeCapabilities
         canStartAgents:
           type: boolean
+        privileged:
+          type: boolean
+          description: |
+            True when this connection may do privileged things (type into
+            sessions, answer permission prompts, toggle the relay, browse folders).
         recentFolders:
           type: array
           items:
@@ -648,6 +658,71 @@ components:
           const: agentRelayState
         enabled:
           type: boolean
+
+    AgentPermissionAsk:
+      description: |
+        An agent is waiting for a permission decision the office can give: its
+        PermissionRequest hook is holding the prompt until someone answers
+        (answerPermission) or the wait runs out, when the prompt falls back to
+        the agent's own terminal. Sent when the ask opens and in the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, id, requestId, toolName]
+      properties:
+        type:
+          const: agentPermissionAsk
+        id:
+          type: integer
+        requestId:
+          type: string
+        toolName:
+          type: string
+        detail:
+          type: string
+          description: Short summary of what the tool wants to do (command, file path, URL).
+        providerId:
+          type: string
+        expiresAt:
+          type: integer
+          description: Epoch ms when the wait runs out.
+
+    AgentPermissionAnswered:
+      description: A permission ask closed (answered here, elsewhere, or timed out).
+      type: object
+      additionalProperties: false
+      required: [type, id, requestId]
+      properties:
+        type:
+          const: agentPermissionAnswered
+        id:
+          type: integer
+        requestId:
+          type: string
+        decision:
+          $ref: '#/components/schemas/PermissionDecision'
+
+    FolderListing:
+      description: Reply to listFolder, sent only to the requesting client.
+      type: object
+      additionalProperties: false
+      required: [type, path, entries]
+      properties:
+        type:
+          const: folderListing
+        path:
+          type: string
+          description: Absolute path that was listed.
+        parent:
+          type: string
+          description: Parent folder, absent at the filesystem root.
+        home:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/FolderEntry'
+        error:
+          type: string
 
     BoardLoaded:
       description: |
@@ -1402,7 +1477,54 @@ components:
           items:
             $ref: '#/components/schemas/AgentKey'
 
+    AnswerPermission:
+      description: |
+        Answer an agentPermissionAsk. `terminal` stops waiting and lets the
+        prompt show in the agent's own terminal. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, requestId, decision]
+      properties:
+        type:
+          const: answerPermission
+        id:
+          type: integer
+        requestId:
+          type: string
+        decision:
+          $ref: '#/components/schemas/PermissionDecision'
+
+    ListFolder:
+      description: |
+        List the sub-folders of a folder (home when `path` is absent), for the
+        folder picker. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: listFolder
+        path:
+          type: string
+
     # ── Supporting schemas ─────────────────────────────────────────
+
+    PermissionDecision:
+      type: string
+      enum: [allow, deny, terminal]
+
+    FolderEntry:
+      type: object
+      additionalProperties: false
+      required: [name, path]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        isProject:
+          type: boolean
+          description: Looks like a project (has .git or package.json etc.).
 
     AgentKey:
       type: string
@@ -1479,6 +1601,11 @@ components:
         value:
           type: string
           description: URL for a link, path for a file, code for a snippet, text for a note.
+        detail:
+          type: string
+          description: |
+            Optional notes about the pin - what it is, why it matters, how to
+            use it. Sent along when the pin is attached to a message.
         scope:
           type: array
           description: Agent ids the pin is meant for. Empty = every session.

@@ -33,6 +33,8 @@ export interface OfficeChatState {
   screens: Record<number, string[]>;
   /** True when this office can start agents (+ Agent in the browser). */
   canStartAgents: boolean;
+  /** This connection may do privileged things (server-decided, officeCapabilities). */
+  privileged: boolean;
   recentFolders: string[];
   /** Whether agents may message each other with @Name (server state). */
   relayEnabled: boolean;
@@ -62,6 +64,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [screens, setScreens] = useState<Record<number, string[]>>({});
   const [asking, setAsking] = useState<Record<number, boolean>>({});
   const [canStartAgents, setCanStartAgents] = useState(false);
+  const [privileged, setPrivileged] = useState(false);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [relayEnabled, setRelayEnabled] = useState(false);
   const [pins, setPins] = useState<BoardPin[]>([]);
@@ -90,6 +93,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setRelayEnabled(msg.enabled);
       } else if (msg.type === 'officeCapabilities') {
         setCanStartAgents(msg.canStartAgents);
+        setPrivileged(msg.privileged === true);
         setRecentFolders(msg.recentFolders);
       } else if (msg.type === 'agentChatSendable') {
         setSendable((prev) => ({ ...prev, [msg.id]: msg.sendable }));
@@ -166,6 +170,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     screens,
     asking,
     canStartAgents,
+    privileged,
     recentFolders,
     relayEnabled,
     setRelay,

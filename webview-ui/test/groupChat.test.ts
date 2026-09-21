@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { buildChannels, groupNote, mergeTimeline } from '../src/officeChat.js';
+import { addressedMembers, buildChannels, groupNote, mergeTimeline } from '../src/officeChat.js';
 
 test('channels: everyone, plus one per team named after its room', () => {
   const channels = buildChannels([
@@ -51,4 +51,14 @@ test('a message sent to several agents shows once; relayed copies are hidden', (
       [2, 'Got it', []],
     ],
   );
+});
+
+test('@Name in a group message picks just those agents', () => {
+  const labels: Record<number, string> = { 1: 'Bob', 2: 'Pat', 3: 'api #3' };
+  const labelOf = (id: number) => labels[id];
+  assert.deepEqual(addressedMembers('@pat please review', [1, 2, 3], labelOf), [2]);
+  assert.deepEqual(addressedMembers('@Bob and @api #3 sync up', [1, 2, 3], labelOf), [1, 3]);
+  assert.deepEqual(addressedMembers('@agent2 ping', [1, 2, 3], labelOf), [2]);
+  assert.deepEqual(addressedMembers('@Patrick is not Pat', [1, 2, 3], labelOf), []);
+  assert.deepEqual(addressedMembers('everyone please', [1, 2, 3], labelOf), []);
 });

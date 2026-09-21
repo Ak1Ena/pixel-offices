@@ -47,10 +47,12 @@ import type { ConsentEffects } from '../../server/src/providers/hook/consentExec
 import { applyConsentChoice } from '../../server/src/providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from '../../server/src/providers/hook/consentGate.js';
 import {
+  activeHookProviders,
+  allReadingTools,
   claudeProvider,
-  copyHookScript,
+  copyProviderHookScript,
   hookProviderById,
-  hookProviders,
+  secondaryHookProviders,
 } from '../../server/src/providers/index.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
 import { typePrompt } from '../../server/src/terminalTyping.js';
@@ -91,6 +93,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
   // runners hook events that arrive during iframe init (mock-claude scenarios
   // start writing within ~3 s of agent spawn) silently never reach the UI.
   private isWebviewReady = false;
+  /** While the panel is open it can answer permission prompts (runtime.permissions). */
+  private removePermissionDecider: (() => void) | undefined;
   private pendingBroadcasts: Array<Record<string, unknown>> = [];
 
   // Shared agent lifecycle core (timer Maps, scanners, hook handler, dismissal tracker)
@@ -181,7 +185,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     });
 
     // Create shared runtime (owns timer Maps, scanners, hook handler, dismissal tracker)
-    this.runtime = new AgentRuntime(this.store, claudeProvider);
+    // Claude is the primary provider; Codex, Gemini and Generic HTTP events are
+    // routed too (POST /api/hooks/<id>) and become hooks-only agents.
+    this.runtime = new AgentRuntime(this.store, claudeProvider, secondaryHookProviders);
     // Office chat types into the terminals this extension owns. Headless and
     // external agents have none, so they stay read-only.
     this.runtime.chatSender.addWriter({
@@ -245,10 +251,13 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // Only hook installation/script-copy is gated by the toggle. The
         // runtime's single hooksEnabled ref follows the Claude provider until
         // the scanners grow per-provider awareness with the Settings UI.
-        const hooksEnabled = getHooksEnabled(claudeProvider.id);
-        this.runtime.hooksEnabled.current = hooksEnabled;
-        if (hooksEnabled) {
-          void this.installHooksIfConsented(config.port, config.token);
+        this.runtime.hooksEnabled.current = getHooksEnabled(claudeProvider.id);
+        // Per provider whose CLI is present (~/.codex, ~/.gemini), each gated
+        // on its own preference and consent.
+        for (const provider of activeHookProviders()) {
+          if (getHooksEnabled(provider.id)) {
+            void this.installHooksIfConsented(provider, config.port, config.token);
+          }
         }
         console.log(`[Pixel Agents] Server: ready on port ${config.port}`);
       })
@@ -270,9 +279,9 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     port: number | undefined,
     token: string | undefined,
   ): Promise<void> {
-    // The bundled claude-hook.js script belongs to the Claude provider alone;
-    // another provider's install must neither copy it nor be blocked by it.
-    if (provider.id === claudeProvider.id && !copyHookScript(this.context.extensionPath)) {
+    // Each provider copies only its OWN bundled script (claude-hook.js,
+    // codex-hook.js, …); another provider's install is never blocked by it.
+    if (!copyProviderHookScript(provider, this.context.extensionPath)) {
       vscode.window.showErrorMessage(
         'Pixel Agents: could not install the hook script — hooks not installed.',
       );
@@ -383,20 +392,24 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
    *  The fresh-install population gets nothing here — the ask happens when
    *  the office is opened, which also means hooks are not installed until the
    *  panel is first viewed. Fail-closed by construction: no answer, no write. */
-  private async installHooksIfConsented(port: number, token: string): Promise<void> {
-    if (getHooksConsent(claudeProvider.id) !== 'granted') {
-      if (!(await claudeProvider.areHooksInstalled())) {
+  private async installHooksIfConsented(
+    provider: HookProvider,
+    port: number,
+    token: string,
+  ): Promise<void> {
+    if (getHooksConsent(provider.id) !== 'granted') {
+      if (!(await provider.areHooksInstalled().catch(() => false))) {
         return; // fresh install — the webview consent dialog owns this ask
       }
       // Already installed and already firing: grant and migrate silently.
-      grantHooksConsent(claudeProvider.id);
+      grantHooksConsent(provider.id);
     }
-    await this.installHooksAndScript(claudeProvider, port, token);
+    await this.installHooksAndScript(provider, port, token);
     // Truthful success report for THIS path: a webviewReady handshake that
     // raced the install read the pre-install state, and installHooksAndScript
     // itself no longer sends an optimistic status (its other caller,
     // setHooksEnabled, re-derives on its own).
-    await this.reportHooksStatus(claudeProvider);
+    await this.reportHooksStatus(provider);
   }
 
   /** This surface's half of carrying out a consent answer for one provider. The choice→action rule and the write
@@ -435,6 +448,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.pendingBroadcasts = [];
     webviewView.webview.options = { enableScripts: true };
     webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionUri);
+    this.removePermissionDecider?.();
+    this.removePermissionDecider = this.runtime.permissions.addDecider();
+    webviewView.onDidDispose(() => {
+      this.removePermissionDecider?.();
+      this.removePermissionDecider = undefined;
+    });
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.type === 'launchAgent') {
@@ -481,6 +500,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.runtime.chatSender.cancel(message.id, message.queueId);
       } else if (message.type === 'setAgentRelay') {
         if (typeof message.enabled === 'boolean') this.runtime.relay.setEnabled(message.enabled);
+      } else if (message.type === 'answerPermission') {
+        this.runtime.permissions.answer(message.id, message.requestId, message.decision);
       } else if (message.type === 'renameAgent') {
         this.runtime.renameAgent(message.id, message.name);
       } else if (message.type === 'saveBoardPin') {
@@ -585,7 +606,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // from the first frame.
         this.webview?.postMessage({
           type: 'providerCapabilities',
-          readingTools: [...claudeProvider.readingTools],
+          readingTools: allReadingTools(),
           subagentToolNames: [...claudeProvider.subagentToolNames],
         });
 
@@ -638,7 +659,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // asked, so the ask rides this handshake; consentGate owns every condition (standalone calls the same
         // function). Dismissing sends nothing and re-asks next handshake; either durable answer closes the gate for
         // good. An embedded webview is privileged by construction — our own iframe, reached through no socket.
-        for (const provider of hookProviders) {
+        for (const provider of activeHookProviders()) {
           // One provider's unreadable settings file degrades to installed=false (the executor's fail-closed read: no
           // choice uninstalls on a guess) rather than aborting the handshake before restored agents are sent, or
           // blocking the other providers' statuses.

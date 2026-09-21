@@ -19,11 +19,20 @@ function setup() {
 }
 
 describe('agent-to-agent mentions', () => {
-  it('matches whole names only, never the sender or unnamed agents', () => {
+  it('matches whole names only, never the sender', () => {
     const { store } = setup();
     expect(mentionedAgents('@pat amounts are in cents', 1, store)).toEqual([2]);
     expect(mentionedAgents('@Patrick and @Backend Bob, see this', 1, store)).toEqual([3]);
     expect(mentionedAgents('no mention here', 1, store)).toEqual([]);
+  });
+
+  it('reaches unnamed agents by the label the office shows', () => {
+    const { store } = setup();
+    store.set(5, { id: 5, folderName: 'api' } as unknown as AgentState);
+    expect(mentionedAgents('@Agent #4 please check', 1, store)).toEqual([4]);
+    expect(mentionedAgents('@agent4 please check', 1, store)).toEqual([4]);
+    expect(mentionedAgents('@api #5 ping', 1, store)).toEqual([5]);
+    expect(mentionedAgents('@Agent #41 is not agent 4', 1, store)).toEqual([]);
   });
 
   it('is off by default and says who the message is from when on', () => {
@@ -33,7 +42,10 @@ describe('agent-to-agent mentions', () => {
     relay.setEnabled(true);
     relay.onReply(1, '@Pat use amount_cents');
     expect(sent).toEqual([
-      [2, 'Message from Backend Bob (teammate, via the office): @Pat use amount_cents'],
+      [
+        2,
+        'Message from Backend Bob (teammate, via the office): @Pat use amount_cents\n(To answer, write @Backend Bob in your reply.)',
+      ],
     ]);
   });
 

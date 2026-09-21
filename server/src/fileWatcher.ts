@@ -1576,6 +1576,9 @@ export function startStaleExternalAgentCheck(
 
     for (const [id, agent] of agents) {
       if (!agent.isExternal) continue;
+      // Hooks-only agents (Codex, Gemini, Generic) have no transcript file to
+      // go missing; their own SessionEnd removes them.
+      if (agent.hooksOnly) continue;
 
       // Only despawn if the JSONL file has been deleted from disk.
       // Inactive external agents stay alive so they can resume when

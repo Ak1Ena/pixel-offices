@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { transport } from '../transport/index.js';
+import { FolderPicker } from './FolderPicker.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -62,7 +63,7 @@ export function AddAgentModal({ isOpen, onClose, recentFolders }: AddAgentModalP
       className="w-480 max-w-[94vw]"
     >
       <form
-        className="flex flex-col gap-8 px-10 pb-8"
+        className="flex flex-col gap-8 px-10 pb-8 max-h-[85vh] overflow-y-auto"
         onKeyDown={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -90,22 +91,10 @@ export function AddAgentModal({ isOpen, onClose, recentFolders }: AddAgentModalP
             data-testid="agent-name"
           />
         </label>
-        <label className="flex flex-col gap-2 text-sm">
+        <div className="flex flex-col gap-2 text-sm">
           Project folder
-          <input
-            className={fieldClass}
-            value={cwd}
-            placeholder="~/code/my-project"
-            onChange={(e) => setCwd(e.target.value)}
-            list="recent-folders"
-            data-testid="agent-cwd"
-          />
-          <datalist id="recent-folders">
-            {recentFolders.map((f) => (
-              <option key={f} value={f} />
-            ))}
-          </datalist>
-        </label>
+          <FolderPicker value={cwd} onChange={setCwd} recentFolders={recentFolders} />
+        </div>
         <label className="flex flex-col gap-2 text-sm">
           Start with
           <input

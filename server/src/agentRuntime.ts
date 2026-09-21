@@ -47,6 +47,7 @@ import { LauncherHub } from './launcherHub.js';
 import { MentionRelay } from './mentionRelay.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
+import { PermissionBroker } from './permissionBroker.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
@@ -96,17 +97,32 @@ export class AgentRuntime {
   readonly chatSender: ChatSender;
   /** Agent-to-agent @mention passing (off by default). */
   readonly relay: MentionRelay;
+  /** Permission prompts held open by a hook until the office answers them. */
+  readonly permissions: PermissionBroker;
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
   private readonly tokenBurnTimer: ReturnType<typeof setInterval>;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
+  /** Every provider whose hook events are routed, by id (primary included). */
+  private readonly providersById = new Map<string, HookProvider>();
 
+  /**
+   * @param provider - The primary provider (Claude): transcripts, scanners,
+   *   teams and launched sessions are its.
+   * @param additionalProviders - Further providers whose hook events are
+   *   routed by `/api/hooks/<id>` (Codex, Gemini, Generic). Their sessions
+   *   become hooks-only agents that remember their provider, so tool status
+   *   formatting and permission prompts use that provider's rules.
+   */
   constructor(
     private readonly store: AgentStateStore,
     private readonly provider: HookProvider,
+    additionalProviders: readonly HookProvider[] = [],
   ) {
+    for (const p of additionalProviders) this.providersById.set(p.id, p);
+    this.providersById.set(provider.id, provider);
     // Wire module-level dependencies
     setDismissalTracker(this.dismissalTracker);
     setHookProvider(provider);
@@ -115,6 +131,7 @@ export class AgentRuntime {
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
     this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
+    this.permissions = new PermissionBroker(store);
     setReplyListener((id, text) => this.relay.onReply(id, text));
     this.tokenBurnTimer = setInterval(() => tickTokenBurn(this.store), TOKEN_BURN_TICK_MS);
     this.tokenBurnTimer.unref?.();
@@ -174,11 +191,12 @@ export class AgentRuntime {
       provider,
       new SessionRouter(),
       this.watchAllSessions,
+      (id) => this.providersById.get(id),
     );
 
     // Wire hook lifecycle callbacks to shared agent operations
     this.hookEventHandler.setLifecycleCallbacks({
-      onExternalSessionDetected: (sessionId, transcriptPath, cwd) => {
+      onExternalSessionDetected: (sessionId, transcriptPath, cwd, providerId) => {
         const projectDir = transcriptPath ? path.dirname(transcriptPath) : cwd;
         // Teammate session of a tracked lead? Attach it as a teammate character
         // instead of adopting a generic external agent -- and regardless of the
@@ -217,7 +235,15 @@ export class AgentRuntime {
             }
           }
         }
-        if (!isTrackedProjectDir(projectDir) && !this.watchAllSessions.current) {
+        // A hooks-only session (no transcript) reports its working directory;
+        // it is tracked when that is a workspace whose primary-provider project
+        // dir is being watched.
+        const tracked =
+          isTrackedProjectDir(projectDir) ||
+          (!transcriptPath &&
+            !!cwd &&
+            (this.provider.getSessionDirs?.(cwd) ?? []).some((dir) => isTrackedProjectDir(dir)));
+        if (!tracked && !this.watchAllSessions.current) {
           console.log(
             `[Pixel Agents] Hook: external session ${sessionId.slice(0, 8)}... not adopted ` +
               `(project untracked, Watch All Sessions off)`,
@@ -236,7 +262,10 @@ export class AgentRuntime {
           this.waitingTimers,
           this.permissionTimers,
           () => this.store.persist(),
-          (agent) => this.registerAgent(agent.sessionId, agent.id),
+          (agent) => {
+            if (providerId && providerId !== this.provider.id) agent.providerId = providerId;
+            this.registerAgent(agent.sessionId, agent.id);
+          },
         );
       },
       onSessionClear: (agentId, newSessionId, newTranscriptPath) => {
@@ -315,6 +344,44 @@ export class AgentRuntime {
   /** Route an incoming hook event to the appropriate agent. */
   handleHookEvent(providerId: string, event: Record<string, unknown>): void {
     this.hookEventHandler.handleEvent(providerId, event as HookEvent);
+    const provider = this.providersById.get(providerId);
+    if (!provider) return; // unknown provider: the handler dropped it too
+    // A finished turn or session settles every prompt it had open (answered in
+    // another window, or in the terminal after the wait ran out).
+    const kind = provider.normalizeHookEvent(event)?.event.kind;
+    if (kind === 'turnEnd' || kind === 'sessionEnd') {
+      const agentId = this.hookEventHandler.agentIdForSession(String(event.session_id));
+      if (agentId !== undefined) this.permissions.closeForAgent(agentId);
+    }
+    // A name the event carries (Generic HTTP's agent_name) labels a character
+    // that has none yet; a user's rename always wins.
+    const name = provider.agentNameFromEvent?.(event);
+    if (name) {
+      const agentId = this.hookEventHandler.agentIdForSession(String(event.session_id));
+      const agent = agentId !== undefined ? this.store.get(agentId) : undefined;
+      if (agent && !agent.displayName) this.renameAgent(agentId, name);
+    }
+  }
+
+  /**
+   * A hook script is holding a permission prompt open (`pixel_request_id`).
+   * Returns true when the office will answer it — the hook then polls for the
+   * decision — and false when the prompt should show in the terminal as usual.
+   * Call after handleHookEvent, so a just-confirmed session has its agent.
+   */
+  askPermission(providerId: string, event: Record<string, unknown>): boolean {
+    const provider = this.providersById.get(providerId);
+    if (!provider) return false;
+    const described = provider.describePermissionRequest?.(event);
+    if (!described) return false;
+    const agentId = this.hookEventHandler.agentIdForSession(String(event.session_id));
+    if (agentId === undefined) return false;
+    return this.permissions.open({
+      requestId: String(event.pixel_request_id),
+      agentId,
+      providerId,
+      ...described,
+    });
   }
 
   /** Register an agent with the hook event handler for session->agent mapping. */
@@ -656,6 +723,7 @@ export class AgentRuntime {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
     this.chatSender.dispose();
+    this.permissions.dispose();
     clearInterval(this.tokenBurnTimer);
     this.launchers.dispose();
     this.boardStore?.dispose();

@@ -288,6 +288,38 @@ export function contextWindowForModel(model: string | undefined): number | undef
     : CLAUDE_LARGE_CONTEXT_WINDOW;
 }
 
+// ── Permission prompts the office can answer ──
+
+/**
+ * A PermissionRequest the hook script is holding open (it tagged it with
+ * `pixel_request_id`): which tool, and a one-line summary of what it wants.
+ * Claude Code runs this hook before it shows its own dialog and takes an
+ * allow/deny from the hook's stdout, so the office can answer it.
+ */
+export function describePermissionRequest(
+  raw: Record<string, unknown>,
+): { toolName: string; detail?: string } | null {
+  if (raw.hook_event_name !== 'PermissionRequest') return null;
+  if (typeof raw.pixel_request_id !== 'string') return null;
+  const toolName = typeof raw.tool_name === 'string' ? raw.tool_name : 'Tool';
+  const input =
+    raw.tool_input && typeof raw.tool_input === 'object'
+      ? (raw.tool_input as Record<string, unknown>)
+      : {};
+  for (const key of ['command', 'file_path', 'notebook_path', 'url', 'path', 'pattern', 'query']) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) return { toolName, detail: value.trim() };
+  }
+  let detail: string | undefined;
+  try {
+    const json = JSON.stringify(input);
+    detail = json === '{}' ? undefined : json;
+  } catch {
+    detail = undefined;
+  }
+  return { toolName, detail };
+}
+
 // ── The provider ──
 
 export const claudeProvider: HookProvider = {
@@ -304,6 +336,7 @@ export const claudeProvider: HookProvider = {
   consentDisclosure,
 
   formatToolStatus,
+  describePermissionRequest,
   permissionExemptTools: new Set(['Task', 'Agent', 'AskUserQuestion']),
   subagentToolNames: new Set(['Task', 'Agent']),
   readingTools: new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']),

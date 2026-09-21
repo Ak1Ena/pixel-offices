@@ -18,12 +18,36 @@ import type { AgentState } from './types.js';
  * never relayed onward as new mentions of the original sender's text.
  */
 
-/** Name an agent is addressed by. */
-export function agentHandle(agent: AgentState): string | null {
-  return agent.displayName ?? agent.agentName ?? null;
+/**
+ * Every name `@` may address an agent by. Matches what the office shows as its
+ * label (webview App.tsx agentLabel): the user-given name, the teammate name,
+ * else "<folder> #<id>" / "Agent #<id>" — unnamed agents were unreachable
+ * before, because only the first two counted. Space-free forms (`@agent3`,
+ * `@agent-3`, `@#3`) are accepted too, since models tend to drop the space.
+ */
+export function agentAliases(id: number, agent: AgentState): string[] {
+  const aliases = [agent.displayName, agent.agentName].filter(
+    (name): name is string => typeof name === 'string' && name.trim().length > 0,
+  );
+  if (agent.folderName) aliases.push(`${agent.folderName} #${id}`, `${agent.folderName}#${id}`);
+  aliases.push(`Agent #${id}`, `Agent#${id}`, `agent${id}`, `agent-${id}`, `#${id}`);
+  return aliases;
 }
 
-/** Agents (other than the sender) whose handle appears as `@Handle` in `text`. */
+/** Whether `lower` (lower-cased text) has `@alias` ending at a word boundary. */
+function mentions(lower: string, alias: string): boolean {
+  const needle = `@${alias.toLowerCase()}`;
+  let at = lower.indexOf(needle);
+  while (at !== -1) {
+    // Must end at a word boundary: "@Pat" does not match "@Patrick", "@#3" not "@#31".
+    const next = lower[at + needle.length];
+    if (next === undefined || !/[a-z0-9_-]/.test(next)) return true;
+    at = lower.indexOf(needle, at + 1);
+  }
+  return false;
+}
+
+/** Agents (other than the sender) addressed as `@Name` in `text`. */
 export function mentionedAgents(
   text: string,
   senderId: number,
@@ -33,13 +57,7 @@ export function mentionedAgents(
   const found: number[] = [];
   for (const [id, agent] of agents) {
     if (id === senderId) continue;
-    const handle = agentHandle(agent);
-    if (!handle) continue;
-    const at = lower.indexOf(`@${handle.toLowerCase()}`);
-    if (at === -1) continue;
-    // Must end at a word boundary: "@Pat" does not match "@Patrick".
-    const next = lower[at + 1 + handle.length];
-    if (next === undefined || !/[a-z0-9_-]/.test(next)) found.push(id);
+    if (agentAliases(id, agent).some((alias) => mentions(lower, alias))) found.push(id);
   }
   return found;
 }
@@ -63,7 +81,7 @@ export class MentionRelay {
     if (!this.enabled) return;
     const sender = this.store.get(senderId);
     if (!sender) return;
-    const from = agentHandle(sender) ?? `Agent #${senderId}`;
+    const from = agentAliases(senderId, sender)[0];
     while (this.passes.length > 0 && this.passes[0].at < now - RELAY_WINDOW_MS) this.passes.shift();
 
     for (const targetId of mentionedAgents(text, senderId, this.store)) {
@@ -72,7 +90,10 @@ export class MentionRelay {
       if (this.passes.filter((p) => p.pair === pair).length >= RELAY_PAIR_LIMIT) continue;
       this.passes.push({ at: now, pair });
       const body = text.length > RELAY_MAX_CHARS ? `${text.slice(0, RELAY_MAX_CHARS)}…` : text;
-      this.deliver(targetId, `Message from ${from} (teammate, via the office): ${body}`);
+      this.deliver(
+        targetId,
+        `Message from ${from} (teammate, via the office): ${body}\n(To answer, write @${from} in your reply.)`,
+      );
     }
   }
 }

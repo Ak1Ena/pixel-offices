@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ChatEntry } from '../../../core/src/messages.js';
 import { GROUP_CHAT_WIDTH_PX } from '../constants.js';
+import { canSendChatFiles, dragHasFiles, withFileMentions } from '../fileUpload.js';
+import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatChannel } from '../officeChat.js';
-import { groupNote, mergeTimeline } from '../officeChat.js';
+import { addressedMembers, groupNote, mergeTimeline } from '../officeChat.js';
+import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { Button } from './ui/Button.js';
 
 interface GroupChatPanelProps {
@@ -43,6 +46,9 @@ export function GroupChatPanel({
   const [channelId, setChannelId] = useState('everyone');
   const [draft, setDraft] = useState('');
   const [skipped, setSkipped] = useState<Record<number, boolean>>({});
+  const [isFileDropTarget, setIsFileDropTarget] = useState(false);
+  const attachments = useFileAttachments();
+  const filesEnabled = canSendChatFiles();
   const threadRef = useRef<HTMLDivElement>(null);
 
   const channel = channels.find((c) => c.id === channelId) ?? channels[0];
@@ -58,11 +64,19 @@ export function GroupChatPanel({
 
   if (!channel) return null;
   const reachable = channel.members.filter((id) => sendable[id]);
-  const targets = reachable.filter((id) => !skipped[id]);
+  // `@Name` in the draft sends to just those agents, whatever is ticked.
+  const addressed = addressedMembers(draft, reachable, labelOf);
+  const targets = addressed.length > 0 ? addressed : reachable.filter((id) => !skipped[id]);
 
-  const send = () => {
-    const text = draft.trim();
-    if (!text || targets.length === 0) return;
+  const hasContent = draft.trim().length > 0 || attachments.files.length > 0;
+  const canSubmit = hasContent && targets.length > 0 && !attachments.uploading;
+  const send = async () => {
+    if (!canSubmit) return;
+    const typed = draft;
+    // Uploaded once; every ticked member gets the same paths.
+    const paths = await attachments.upload();
+    if (!paths) return; // error shown; draft and files kept
+    const text = withFileMentions(paths, typed.trim());
     for (const id of targets) {
       let message = text;
       if (!introduced.has(id)) {
@@ -72,8 +86,10 @@ export function GroupChatPanel({
       }
       onSend(id, message);
     }
-    setDraft('');
+    setDraft((current) => (current === typed ? '' : current));
   };
+  const acceptsFiles = (e: React.DragEvent) =>
+    filesEnabled && reachable.length > 0 && dragHasFiles(e);
 
   return (
     <aside
@@ -156,14 +172,32 @@ export function GroupChatPanel({
                   mine ? 'bg-chat-office border-accent' : 'bg-bg-dark border-bg-thumb'
                 }`}
               >
-                {item.text}
+                {mine ? <MessageText text={item.text} /> : item.text}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="flex flex-col gap-4 p-8 border-t-2 border-border bg-bg-dark">
+      <div
+        className={`flex flex-col gap-4 p-8 border-t-2 bg-bg-dark ${
+          isFileDropTarget ? 'border-dashed border-accent' : 'border-border'
+        }`}
+        onDragOver={(e) => {
+          if (!acceptsFiles(e)) return;
+          e.preventDefault();
+          setIsFileDropTarget(true);
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsFileDropTarget(false);
+        }}
+        onDrop={(e) => {
+          setIsFileDropTarget(false);
+          if (!acceptsFiles(e)) return;
+          e.preventDefault();
+          attachments.add(e.dataTransfer.files);
+        }}
+      >
         {onSetRelay && (
           <label className="flex items-center gap-6 text-2xs text-text-muted">
             <input
@@ -179,17 +213,24 @@ export function GroupChatPanel({
           <>
             <div className="flex flex-wrap items-center gap-8 text-2xs">
               <span className="text-text-muted">Send to</span>
-              {reachable.map((id) => (
-                <label key={id} className="flex items-center gap-4">
-                  <input
-                    type="checkbox"
-                    checked={!skipped[id]}
-                    onChange={(e) => setSkipped((p) => ({ ...p, [id]: !e.target.checked }))}
-                  />
-                  {labelOf(id)}
-                </label>
-              ))}
+              {addressed.length > 0 && (
+                <span className="text-text" data-testid="group-addressed">
+                  only {addressed.map(labelOf).join(', ')} (@mentioned)
+                </span>
+              )}
+              {addressed.length === 0 &&
+                reachable.map((id) => (
+                  <label key={id} className="flex items-center gap-4">
+                    <input
+                      type="checkbox"
+                      checked={!skipped[id]}
+                      onChange={(e) => setSkipped((p) => ({ ...p, [id]: !e.target.checked }))}
+                    />
+                    {labelOf(id)}
+                  </label>
+                ))}
             </div>
+            {filesEnabled && <FileChips attachments={attachments} />}
             <label htmlFor="group-input" className="sr-only">
               Message #{channel.name}
             </label>
@@ -203,20 +244,21 @@ export function GroupChatPanel({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
-                    send();
+                    void send();
                   }
                 }}
                 className="flex-1 min-w-0 resize-none p-6 bg-bg text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent"
                 data-testid="group-input"
               />
+              {filesEnabled && <AttachFileButton attachments={attachments} />}
               <Button
-                variant={draft.trim() && targets.length > 0 ? 'accent' : 'disabled'}
+                variant={canSubmit ? 'accent' : 'disabled'}
                 size="md"
-                disabled={!draft.trim() || targets.length === 0}
-                onClick={send}
+                disabled={!canSubmit}
+                onClick={() => void send()}
                 data-testid="group-send"
               >
-                Send to {targets.length}
+                {attachments.uploading ? 'Uploading' : `Send to ${targets.length}`}
               </Button>
             </div>
           </>

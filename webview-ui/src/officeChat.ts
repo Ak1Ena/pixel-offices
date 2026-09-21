@@ -1,5 +1,6 @@
 import type { BoardPin, ChatEntry } from '../../core/src/messages.js';
 import {
+  BOARD_POST_COMMAND,
   BURN_FIRE_PER_MIN,
   BURN_WARM_PER_MIN,
   CHAT_CLIENT_HISTORY_LIMIT,
@@ -12,6 +13,11 @@ import {
 
 /** How a pin reads when attached to a message: what the agent actually receives. */
 export function formatPinForPrompt(pin: BoardPin): string {
+  const body = formatPinBody(pin);
+  return pin.detail?.trim() ? `${body}\n(${pin.detail.trim()})` : body;
+}
+
+function formatPinBody(pin: BoardPin): string {
   switch (pin.kind) {
     case 'file':
       return `@${pin.value.trim()}`;
@@ -133,10 +139,31 @@ const GROUP_NOTE_RE = / \(Team chat via Pixel Office\..*\)$/s;
 /** Group sends to several agents land within this window and collapse into one line. */
 const GROUP_SEND_WINDOW_MS = 90_000;
 
+/**
+ * Members a message addresses as `@Label` (or `@agent<id>`), matched whole-name
+ * like the server's relay (mentionRelay.ts). Empty = no one in particular.
+ */
+export function addressedMembers(
+  text: string,
+  members: number[],
+  labelOf: (agentId: number) => string,
+): number[] {
+  const lower = text.toLowerCase();
+  const says = (alias: string) => {
+    const needle = `@${alias.toLowerCase()}`;
+    for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+      const next = lower[at + needle.length];
+      if (next === undefined || !/[a-z0-9_-]/.test(next)) return true;
+    }
+    return false;
+  };
+  return members.filter((id) => [labelOf(id), `agent${id}`, `agent-${id}`].some(says));
+}
+
 export function groupNote(teammates: string[], relayEnabled: boolean): string {
   const others = teammates.length > 0 ? ` Teammates: ${teammates.join(', ')}.` : '';
   const mention = relayEnabled ? ' To message a teammate, write @Name in your reply.' : '';
-  return ` (Team chat via Pixel Office.${others} Shared docs and notes: ~/.pixel-agents/board.md.${mention})`;
+  return ` (Team chat via Pixel Office.${others} Shared docs and notes: ~/.pixel-agents/board.md. To post one yourself: ${BOARD_POST_COMMAND} "text".${mention})`;
 }
 
 export interface TimelineItem {

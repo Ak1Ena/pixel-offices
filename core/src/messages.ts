@@ -35,6 +35,9 @@ export type ServerMessage =
   | AgentScreen
   | StartAgentResult
   | AgentRelayState
+  | AgentPermissionAsk
+  | AgentPermissionAnswered
+  | FolderListing
   | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
@@ -81,7 +84,9 @@ export type ClientMessage =
   | RenameAgent
   | StartAgent
   | SendAgentKeys
-  | SetAgentRelay;
+  | SetAgentRelay
+  | AnswerPermission
+  | ListFolder;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -277,6 +282,7 @@ export interface AgentRenamed {
 export interface OfficeCapabilities {
   type: 'officeCapabilities';
   canStartAgents: boolean;
+  privileged?: boolean;
   recentFolders: string[];
 }
 
@@ -297,6 +303,40 @@ export interface AgentRelayState {
   enabled: boolean;
 }
 
+export interface AgentPermissionAsk {
+  type: 'agentPermissionAsk';
+  id: number;
+  requestId: string;
+  toolName: string;
+  detail?: string;
+  providerId?: string;
+  expiresAt?: number;
+}
+
+export interface AgentPermissionAnswered {
+  type: 'agentPermissionAnswered';
+  id: number;
+  requestId: string;
+  decision?: PermissionDecision;
+}
+
+export type PermissionDecision = 'allow' | 'deny' | 'terminal';
+
+export interface FolderListing {
+  type: 'folderListing';
+  path: string;
+  parent?: string;
+  home?: string;
+  entries: FolderEntry[];
+  error?: string;
+}
+
+export interface FolderEntry {
+  name: string;
+  path: string;
+  isProject?: boolean;
+}
+
 export interface BoardLoaded {
   type: 'boardLoaded';
   pins: BoardPin[];
@@ -307,6 +347,7 @@ export interface BoardPin {
   kind: BoardPinKind;
   title: string;
   value: string;
+  detail?: string;
   scope: number[];
   createdAt: string;
 }
@@ -603,4 +644,16 @@ export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | 
 export interface SetAgentRelay {
   type: 'setAgentRelay';
   enabled: boolean;
+}
+
+export interface AnswerPermission {
+  type: 'answerPermission';
+  id: number;
+  requestId: string;
+  decision: PermissionDecision;
+}
+
+export interface ListFolder {
+  type: 'listFolder';
+  path?: string;
 }

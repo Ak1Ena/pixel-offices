@@ -338,6 +338,10 @@ export const CHAT_CARD_GAP_PX = 36;
 export const CHAT_CARD_EDGE_MARGIN_PX = 8;
 /** Width of the open whiteboard rail (CSS px). */
 export const WHITEBOARD_RAIL_WIDTH_PX = 320;
+/** Longest pin detail (server: BOARD_PIN_DETAIL_MAX_CHARS). */
+export const BOARD_PIN_DETAIL_MAX_CHARS = 4_000;
+/** A pin's detail is folded to this many characters until expanded. */
+export const BOARD_PIN_DETAIL_PREVIEW_CHARS = 160;
 /** How far above the character's feet a message preview bubble sits (world px). */
 export const CHAT_PEEK_VERTICAL_OFFSET = 44;
 /** Longest preview shown in a message bubble above a character. */
@@ -360,10 +364,20 @@ export const TOUCH_TAP_SLOP_PX = 8;
 // ── Document viewer ─────────────────────────────────────────
 /** Route pinned files are fetched from (server: BOARD_FILE_API_PREFIX). */
 export const BOARD_FILE_API = '/api/board/files';
+/** Command agents run to post a note to the whiteboard (server: BOARD_CLI_COMMAND). */
+export const BOARD_POST_COMMAND = 'npx @ak1ena/pixel-office board add --note';
 /** Most table rows the viewer draws for a sheet or CSV. */
 export const DOC_TABLE_MAX_ROWS = 2_000;
 /** Largest upload the office accepts (server enforces the same). */
 export const DOC_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/** Route the chat uploads files for agents to (server: CHAT_FILE_API_PREFIX). */
+export const CHAT_FILE_API = '/api/files';
+/** Uploaded files the chat shows inline as images (server serves only these). */
+export const CHAT_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'] as const;
+/** Folder (under the home directory) uploaded chat files are stored in. */
+export const CHAT_UPLOAD_DIR_SUFFIX = '.pixel-agents/files';
+/** Most files attached to one chat message. */
+export const CHAT_FILE_MAX_COUNT = 10;
 /** Page styling for Word documents, shown inside a sandboxed frame. */
 export const DOCX_FRAME_CSS =
   'body{margin:0;padding:40px 48px;font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#1f242b;background:#ffffff}' +
@@ -381,3 +395,8 @@ export const TEAM_ROOM_AREA_COLOR = '#3f7fa8';
 
 /** Width of the group chat panel docked on the right (CSS px). */
 export const GROUP_CHAT_WIDTH_PX = 480;
+/** Permission prompts answered from the office (PermissionPrompts.tsx). */
+export const PERMISSION_PROMPTS_WIDTH_PX = 420;
+export const PERMISSION_PROMPTS_MAX_SHOWN = 3;
+/** Above every modal (they top out at 54 + 1): an agent is blocked until it's answered. */
+export const PERMISSION_PROMPTS_Z_INDEX = 60;

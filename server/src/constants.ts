@@ -114,18 +114,51 @@ export const RELAY_TOTAL_LIMIT = 20;
 export const RELAY_MAX_CHARS = 2_000;
 /** Human-readable index of the whiteboard that agents can read. */
 export const BOARD_INDEX_FILE_NAME = 'board.md';
+/** Agents (any harness) read and post whiteboard pins here (httpServer.ts, boardCli.ts). */
+export const BOARD_PINS_API_PATH = '/api/board/pins';
+/** DELETE answer for an unknown pin id — tells the CLI the route exists (vs. Fastify's own 404). */
+export const BOARD_NO_SUCH_PIN_ERROR = 'No such pin.';
+/** How agents are told to post to the whiteboard (board.md header). */
+export const BOARD_CLI_COMMAND = 'npx @ak1ena/pixel-office board';
+/** Longest wait for a live server to answer `pixel-office board`. */
+export const BOARD_CLI_REQUEST_TIMEOUT_MS = 3_000;
+
+// ── Permission prompts answered from the office (permissionBroker.ts) ──
+/** How long a hook holds a permission prompt for an answer from the office before
+ *  letting it show in the agent's own terminal. */
+export const PERMISSION_WAIT_MS = 5 * 60_000;
+/** One long-poll for a decision; the hook script polls again until PERMISSION_WAIT_MS. */
+export const PERMISSION_POLL_MS = 25_000;
+/** Seconds Claude Code gives the PermissionRequest hook (wait + slack for the POSTs). */
+export const PERMISSION_HOOK_TIMEOUT_S = Math.ceil(PERMISSION_WAIT_MS / 1000) + 30;
+/** A decided ask is remembered this long so a late poll still gets its answer. */
+export const PERMISSION_DECIDED_TTL_MS = 60_000;
+/** Longest tool detail shown with an ask. */
+export const PERMISSION_DETAIL_MAX_CHARS = 400;
+/** Path segment under the hook route that the hook script polls for a decision. */
+export const PERMISSION_POLL_SEGMENT = 'permission';
 
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;
 export const BOARD_PIN_TITLE_MAX_CHARS = 200;
 export const BOARD_PIN_VALUE_MAX_CHARS = 8_000;
+/** Longest detail (notes about a pin). */
+export const BOARD_PIN_DETAIL_MAX_CHARS = 4_000;
 /** Largest pinned file the document viewer is sent. */
 export const BOARD_FILE_MAX_BYTES = 25 * 1024 * 1024;
 /** Folder under ~/.pixel-agents where files uploaded to the whiteboard are kept. */
 export const BOARD_UPLOAD_DIR = 'files';
 /** Route the document viewer fetches pinned files from. */
 export const BOARD_FILE_API_PREFIX = '/api/board/files';
+/** Longest stored name (after the unique prefix) kept from an uploaded file's name. */
+export const UPLOAD_NAME_MAX_CHARS = 120;
+/** Route the office chat uploads files for agents to (stored, not pinned). */
+export const CHAT_FILE_API_PREFIX = '/api/files';
+/** Prefix of the unique id in front of a chat-uploaded file's stored name. */
+export const CHAT_FILE_ID_PREFIX = 'chat_';
+/** Stored names the chat image route accepts (a bare file name, no separators). */
+export const CHAT_FILE_NAME_PATTERN = '^[A-Za-z0-9._-]{1,200}$';
 
 // ── Global Session Scanning ─────────────────────────────────
 /** Only adopt global JSONL files larger than this (filters out empty/init-only sessions) */
@@ -193,3 +226,17 @@ export const PALETTE_COUNT = 6;
  *  clientMessageHandler to guard saveAgentSeats payloads from a remote or
  *  hand-edited source corrupting the stored values with out-of-range values. */
 export const HUE_SHIFT_MAX_DEG = 360;
+
+// ── Folder Browser (+ Agent dialog) ─────────────────────────
+/** Most sub-folders one `listFolder` reply carries; the rest are dropped (sorted first). */
+export const FOLDER_LIST_MAX_ENTRIES = 500;
+/** Folder names never listed: dependency trees nobody starts an agent in. */
+export const FOLDER_LIST_SKIP_NAMES: readonly string[] = ['node_modules'];
+/** A folder holding any of these is marked `isProject` in the listing. */
+export const FOLDER_PROJECT_MARKERS: readonly string[] = [
+  '.git',
+  'package.json',
+  'pyproject.toml',
+  'Cargo.toml',
+  'go.mod',
+];

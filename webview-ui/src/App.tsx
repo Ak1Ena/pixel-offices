@@ -13,6 +13,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Button } from './components/ui/Button.js';
@@ -26,6 +27,7 @@ import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
+import { usePermissionAsks } from './hooks/usePermissionAsks.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -132,6 +134,7 @@ function App() {
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
   const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
   const chat = useOfficeChat(chatAgentId);
+  const permissionAsks = usePermissionAsks();
 
   const {
     agents,
@@ -624,6 +627,15 @@ function App() {
               );
             })()}
 
+          {!editor.isEditMode && (
+            <PermissionPrompts
+              asks={permissionAsks.asks}
+              labelOf={agentLabel}
+              onAnswer={permissionAsks.answer}
+              onOpenAgent={openChat}
+            />
+          )}
+
           {isGroupChatOpen && !editor.isEditMode && (
             <GroupChatPanel
               channels={buildChannels(
@@ -643,7 +655,7 @@ function App() {
               labelOf={agentLabel}
               sendable={chat.sendable}
               relayEnabled={chat.relayEnabled}
-              onSetRelay={chat.canStartAgents || !isBrowserRuntime ? chat.setRelay : undefined}
+              onSetRelay={chat.privileged || !isBrowserRuntime ? chat.setRelay : undefined}
               onSend={chat.sendMessage}
               onPin={(text, scope) =>
                 chat.savePin({

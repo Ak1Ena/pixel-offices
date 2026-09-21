@@ -13,6 +13,8 @@ const REQUIRED_FILES = [
   'extension/dist/extension.js',
   'extension/dist/cli.js',
   'extension/dist/hooks/claude-hook.js',
+  'extension/dist/hooks/codex-hook.js',
+  'extension/dist/hooks/gemini-hook.js',
   'extension/dist/webview/index.html',
 ];
 const FORBIDDEN_PREFIXES = [

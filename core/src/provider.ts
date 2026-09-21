@@ -94,6 +94,19 @@ export interface HookProvider {
    *  drift. */
   consentDisclosure(): { headline: string; disclosure: string };
 
+  /** When `raw` is a permission prompt this provider's hook script holds open
+   *  while the office decides (answerPermission), what it asks for. Return null
+   *  for every other event, or when the CLI cannot take a decision from a hook.
+   *  The hook script marks such events with `pixel_request_id`. */
+  describePermissionRequest?(
+    raw: Record<string, unknown>,
+  ): { toolName: string; detail?: string } | null;
+
+  /** A display name the event carries for its agent (e.g. the Generic HTTP
+   *  provider's `agent_name`). Applied only while the character has none, so
+   *  a user's rename always wins. */
+  agentNameFromEvent?(raw: Record<string, unknown>): string | undefined;
+
   /** Format tool status for display (e.g., "Read" -> "Reading foo.ts") */
   formatToolStatus(toolName: string, input?: unknown): string;
   /** Tools that don't trigger permission timers */

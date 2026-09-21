@@ -1,7 +1,12 @@
 import { useState } from 'react';
 
 import type { BoardPin, BoardPinKind } from '../../../core/src/messages.js';
-import { PIN_DRAG_MIME, WHITEBOARD_RAIL_WIDTH_PX } from '../constants.js';
+import {
+  BOARD_PIN_DETAIL_MAX_CHARS,
+  BOARD_PIN_DETAIL_PREVIEW_CHARS,
+  PIN_DRAG_MIME,
+  WHITEBOARD_RAIL_WIDTH_PX,
+} from '../constants.js';
 import { newPinId } from '../officeChat.js';
 import { PIN_KIND_LABEL, PIN_KIND_PAPER } from './pinKinds.js';
 
@@ -38,6 +43,92 @@ const VALUE_LABEL: Record<BoardPinKind, string> = {
 const boardButton =
   'border-2 border-board-ink rounded-none cursor-pointer text-board-ink bg-board shadow-pixel';
 
+const detailInputClass =
+  'p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none resize-none';
+
+/** A pin's detail: shown folded when long, and edited in place. */
+function PinDetail({ pin, onSave }: { pin: BoardPin; onSave: (pin: BoardPin) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const text = pin.detail ?? '';
+
+  if (draft !== null) {
+    const save = () => {
+      const next = draft.trim();
+      // undefined drops out of the JSON, so clearing the text removes the detail.
+      onSave({ ...pin, detail: next || undefined });
+      setDraft(null);
+    };
+    return (
+      <div
+        className="flex flex-col gap-4"
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') setDraft(null);
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) save();
+        }}
+        onDragStart={(e) => e.preventDefault()}
+        draggable={false}
+      >
+        <textarea
+          autoFocus
+          rows={4}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          maxLength={BOARD_PIN_DETAIL_MAX_CHARS}
+          placeholder="What it is, why it matters, how to use it"
+          aria-label={`Detail for ${pin.title}`}
+          className={detailInputClass}
+          data-testid="pin-detail-edit"
+        />
+        <div className="flex gap-6 justify-end">
+          <button onClick={() => setDraft(null)} className={`px-6 text-2xs ${boardButton}`}>
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            className="px-6 text-2xs border-2 border-board-ink rounded-none cursor-pointer bg-board-ink text-board shadow-pixel"
+            data-testid="pin-detail-save"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const long = text.length > BOARD_PIN_DETAIL_PREVIEW_CHARS;
+  return (
+    <div className="flex flex-col gap-2">
+      {text && (
+        <span
+          className="text-2xs leading-tight whitespace-pre-wrap break-words"
+          data-testid="pin-detail-text"
+        >
+          {long && !expanded ? `${text.slice(0, BOARD_PIN_DETAIL_PREVIEW_CHARS)}…` : text}
+        </span>
+      )}
+      <div className="flex gap-8 text-2xs">
+        {long && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="bg-transparent border-0 p-0 underline cursor-pointer text-board-ink text-2xs"
+          >
+            {expanded ? 'Less' : 'More'}
+          </button>
+        )}
+        <button
+          onClick={() => setDraft(text)}
+          className="bg-transparent border-0 p-0 underline cursor-pointer text-board-ink text-2xs"
+          data-testid="pin-detail-button"
+        >
+          {text ? 'Edit detail' : '+ Add detail'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PinForm({
   agents,
   onSave,
@@ -54,6 +145,7 @@ function PinForm({
   const [kind, setKind] = useState<BoardPinKind>('link');
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
+  const [detail, setDetail] = useState('');
   const [scope, setScope] = useState<number[]>([]);
   const multiline = kind === 'snippet' || kind === 'note';
   const canSave = title.trim().length > 0 && (kind === 'note' || value.trim().length > 0);
@@ -73,6 +165,7 @@ function PinForm({
           kind,
           title: title.trim(),
           value: kind === 'snippet' ? value : value.trim(),
+          ...(detail.trim() ? { detail: detail.trim() } : {}),
           scope,
           createdAt: new Date().toISOString(),
         });
@@ -129,6 +222,17 @@ function PinForm({
             data-testid="pin-value"
           />
         )}
+      </label>
+      <label className="flex flex-col gap-2 text-2xs">
+        Detail (optional — what it is, why it matters, how to use it)
+        <textarea
+          rows={3}
+          value={detail}
+          onChange={(e) => setDetail(e.target.value)}
+          maxLength={BOARD_PIN_DETAIL_MAX_CHARS}
+          className={detailInputClass}
+          data-testid="pin-detail"
+        />
       </label>
       {kind === 'file' && onUpload && (
         <label className="flex flex-col gap-2 text-2xs">
@@ -294,6 +398,7 @@ export function WhiteboardRail({
                 {pin.value}
               </span>
             )}
+            <PinDetail pin={pin} onSave={onSave} />
             <div className="flex gap-6 justify-end">
               {pin.kind === 'file' && onView && (
                 <button

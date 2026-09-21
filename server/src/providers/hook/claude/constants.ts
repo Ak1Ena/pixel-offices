@@ -40,31 +40,15 @@ export const CLAUDE_HOOK_EVENTS = [
   'TaskCompleted',
 ] as const;
 
-/** Suffix of the one-time pre-modification backup of settings.json. Brand-named
- *  rather than a generic `.backup`, which collides with other tools' backup
- *  convention: a foreign `.backup` sitting next to settings.json must not make
- *  us believe we already saved the user's original. */
-export const SETTINGS_BACKUP_SUFFIX = '.pixel-agents.backup';
-
-/** Suffix of the temp file used for the atomic tmp-write + rename. */
-export const SETTINGS_TMP_SUFFIX = '.pixel-agents-tmp';
-
-/** Mode for a settings.json we create ourselves. An existing file's mode is
- *  preserved instead; this is only the fresh-file default, and it is the
- *  restrictive one because the file holds the user's permission rules. */
-export const SETTINGS_FRESH_FILE_MODE = 0o600;
-
-/** Attempts for the settings.json read-modify-write cycle. Claude Code writes
- *  the same file and does not coordinate with us, so the cycle re-reads the
- *  file immediately before committing and retries when it changed. The verify
- *  sits after mkdir/backup/tmp-write, so the residual lost-update window is one
- *  read plus one rename — narrowed, NOT eliminated: a Claude Code write landing
- *  inside that gap is still overwritten by our rename. A lockfile would not
- *  help (Claude Code would not honor it, and stale locks add failure modes
- *  worse than the race). */
-export const SETTINGS_MUTATE_ATTEMPTS = 3;
-/** Delay between settings.json mutation attempts (lets a concurrent writer finish). */
-export const SETTINGS_MUTATE_RETRY_DELAY_MS = 100;
+// Installer constants shared with every provider's installer; re-exported so
+// existing imports from this module keep working.
+export {
+  SETTINGS_BACKUP_SUFFIX,
+  SETTINGS_FRESH_FILE_MODE,
+  SETTINGS_MUTATE_ATTEMPTS,
+  SETTINGS_MUTATE_RETRY_DELAY_MS,
+  SETTINGS_TMP_SUFFIX,
+} from '../constants.js';
 
 /** Terminal name prefix used when launching Claude Code in VS Code.
  *  Used by the extension to match terminals to agents for adoption. */

@@ -12,12 +12,18 @@ import {
   writeConfig,
 } from './configPersistence.js';
 import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
+import { listFolder } from './folderBrowser.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { OfficeSessions } from './officeSessions.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
-import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
+import {
+  activeHookProviders,
+  allReadingTools,
+  claudeProvider,
+  hookProviderById,
+} from './providers/index.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -315,9 +321,30 @@ export function handleClientMessage(
         runtime?.relay.setEnabled(msg.enabled);
       break;
 
+    case 'answerPermission':
+      if (ctx.privileged) runtime?.permissions.answer(msg.id, msg.requestId, msg.decision);
+      break;
+
     case 'sendAgentKeys':
       if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;
+
+    case 'listFolder': {
+      // Reveals this machine's folder tree: same proof as starting an agent.
+      // Point-to-point reply to the requesting socket (NOT a broadcast).
+      const requested = typeof msg.path === 'string' ? msg.path : undefined;
+      if (!ctx.privileged) {
+        send({
+          type: 'folderListing',
+          path: requested ?? '',
+          entries: [],
+          error: 'Open the office from your private link to browse folders.',
+        });
+        break;
+      }
+      void listFolder(requested).then((listing) => send({ ...listing }));
+      break;
+    }
 
     case 'renameAgent':
       runtime?.renameAgent(msg.id, msg.name);
@@ -429,7 +456,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // 1. Provider capabilities (must arrive before any agent messages)
   send({
     type: 'providerCapabilities',
-    readingTools: [...claudeProvider.readingTools],
+    // Every provider's reading tools: tool names are provider-specific
+    // (Claude's Read, Gemini's read_file) and one list serves them all.
+    readingTools: allReadingTools(),
     subagentToolNames: [...claudeProvider.subagentToolNames],
   });
 
@@ -496,7 +525,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // provider checks are async, so these land as follow-ups right after the
   // synchronous handshake; the webview's default (not installed) is the safe
   // assumption until each arrives. One status + at most one ask PER PROVIDER.
-  for (const provider of hookProviders) {
+  // Only providers whose CLI is present (~/.codex, ~/.gemini): a user
+  // without Codex or Gemini is never asked about them.
+  for (const provider of activeHookProviders()) {
     // One provider's unreadable settings file must degrade to
     // installed=false (matching the executor's fail-closed read: no choice
     // ever uninstalls on a guess) rather than surface as an unhandled
@@ -590,6 +621,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   send({
     type: 'officeCapabilities',
     canStartAgents: ctx.privileged === true && ctx.officeSessions?.available === true,
+    privileged: ctx.privileged === true,
     recentFolders: ctx.officeSessions?.recentFolders() ?? [],
   });
   for (const { id, lines } of ctx.officeSessions?.screens() ?? []) {

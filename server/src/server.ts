@@ -77,6 +77,8 @@ export class PixelAgentsServer {
     officeSessions?: OfficeSessions;
     getBoardPins?: () => BoardPin[];
     saveBoardPin?: (pin: BoardPin) => boolean;
+    removeBoardPin?: (pinId: string) => boolean;
+    resolveBoardAgent?: (name: string) => number | undefined;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -119,6 +121,8 @@ export class PixelAgentsServer {
       officeSessions: options?.officeSessions,
       getBoardPins: options?.getBoardPins,
       saveBoardPin: options?.saveBoardPin,
+      removeBoardPin: options?.removeBoardPin,
+      resolveBoardAgent: options?.resolveBoardAgent,
     });
 
     this.app = app;
