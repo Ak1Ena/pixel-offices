@@ -45,6 +45,8 @@ interface ChatCardProps {
   /** Terminal screen of an agent the office runs itself; undefined for every other agent. */
   screen?: string[];
   onKeys?: (keys: AgentKey[]) => void;
+  /** Take this agent out of the office. An agent the office runs is stopped too. */
+  onRemove?: () => void;
 }
 
 const SCREEN_KEYS: Array<{ label: string; keys: AgentKey[] }> = [
@@ -161,8 +163,10 @@ export function ChatCard({
   onRename,
   screen,
   onKeys,
+  onRemove,
 }: ChatCardProps) {
   const [showScreen, setShowScreen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState('');
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
@@ -373,10 +377,50 @@ export function ChatCard({
             Terminal
           </Button>
         )}
+        {onRemove && (
+          <Button
+            size="sm"
+            variant={confirmRemove ? 'active' : 'default'}
+            onClick={() => setConfirmRemove((v) => !v)}
+            title="Remove this agent from the office"
+            data-testid="chat-remove"
+          >
+            Remove
+          </Button>
+        )}
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close chat" title="Close">
           ×
         </Button>
       </div>
+
+      {onRemove && confirmRemove && (
+        <div
+          role="alertdialog"
+          aria-label="Remove agent"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-danger text-xs flex-wrap"
+          data-testid="chat-remove-confirm"
+        >
+          <span className="flex-1 min-w-0">
+            {screen
+              ? 'Stop this agent? Its Claude session ends and the character leaves.'
+              : 'Remove this agent from the office? Its terminal keeps running; only the character leaves.'}
+          </span>
+          <Button
+            size="sm"
+            className="bg-danger! border-danger text-white"
+            onClick={() => {
+              setConfirmRemove(false);
+              onRemove();
+            }}
+            data-testid="chat-remove-yes"
+          >
+            {screen ? 'Stop agent' : 'Remove'}
+          </Button>
+          <Button size="sm" onClick={() => setConfirmRemove(false)}>
+            Cancel
+          </Button>
+        </div>
+      )}
 
       <div
         className="grid grid-cols-3 gap-8 px-10 py-4 bg-bg-dark border-b-2 border-bg-thumb text-2xs"

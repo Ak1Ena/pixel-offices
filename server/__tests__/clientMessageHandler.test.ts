@@ -603,3 +603,44 @@ describe('clientMessageHandler: saveAgentSeats palette sync', () => {
     expect(store.get(1)?.palette).toBe(7);
   });
 });
+
+describe('clientMessageHandler: closeAgent (Remove in the chat card)', () => {
+  function setup(owned: boolean, privileged: boolean) {
+    const store = new AgentStateStore();
+    store.set(1, createTestAgent({ id: 1, jsonlFile: '/test/a.jsonl' }));
+    const calls: string[] = [];
+    const runtime = {
+      dismissalTracker: { dismiss: (file: string) => calls.push(`dismiss ${file}`) },
+      removeAgent: (id: number) => calls.push(`remove ${id}`),
+    };
+    const officeSessions = {
+      owns: () => owned,
+      stop: (id: number) => {
+        calls.push(`stop ${id}`);
+        return owned;
+      },
+    };
+    const ctx = {
+      store,
+      cache: null,
+      runtime,
+      officeSessions,
+      privileged,
+    } as unknown as ClientMessageContext;
+    handleClientMessage({ type: 'closeAgent', id: 1 }, () => {}, ctx);
+    store.dispose();
+    return calls;
+  }
+
+  it('removes an agent the office does not run, and dismisses its transcript', () => {
+    expect(setup(false, false)).toEqual(['dismiss /test/a.jsonl', 'remove 1']);
+  });
+
+  it('stops an agent the office runs when the client holds the private link', () => {
+    expect(setup(true, true)).toEqual(['dismiss /test/a.jsonl', 'stop 1']);
+  });
+
+  it('refuses to stop an office-run agent for a client without the private link', () => {
+    expect(setup(true, false)).toEqual([]);
+  });
+});

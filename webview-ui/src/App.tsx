@@ -612,6 +612,10 @@ function App() {
                   onRename={(name) => chat.renameAgent(id, name)}
                   screen={chat.screens[id]}
                   onKeys={(keys) => chat.sendKeys(id, keys)}
+                  onRemove={() => {
+                    handleCloseAgent(id);
+                    closeChat();
+                  }}
                   onClose={closeChat}
                   onOpenTerminal={
                     isBrowserRuntime ? undefined : () => transport.send({ type: 'focusAgent', id })

@@ -101,10 +101,13 @@ export function handleClientMessage(
       // store event, which httpServer maps to an agentClosed broadcast.
       const id = msg.id as number;
       const agent = store.get(id);
-      if (agent && runtime) {
+      // An agent the office runs is stopped, not just hidden — ending a
+      // Claude session needs the private link, like typing into one does.
+      const owned = ctx.officeSessions?.owns(id) === true;
+      if (agent && runtime && (!owned || ctx.privileged)) {
         runtime.dismissalTracker.dismiss(agent.jsonlFile);
-        // An agent the office runs is stopped, not just hidden.
-        if (!ctx.officeSessions?.stop(id)) runtime.removeAgent(id);
+        if (owned) ctx.officeSessions?.stop(id);
+        else runtime.removeAgent(id);
       }
       break;
     }
