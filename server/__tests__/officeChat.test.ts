@@ -163,7 +163,7 @@ describe('ChatSender', () => {
     store = new AgentStateStore();
     sender = new ChatSender(store);
     written = [];
-    sender.setWriter({ canWrite: (a) => !a.isExternal, write: (_a, text) => written.push(text) });
+    sender.addWriter({ canWrite: (a) => !a.isExternal, write: (_a, text) => written.push(text) });
   });
 
   afterEach(() => sender.dispose());

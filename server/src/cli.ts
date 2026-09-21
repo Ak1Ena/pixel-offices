@@ -27,6 +27,7 @@ import {
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { runLauncher } from './launcher.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
@@ -67,6 +68,7 @@ export function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (argv[i] === '--help') {
       console.log(`Usage: pixel-agents [options]
+       pixel-agents claude [claude args...]   Run Claude so the office chat can send to it
 
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
@@ -104,6 +106,12 @@ function copyHookScriptOrReport(packageRoot: string, context = ''): boolean {
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // `pixel-agents claude …` runs Claude in a pty the office can type into.
+  if (process.argv[2] === 'claude') {
+    await runLauncher(process.argv.slice(3));
+    return;
+  }
+
   let args: CliArgs;
   try {
     args = parseArgs(process.argv.slice(2));
@@ -237,6 +245,8 @@ async function main(): Promise<void> {
       assetCache,
       onSetHooksEnabled,
       onReloadAssets,
+      launchers: runtime.launchers,
+      onLauncherPoll: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
     });
     currentConfig = { port: config.port, token: config.token };
 

@@ -60,15 +60,15 @@ function agentLabel(id: number): string {
   return `Agent #${id}`;
 }
 
-/** Why the office can't type into this session, or null when it can. */
-function chatReadOnlyReason(id: number): string | null {
-  if (isBrowserRuntime) {
-    return 'The standalone office has no terminals to type into. Reply from the terminal where it started.';
-  }
+/** Why the office can't type into this session, or null when it can. The
+ *  server decides reach (agentChatSendable); this only words the refusal. */
+function chatReadOnlyReason(id: number, sendable: boolean): string | null {
+  if (sendable) return null;
   const ch = getOfficeState().characters.get(id);
-  if (ch?.isHeadless) return 'You can read along here. Reply from the terminal where it started.';
   if (ch?.agentName && !ch.isTeamLead) return 'Teammates take their instructions from their lead.';
-  return null;
+  return isBrowserRuntime
+    ? 'Start Claude with `npx pixel-agents claude` instead of `claude` to chat from here.'
+    : 'Start Claude with + Agent, in a VS Code terminal, or with `npx pixel-agents claude` to chat from here.';
 }
 
 function App() {
@@ -548,7 +548,7 @@ function App() {
                   panRef={editor.panRef}
                   entries={chat.chats[id] ?? []}
                   queue={chat.queues[id]}
-                  readOnlyReason={chatReadOnlyReason(id)}
+                  readOnlyReason={chatReadOnlyReason(id, chat.sendable[id] === true)}
                   needsApproval={needsApproval}
                   attachedPins={attached}
                   onAttachPin={(pinId) => attachPin(id, pinId)}
@@ -577,7 +577,7 @@ function App() {
                 .filter((id) => !officeState.characters.get(id)?.isSubagent)
                 .map((id) => ({ id, label: agentLabel(id) }))}
               chatAgentLabel={
-                chatAgentId !== null && chatReadOnlyReason(chatAgentId) === null
+                chatAgentId !== null && chat.sendable[chatAgentId] === true
                   ? agentLabel(chatAgentId)
                   : null
               }

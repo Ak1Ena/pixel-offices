@@ -104,6 +104,7 @@ components:
         - $ref: '#/components/schemas/AgentChatEntry'
         - $ref: '#/components/schemas/AgentChatHistory'
         - $ref: '#/components/schemas/AgentChatQueue'
+        - $ref: '#/components/schemas/AgentChatSendable'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         # Layout
@@ -507,6 +508,23 @@ components:
             $ref: '#/components/schemas/QueuedChatMessage'
         error:
           type: string
+
+    AgentChatSendable:
+      description: |
+        Whether the office can type into this agent's terminal: one the VS Code
+        extension owns, or a session started with `pixel-agents claude`. Sent
+        when it changes and, for sendable agents, during the handshake. Absent
+        means not sendable — the chat card is read-only.
+      type: object
+      additionalProperties: false
+      required: [type, id, sendable]
+      properties:
+        type:
+          const: agentChatSendable
+        id:
+          type: integer
+        sendable:
+          type: boolean
 
     BoardLoaded:
       description: |

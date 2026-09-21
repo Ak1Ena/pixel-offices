@@ -28,6 +28,7 @@ export type ServerMessage =
   | AgentChatEntry
   | AgentChatHistory
   | AgentChatQueue
+  | AgentChatSendable
   | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
@@ -231,6 +232,12 @@ export interface AgentChatQueue {
 export interface QueuedChatMessage {
   queueId: string;
   text: string;
+}
+
+export interface AgentChatSendable {
+  type: 'agentChatSendable';
+  id: number;
+  sendable: boolean;
 }
 
 export interface BoardLoaded {

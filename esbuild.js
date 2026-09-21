@@ -138,7 +138,8 @@ async function buildCli() {
     sourcemap: !production,
     platform: 'node',
     outfile: 'dist/cli.js',
-    external: ['fastify', '@fastify/websocket', '@fastify/static', '@fastify/cors'],
+    // node-pty is native (optionalDependency): resolved at runtime, never bundled.
+    external: ['fastify', '@fastify/websocket', '@fastify/static', '@fastify/cors', 'node-pty'],
     define: versionDefine,
     logLevel: 'silent',
   });

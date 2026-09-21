@@ -53,6 +53,22 @@ export const CHAT_SEND_MAX_CHARS = 16_000;
 /** Office messages waiting for one agent's turn to end. */
 export const CHAT_QUEUE_LIMIT = 10;
 
+// ── `pixel-agents claude` launcher ─────────────────────────
+/** Route prefix the launcher polls for office input. */
+export const LAUNCHER_API_PREFIX = '/api/launcher';
+/** How long one launcher poll waits for input before returning empty. */
+export const LAUNCHER_POLL_TIMEOUT_MS = 25_000;
+/** A launched session stays "connected" this long after its last poll. */
+export const LAUNCHER_LEASE_MS = 40_000;
+/** Session ids the launcher route accepts (Claude uses UUIDs). */
+export const LAUNCHER_SESSION_ID_PATTERN = '^[A-Za-z0-9_-]{1,64}$';
+/** Pause between pasting an office message into the pty and pressing Enter. */
+export const LAUNCHER_SUBMIT_DELAY_MS = 80;
+/** Launcher retry pause after a failed poll (server gone, restarting). */
+export const LAUNCHER_RETRY_MS = 3_000;
+/** How often the launcher re-reads the server registry for new offices. */
+export const LAUNCHER_DISCOVERY_INTERVAL_MS = 10_000;
+
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;

@@ -54,9 +54,11 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     chatLog.ts                       Session chat: transcript records → bounded per-agent log, upserting agentChatEntry, tail seed
     chatSender.ts                    Office → terminal messages: per-agent queue, held mid-turn and ALWAYS during a permission prompt
     boardStore.ts                    Whiteboard pins: ~/.pixel-agents/board.json, validated + bounded, polled across windows
+    launcher.ts                      `pixel-agents claude`: runs Claude in a node-pty it owns, long-polls every live server for office input
+    launcherHub.ts                   Server side of the launcher: per-session inbox, lease, TerminalWriter for ChatSender
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
-  __tests__/                         30 Vitest files
+  __tests__/                         31 Vitest files
   manual-hook-events.http            Manual hook testing helper (REST-Client format)
 
 adapters/vscode/                     VS Code surface — composes core + server
@@ -204,7 +206,7 @@ Adding a new CLI integration is one subdirectory under `server/src/providers/hoo
 
 `core/asyncapi.yaml` is the contract. Pinned to **3.0.0** because `@asyncapi/modelina@5.10.1` declares `supportedVersions: ['3.0.0']` only; bumping to 3.1.0 produces `export type Root = any`. Revisit when Modelina ships 3.1.0 support.
 
-- **35 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, session chat (`agentChatEntry`, `agentChatHistory`, `agentChatQueue`), whiteboard (`boardLoaded`), assets, settings + workspace, diagnostics.
+- **36 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, session chat (`agentChatEntry`, `agentChatHistory`, `agentChatQueue`, `agentChatSendable`), whiteboard (`boardLoaded`), assets, settings + workspace, diagnostics.
 - **26 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), chat (`sendChatMessage` — privileged, `cancelChatMessage`), whiteboard (`saveBoardPin`, `removeBoardPin`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
 
 Both unions use `oneOf` with `discriminator: type`. Every concrete message sets `additionalProperties: false`.
@@ -384,7 +386,8 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 ## Office Chat + Whiteboard
 
 - **Chat comes from the transcript**, never from a hook: `recordChat` runs inside `processTranscriptLine` (both modes read the JSONL), so `UserPromptSubmit` stays uninstalled. User prompts, assistant text and tool rows become `ChatEntry`s; a tool row is re-sent with `toolDone` (upsert by `entryId`). Harness-written user text (`<local-command-…>`, `<system-reminder>`, `Caveat:` …) is hidden; slash commands show as `/name args`. Sidechain latch mirrors the context gauge. `seedChatHistory` (in `startFileWatching`) replays the tail BEFORE `fileOffset` once, so nothing shows twice. Hooks-only agents have no chat.
-- **Sending types into the terminal** (`ChatSender`, owned by `AgentRuntime`, host supplies a `TerminalWriter`). Only VS Code provides one: `terminalRef` agents that aren't external; bracketed paste + Enter after `CHAT_SUBMIT_DELAY_MS`; control characters stripped. Standalone, headless and teammate sessions are read-only. Queue holds while the agent is mid-turn and **always while `permissionSent`** — the Enter would answer the permission prompt. `sendChatMessage` needs `ctx.privileged`. Office-typed prompts are tagged `source: 'office'` by matching text (`pendingOfficeTexts`).
+- **Sending types into the terminal** (`ChatSender`, owned by `AgentRuntime`, which takes any number of `TerminalWriter`s). Two exist: VS Code's (`terminalRef` agents that aren't external) and the launcher hub's (sessions started with `npx pixel-agents claude`). Bracketed paste + Enter after a short delay; control characters stripped on both ends. Reach is SERVER-decided and broadcast as `agentChatSendable` (on change, on the 2 s tick, and in the handshake); the webview never guesses. Everything else — plain `claude` in another terminal, headless, teammates — is read-only.
+- **Launcher** (`pixel-agents claude [args]`): mints `--session-id` (or uses `--session-id` / `--resume <id>`; `--continue`, the bare resume picker and `-p` are not addressable), runs Claude in a node-pty with the user's terminal passed through, and long-polls `GET /api/launcher/:sessionId/input?cwd=` on every live registry server (Bearer token from the 0600 registry entry; any request carrying `Origin` is refused — browsers never reach a pty). Each poll calls `runtime.adoptLaunchedSession`, which adopts the session immediately, bypassing Watch All Sessions (launching through the office IS the opt-in). `DELETE /api/launcher/:sessionId` on exit; otherwise a 40 s lease lapses. node-pty is an optionalDependency: without it (or without a TTY) Claude runs plainly and stays read-only. node-pty 1.1.0's prebuilt `spawn-helper` can lack its execute bit (`posix_spawnp failed`); `loadPty` repairs it. Queue holds while the agent is mid-turn and **always while `permissionSent`** — the Enter would answer the permission prompt. `sendChatMessage` needs `ctx.privileged`. Office-typed prompts are tagged `source: 'office'` by matching text (`pendingOfficeTexts`).
 - **Whiteboard** (`runtime.board`, created lazily): pins `{id, kind: link|file|snippet|note, title, value, scope: agentIds (empty = all)}`; every change broadcasts `boardLoaded`. Attaching a pin prefixes the message text (`@path`, `title: url`, fenced snippet, note) — agents need nothing new. Permission Allow/Deny from the chat is NOT implemented (the hook is fire-and-forget); the card offers "Terminal".
 - Clicking a character opens its chat (a sub-agent opens its parent's); "Terminal" in the card is what `focusAgent` used to be on click.
 

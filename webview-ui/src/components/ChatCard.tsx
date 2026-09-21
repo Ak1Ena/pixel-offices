@@ -369,7 +369,7 @@ export function ChatCard({
           className="flex flex-col gap-2 p-10 border-t-2 border-border bg-bg-dark"
           data-testid="chat-read-only"
         >
-          <span className="text-sm">This session runs outside the office.</span>
+          <span className="text-sm">The office can't type into this session.</span>
           <span className="text-xs text-text-muted">{readOnlyReason}</span>
         </div>
       )}

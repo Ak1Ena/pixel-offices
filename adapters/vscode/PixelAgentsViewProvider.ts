@@ -184,7 +184,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.runtime = new AgentRuntime(this.store, claudeProvider);
     // Office chat types into the terminals this extension owns. Headless and
     // external agents have none, so they stay read-only.
-    this.runtime.chatSender.setWriter({
+    this.runtime.chatSender.addWriter({
       canWrite: (agent) => !!agent.terminalRef && !agent.isExternal,
       write: (agent, text) => typeIntoTerminal(agent.terminalRef!, text),
     });
@@ -233,7 +233,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     });
 
     this.pixelAgentsServer
-      .start({ store: this.store, embedded: true })
+      .start({
+        store: this.store,
+        embedded: true,
+        launchers: this.runtime.launchers,
+        onLauncherPoll: (sessionId, cwd) => this.runtime.adoptLaunchedSession(sessionId, cwd),
+      })
       .then((config) => {
         // Server always starts regardless of hooks-enabled state.
         // It's the foundation for WebSocket transport and health monitoring.

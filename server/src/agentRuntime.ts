@@ -38,6 +38,7 @@ import {
 } from './fileWatcher.js';
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
+import { LauncherHub } from './launcherHub.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
@@ -86,13 +87,15 @@ export class AgentRuntime {
   readonly subagentWatch: SubagentWatch;
   /** Office chat: messages typed into agents' terminals (host supplies the writer). */
   readonly chatSender: ChatSender;
+  /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
+  readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
 
   constructor(
     private readonly store: AgentStateStore,
-    provider: HookProvider,
+    private readonly provider: HookProvider,
   ) {
     // Wire module-level dependencies
     setDismissalTracker(this.dismissalTracker);
@@ -101,6 +104,8 @@ export class AgentRuntime {
     this.subagentWatch = new SubagentWatch(store);
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
+    this.launchers = new LauncherHub(() => this.chatSender.refreshSendable());
+    this.chatSender.addWriter(this.launchers.writer);
     if (provider.team) {
       setTeamProvider(provider.team);
     }
@@ -560,6 +565,40 @@ export class AgentRuntime {
     this.store.persist();
   }
 
+  // ── Launched sessions ──
+
+  /**
+   * Make sure a session started with `pixel-agents claude` is in the office.
+   * Launching through the office IS the opt-in, so this skips the Watch All
+   * Sessions gate and the wait for a confirming hook that filters transient
+   * sessions. Called on every launcher poll; a no-op once the agent exists or
+   * while the provider can't place the transcript yet.
+   */
+  adoptLaunchedSession(sessionId: string, cwd: string): void {
+    for (const agent of this.store.values()) {
+      if (agent.sessionId === sessionId) return;
+    }
+    const sessionDir = this.provider.getSessionDirs?.(cwd)[0];
+    if (!sessionDir) return; // brand-new project: the dir appears with the first prompt
+    const transcriptPath = path.join(sessionDir, `${sessionId}.jsonl`);
+    console.log(`[Pixel Agents] Launcher: adopting session ${sessionId.slice(0, 8)}...`);
+    adoptExternalSessionFromHook(
+      sessionId,
+      transcriptPath,
+      cwd,
+      this.knownJsonlFiles,
+      this.store.nextAgentId,
+      this.store,
+      this.fileWatchers,
+      this.pollingTimers,
+      this.waitingTimers,
+      this.permissionTimers,
+      () => this.store.persist(),
+      (agent) => this.registerAgent(agent.sessionId, agent.id),
+    );
+    this.chatSender.refreshSendable();
+  }
+
   // ── Whiteboard ──
 
   /** The shared whiteboard. Created (and its file read and watched) on first use,
@@ -579,6 +618,7 @@ export class AgentRuntime {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
     this.chatSender.dispose();
+    this.launchers.dispose();
     this.boardStore?.dispose();
 
     if (this.projectScanTimer.current) {

@@ -15,10 +15,14 @@ import type {
 import { handleClientMessage } from './clientMessageHandler.js';
 import {
   HOOK_API_PREFIX,
+  LAUNCHER_API_PREFIX,
+  LAUNCHER_POLL_TIMEOUT_MS,
+  LAUNCHER_SESSION_ID_PATTERN,
   MAX_HOOK_BODY_SIZE,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import type { LauncherHub } from './launcherHub.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -45,6 +49,10 @@ export interface HttpServerOptions {
   onSetHooksEnabled?: SetHooksEnabledSideEffect;
   /** Invoked when an external asset directory is added/removed. Standalone reloads + re-broadcasts assets here. */
   onReloadAssets?: ReloadAssetsSideEffect;
+  /** Sessions started with `pixel-agents claude` poll here for office input. */
+  launchers?: LauncherHub;
+  /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession). */
+  onLauncherPoll?: (sessionId: string, cwd: string) => void;
 }
 
 /** Result of createHttpServer(). */
@@ -86,6 +94,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
 
   registerHealthRoute(app);
   registerHookRoute(app, options);
+  registerLauncherRoutes(app, options);
   registerWebSocketRoute(app, options);
 
   // ── Listen ──────────────────────────────────────────────────
@@ -136,6 +145,62 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
       }
 
       reply.send('ok');
+    },
+  );
+}
+
+// ── Launcher ───────────────────────────────────────────────────
+
+/**
+ * `pixel-agents claude` long-polls for text to type into the pty it owns.
+ * Bearer-authenticated with the server token (read from the 0600 registry
+ * entry, like the hook script). Browsers are refused outright: a request
+ * carrying an Origin header is never the launcher, and this channel ends in a
+ * live terminal.
+ */
+function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const { launchers } = options;
+  if (!launchers) return;
+  const params = {
+    type: 'object',
+    properties: { sessionId: { type: 'string', pattern: LAUNCHER_SESSION_ID_PATTERN } },
+    required: ['sessionId'],
+  };
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+
+  app.get<{ Params: { sessionId: string }; Querystring: { cwd?: string } }>(
+    `${LAUNCHER_API_PREFIX}/:sessionId/input`,
+    {
+      preHandler: [noBrowsers, bearerAuth(options.token)],
+      schema: {
+        params,
+        querystring: {
+          type: 'object',
+          properties: { cwd: { type: 'string', maxLength: 4096 } },
+        },
+      },
+    },
+    async (request) => {
+      const { sessionId } = request.params;
+      const cwd = request.query.cwd;
+      if (cwd) options.onLauncherPoll?.(sessionId, cwd);
+      const texts = await launchers.poll(
+        sessionId,
+        LAUNCHER_POLL_TIMEOUT_MS,
+        () => !request.raw.socket.destroyed,
+      );
+      return { texts };
+    },
+  );
+
+  app.delete<{ Params: { sessionId: string } }>(
+    `${LAUNCHER_API_PREFIX}/:sessionId`,
+    { preHandler: [noBrowsers, bearerAuth(options.token)], schema: { params } },
+    async (request) => {
+      launchers.end(request.params.sessionId);
+      return { ok: true };
     },
   );
 }

@@ -15,6 +15,8 @@ export interface OfficeChatState {
   queues: Record<number, ChatQueueState>;
   /** Agents with a reply the user hasn't opened yet. */
   unread: Record<number, boolean>;
+  /** Agents the office can type into (server-decided: agentChatSendable). */
+  sendable: Record<number, boolean>;
   pins: BoardPin[];
   sendMessage: (agentId: number, text: string) => void;
   cancelMessage: (agentId: number, queueId: string) => void;
@@ -32,6 +34,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [chats, setChats] = useState<Record<number, ChatEntry[]>>({});
   const [queues, setQueues] = useState<Record<number, ChatQueueState>>({});
   const [unread, setUnread] = useState<Record<number, boolean>>({});
+  const [sendable, setSendable] = useState<Record<number, boolean>>({});
   const [pins, setPins] = useState<BoardPin[]>([]);
 
   useEffect(() => {
@@ -44,6 +47,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setChats((prev) => ({ ...prev, [msg.id]: mergeChatEntries([], msg.entries) }));
       } else if (msg.type === 'agentChatQueue') {
         setQueues((prev) => ({ ...prev, [msg.id]: { queued: msg.queued, error: msg.error } }));
+      } else if (msg.type === 'agentChatSendable') {
+        setSendable((prev) => ({ ...prev, [msg.id]: msg.sendable }));
       } else if (msg.type === 'boardLoaded') {
         setPins(msg.pins);
       } else if (msg.type === 'agentClosed') {
@@ -56,6 +61,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setChats(drop);
         setQueues(drop);
         setUnread(drop);
+        setSendable(drop);
       }
     });
   }, []);
@@ -88,5 +94,16 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'removeBoardPin', pinId });
   }, []);
 
-  return { chats, queues, unread, pins, sendMessage, cancelMessage, markRead, savePin, removePin };
+  return {
+    chats,
+    queues,
+    unread,
+    sendable,
+    pins,
+    sendMessage,
+    cancelMessage,
+    markRead,
+    savePin,
+    removePin,
+  };
 }
