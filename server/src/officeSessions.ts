@@ -13,6 +13,7 @@ import {
   OFFICE_SESSION_SCREEN_COLS,
   OFFICE_SESSION_SCREEN_MS,
   OFFICE_SESSION_SCREEN_ROWS,
+  OFFICE_SESSION_SETTLE_MS,
 } from './constants.js';
 import type { Pty } from './launcher.js';
 import { expandAlias, loadPty, planLaunch, splitShellWords } from './launcher.js';
@@ -43,6 +44,8 @@ export interface OfficeSessionHost {
   renameAgent(agentId: number, name: string): void;
   removeAgent(agentId: number): void;
   refreshSendable(): void;
+  /** The agent can take typed input now: deliver anything queued for it. */
+  inputReady(agentId: number): void;
 }
 
 interface OwnedSession {
@@ -56,6 +59,12 @@ interface OwnedSession {
   name?: string;
   /** True while WE flagged the agent as waiting on a question seen on its screen. */
   askingByScreen: boolean;
+  /** Visible screen text as of the last change (redraws that change nothing don't count). */
+  lastContent: string;
+  settleTimer: ReturnType<typeof setTimeout> | null;
+  /** Can take typed input: the screen has settled with no question on it.
+   *  Starts false — Claude drops keys while it starts up. */
+  inputReady: boolean;
 }
 
 const KEY_BYTES: Record<AgentKey, string> = {
@@ -71,10 +80,21 @@ const KEY_BYTES: Record<AgentKey, string> = {
   n: 'n',
 };
 
-/** A numbered choice on screen ("1. Yes  2. No"): Claude is waiting for an answer. */
+/** Box-drawing borders and padding Claude draws around dialogs. */
+const BORDER_RE = /^[\s│┃║|]+|[\s│┃║|]+$/g;
+
+/**
+ * Claude is waiting for an answer on screen: a numbered choice ("1. Yes /
+ * 2. No"), usually inside a bordered box — so borders are stripped before
+ * matching, since every line of a real dialog starts with "│".
+ */
 export function looksLikeQuestion(lines: string[]): boolean {
-  const option = (n: number) => new RegExp(`^\\s*(?:[❯>›]\\s*)?${n}[.)]\\s+\\S`);
-  return lines.some((l) => option(1).test(l)) && lines.some((l) => option(2).test(l));
+  const bare = lines.map((l) => l.replace(BORDER_RE, ''));
+  const option = (n: number) => new RegExp(`^(?:[❯>›]\\s*)?${n}[.)]\\s+\\S`);
+  const hasOption = (n: number) => bare.some((l) => option(n).test(l));
+  if (hasOption(1) && hasOption(2)) return true;
+  // A one-option dialog still says how to answer it.
+  return hasOption(1) && bare.some((l) => /enter to confirm|esc to (?:cancel|exit)/i.test(l));
 }
 
 /**
@@ -173,12 +193,15 @@ export class OfficeSessions {
       adoptTimer: null,
       name: req.name?.trim() || undefined,
       askingByScreen: false,
+      lastContent: '',
+      settleTimer: null,
+      inputReady: false,
     };
     this.sessions.set(sessionId, session);
     this.recent.splice(0, this.recent.length, cwd, ...this.recent.filter((f) => f !== cwd));
     this.recent.length = Math.min(this.recent.length, OFFICE_RECENT_FOLDERS);
     pty.onData((data) => {
-      session.screen.write(data);
+      session.screen.write(data, () => this.screenWritten(session));
       this.scheduleScreen(session);
     });
     pty.onExit(() => this.ended(sessionId));
@@ -228,6 +251,7 @@ export class OfficeSessions {
   get writer(): TerminalWriter {
     return {
       canWrite: (agent) => this.sessionOf(agent) !== null,
+      ready: (agent) => this.sessionOf(agent)?.inputReady === true,
       write: (agent, text) => {
         const session = this.sessionOf(agent);
         if (!session) throw new Error('session ended');
@@ -254,6 +278,7 @@ export class OfficeSessions {
     for (const session of this.sessions.values()) {
       if (session.adoptTimer) clearInterval(session.adoptTimer);
       if (session.screenTimer) clearTimeout(session.screenTimer);
+      if (session.settleTimer) clearTimeout(session.settleTimer);
       try {
         session.pty.kill();
       } catch {
@@ -267,6 +292,37 @@ export class OfficeSessions {
     if (session.name) this.host.renameAgent(agent.id, session.name);
     this.host.refreshSendable();
     this.broadcastScreen(session);
+    // Anything queued while it was being adopted goes out once it is ready.
+    if (session.inputReady) this.host.inputReady(agent.id);
+  }
+
+  /**
+   * A changing screen means Claude is starting, redrawing or working: hold
+   * typed input until it has been still for a moment. Only a change in what
+   * is SHOWN counts, so an app that repaints an idle screen can't hold forever.
+   */
+  private screenWritten(session: OwnedSession): void {
+    const content = this.readScreen(session).join('\n');
+    if (content === session.lastContent) return;
+    session.lastContent = content;
+    this.setHold(session, true);
+    if (session.settleTimer) clearTimeout(session.settleTimer);
+    session.settleTimer = setTimeout(() => this.settled(session), OFFICE_SESSION_SETTLE_MS);
+  }
+
+  /** The screen has been still: it can take input unless it is asking something. */
+  private settled(session: OwnedSession): void {
+    session.settleTimer = null;
+    this.broadcastScreen(session);
+    const lines = this.readScreen(session);
+    this.setHold(session, lines.length === 0 || looksLikeQuestion(lines));
+  }
+
+  private setHold(session: OwnedSession, hold: boolean): void {
+    if (session.inputReady === !hold) return;
+    session.inputReady = !hold;
+    const agent = this.agentFor(session.sessionId);
+    if (agent && !hold) this.host.inputReady(agent.id);
   }
 
   private ended(sessionId: string): void {
@@ -274,6 +330,7 @@ export class OfficeSessions {
     if (!session) return;
     if (session.adoptTimer) clearInterval(session.adoptTimer);
     if (session.screenTimer) clearTimeout(session.screenTimer);
+    if (session.settleTimer) clearTimeout(session.settleTimer);
     session.screen.dispose();
     const agent = this.agentFor(sessionId);
     this.sessions.delete(sessionId);

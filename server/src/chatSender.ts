@@ -13,6 +13,9 @@ import type { AgentState } from './types.js';
 export interface TerminalWriter {
   canWrite(agent: AgentState): boolean;
   write(agent: AgentState, text: string): void;
+  /** Whether the terminal can take typed input right now (absent = always).
+   *  False holds the queue; the writer calls ChatSender.retry when it clears. */
+  ready?(agent: AgentState): boolean;
 }
 
 const QUEUE_TICK_MS = 2_000;
@@ -116,6 +119,11 @@ export class ChatSender {
     this.report(agentId);
   }
 
+  /** Try to deliver now (a writer just became able to take input). */
+  retry(agentId: number): void {
+    this.flush(agentId);
+  }
+
   /** Current queues, for a connecting client. */
   snapshot(): Array<{ id: number; queued: QueuedChatMessage[] }> {
     return [...this.queues].map(([id, queued]) => ({ id, queued: queued.map((m) => ({ ...m })) }));
@@ -141,6 +149,7 @@ export class ChatSender {
     if (agent.permissionSent || this.busy.has(agentId)) return false;
     const writer = this.writerFor(agent);
     if (!writer) return false;
+    if (writer.ready && !writer.ready(agent)) return false;
     // One at a time: the message starts a turn, the next waits for it to end.
     const message = queue.shift()!;
     this.setQueue(agentId, queue);

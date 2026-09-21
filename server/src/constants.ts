@@ -93,6 +93,9 @@ export const OFFICE_SESSION_LIMIT = 8;
 /** Terminal size given to an office-run agent (its screen is shown as text). */
 export const OFFICE_SESSION_SCREEN_COLS = 100;
 export const OFFICE_SESSION_SCREEN_ROWS = 30;
+/** An office-run agent takes typed messages only once its screen has been still this long
+ *  with no question on it — keys sent while Claude starts up or redraws are dropped. */
+export const OFFICE_SESSION_SETTLE_MS = 1_500;
 /** Screen updates are sent at most this often. */
 export const OFFICE_SESSION_SCREEN_MS = 700;
 /** Seconds to keep trying to adopt a just-started agent's session. */

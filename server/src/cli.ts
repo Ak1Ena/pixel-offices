@@ -299,6 +299,7 @@ async function main(): Promise<void> {
       renameAgent: (id, name) => runtime.renameAgent(id, name),
       removeAgent: (id) => runtime.removeAgent(id),
       refreshSendable: () => runtime.chatSender.refreshSendable(),
+      inputReady: (id) => runtime.chatSender.retry(id),
     });
     runtime.chatSender.addWriter(officeSessions.writer);
     disposeOfficeSessions = () => officeSessions.dispose();

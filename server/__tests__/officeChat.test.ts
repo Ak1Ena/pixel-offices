@@ -192,6 +192,21 @@ describe('ChatSender', () => {
     expect(written).toEqual(['first', 'second']);
   });
 
+  it('holds while the terminal is not ready, then delivers on retry', () => {
+    let ready = false;
+    sender.addWriter({
+      canWrite: (a) => a.id === 7,
+      write: (_a, text) => written.push(`7:${text}`),
+      ready: () => ready,
+    });
+    store.set(7, createTestAgent({ id: 7, isExternal: true }));
+    sender.send(7, 'hello');
+    expect(written).toEqual([]);
+    ready = true;
+    sender.retry(7);
+    expect(written).toEqual(['7:hello']);
+  });
+
   it('cancels a queued message', () => {
     store.set(1, createTestAgent());
     store.broadcast({ type: 'agentStatus', id: 1, status: 'active' });
