@@ -348,3 +348,11 @@ export const CHAT_CLIENT_HISTORY_LIMIT = 200;
 export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';
 /** Longest character name the rename box accepts (the server caps it too). */
 export const AGENT_NAME_INPUT_MAX_CHARS = 32;
+
+// ── Touch + small screens ───────────────────────────────────
+/** Below this panel width the chat card becomes a bottom sheet and the whiteboard goes full width. */
+export const MOBILE_BREAKPOINT_PX = 640;
+/** Share of the panel height the chat bottom sheet takes on small screens. */
+export const CHAT_SHEET_HEIGHT_FRACTION = 0.72;
+/** A touch that moves less than this (CSS px) is a tap, not a pan. */
+export const TOUCH_TAP_SLOP_PX = 8;

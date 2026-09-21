@@ -8,6 +8,7 @@
  * Each connecting WebSocket client receives the full state on webviewReady.
  */
 
+import * as os from 'os';
 import * as path from 'path';
 
 import { AgentRuntime } from './agentRuntime.js';
@@ -63,6 +64,8 @@ export function parseArgs(argv: string[]): CliArgs {
       }
       args.port = parsed;
       i++;
+    } else if (argv[i] === '--lan') {
+      args.host = '0.0.0.0';
     } else if (argv[i] === '--host' && argv[i + 1]) {
       args.host = argv[i + 1];
       i++;
@@ -73,6 +76,7 @@ export function parseArgs(argv: string[]): CliArgs {
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
   --host <string>       Host to bind to (default: 127.0.0.1)
+  --lan                 Listen on your local network too, so a phone on the same Wi-Fi can open it
   --help                Show this help message`);
       process.exit(0);
     }
@@ -101,6 +105,17 @@ function copyHookScriptOrReport(packageRoot: string, context = ''): boolean {
   if (copyHookScript(packageRoot)) return true;
   console.error(`[Pixel Agents] Hooks NOT installed${context}: hook script missing.`);
   return false;
+}
+
+/** This machine's IPv4 addresses on the local network (what a phone on the same Wi-Fi can reach). */
+function lanAddresses(): string[] {
+  const addresses: string[] = [];
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address);
+    }
+  }
+  return addresses;
 }
 
 // ── Main ──────────────────────────────────────────────────────
@@ -315,6 +330,19 @@ async function main(): Promise<void> {
     console.log(
       `\n  Pixel Agents server running at http://${displayHost}:${config.port}/?token=${config.token}\n`,
     );
+    if (displayHost !== args.host) {
+      const lan = lanAddresses();
+      if (lan.length > 0) {
+        console.log('  On your phone (same Wi-Fi):');
+        for (const address of lan) {
+          console.log(`    http://${address}:${config.port}/?token=${config.token}`);
+        }
+        console.log(
+          '\n  Keep these links private: the token lets whoever holds it send messages into your\n' +
+            '  Claude sessions and change hook settings. Traffic on the network is not encrypted.\n',
+        );
+      }
+    }
 
     // ── Graceful shutdown ──
     function shutdown(): void {

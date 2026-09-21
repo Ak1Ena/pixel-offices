@@ -7,6 +7,8 @@ import {
   CHAT_CARD_GAP_PX,
   CHAT_CARD_HEIGHT_PX,
   CHAT_CARD_WIDTH_PX,
+  CHAT_SHEET_HEIGHT_FRACTION,
+  MOBILE_BREAKPOINT_PX,
   PIN_DRAG_MIME,
 } from '../constants.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
@@ -201,7 +203,17 @@ export function ChatCard({
     Math.min(charY - height / 2, rect.height - height - CHAT_CARD_EDGE_MARGIN_PX),
   );
   const tailTop = Math.max(16, Math.min(charY - top - 12, height - 40));
-  const showTail = left === rawLeft;
+  // Small screens: a bottom sheet across the whole panel, no anchoring.
+  const isSheet = rect.width < MOBILE_BREAKPOINT_PX;
+  const frame = isSheet
+    ? {
+        left: 0,
+        top: Math.round(rect.height * (1 - CHAT_SHEET_HEIGHT_FRACTION)),
+        width: rect.width,
+        height: Math.round(rect.height * CHAT_SHEET_HEIGHT_FRACTION),
+      }
+    : { left, top, width, height };
+  const showTail = !isSheet && left === rawLeft;
 
   const canSend = readOnlyReason === null;
   const hasContent = draft.trim().length > 0 || attachedPins.length > 0;
@@ -219,7 +231,7 @@ export function ChatCard({
       role="dialog"
       aria-label={`Chat with ${title}`}
       className="absolute z-45 flex flex-col pixel-panel"
-      style={{ left, top, width, height }}
+      style={frame}
       data-testid="chat-card"
       data-agent-id={agentId}
       onKeyDown={(e) => {

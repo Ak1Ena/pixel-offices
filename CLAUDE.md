@@ -400,6 +400,12 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Rename**: `renameAgent` → `runtime.renameAgent` (control chars stripped, 32 chars) → `displayName` persisted on both surfaces' `PersistedAgent` → `agentRenamed` (also in the handshake). Labels prefer it everywhere.
 - **City Office**: furniture `OFFICE_DESK`, `DUAL_MONITOR` (electronics, on/off), `CITY_WINDOW`, `PLANTER`, `CUBICLE_DIVIDER` plus the bundled preset `webview-ui/src/office/layout/presets/cityOffice.json`, applied from Settings → Use City Office Layout as an undoable editor edit (Undo/Reset restore the old layout). Floor pattern 3 (low contrast) — pattern 9 is a checkerboard.
 
+## Phones
+
+- `npx pixel-agents --lan` binds 0.0.0.0 and prints this machine's LAN URLs (with the token) for a phone on the same Wi-Fi, plus a warning: the token can type into sessions and traffic is plain HTTP.
+- Touch (OfficeCanvas): one finger pans past `TOUCH_TAP_SLOP_PX` (a still finger stays a tap → normal click), two fingers pinch-zoom in whole steps; canvas has `touch-action: none`. Pin drag-and-drop is mouse-only — phones use the pin's Attach button.
+- Under `MOBILE_BREAKPOINT_PX` the chat card is a full-width bottom sheet and the whiteboard rail goes full width.
+
 ## Office UI
 
 **Rendering**: Game state in imperative `OfficeState` class (not React state). Pixel-perfect: zoom = integer device-pixels-per-sprite-pixel (1x–10x). No `ctx.scale(dpr)`. Default zoom = `Math.round(2 * devicePixelRatio)`. Z-sort all entities by Y. Pan via middle-mouse drag (`panRef`). **Camera follow**: `cameraFollowId` (separate from `selectedAgentId`) smoothly centers camera on the followed agent; set on agent click, cleared on deselection or manual pan.

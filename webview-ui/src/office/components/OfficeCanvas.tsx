@@ -5,6 +5,7 @@ import {
   CAMERA_FOLLOW_SNAP_THRESHOLD,
   PAN_MARGIN_FRACTION,
   PIN_DRAG_MIME,
+  TOUCH_TAP_SLOP_PX,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
@@ -913,6 +914,79 @@ export function OfficeCanvas({
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  // Touch: one finger pans (a still finger stays a tap, which the browser turns
+  // into the usual click), two fingers pinch-zoom in whole zoom steps.
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const touchRef = useRef<{
+    x: number;
+    y: number;
+    moved: boolean;
+    pinchDist: number | null;
+    pinchZoom: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        touchRef.current = {
+          x: t.clientX,
+          y: t.clientY,
+          moved: false,
+          pinchDist: null,
+          pinchZoom: zoomRef.current,
+        };
+      } else if (e.touches.length === 2 && touchRef.current) {
+        touchRef.current.pinchDist = dist(e.touches);
+        touchRef.current.pinchZoom = zoomRef.current;
+        touchRef.current.moved = true;
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      const state = touchRef.current;
+      if (!state) return;
+      if (e.touches.length === 2 && state.pinchDist) {
+        e.preventDefault();
+        const target = Math.round(state.pinchZoom * (dist(e.touches) / state.pinchDist));
+        const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, target));
+        if (next !== zoomRef.current) onZoomChange(next);
+        return;
+      }
+      if (e.touches.length !== 1 || isEditMode) return;
+      const t = e.touches[0];
+      const dx = t.clientX - state.x;
+      const dy = t.clientY - state.y;
+      if (!state.moved && Math.hypot(dx, dy) < TOUCH_TAP_SLOP_PX) return;
+      e.preventDefault();
+      state.moved = true;
+      state.x = t.clientX;
+      state.y = t.clientY;
+      const dpr = window.devicePixelRatio || 1;
+      officeState.cameraFollowId = null;
+      officeState.cancelGreeterCamera();
+      panRef.current = clampPan(panRef.current.x + dx * dpr, panRef.current.y + dy * dpr);
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) touchRef.current = null;
+    };
+    canvas.addEventListener('touchstart', onStart, { passive: true });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd);
+    canvas.addEventListener('touchcancel', onEnd);
+    return () => {
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+      canvas.removeEventListener('touchcancel', onEnd);
+    };
+  }, [isEditMode, officeState, onZoomChange, panRef, clampPan]);
+
   // Prevent default middle-click browser behavior (auto-scroll)
   const handleAuxClick = useCallback((e: React.MouseEvent) => {
     if (e.button === 1) e.preventDefault();
@@ -933,6 +1007,7 @@ export function OfficeCanvas({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className="block"
+        style={{ touchAction: 'none' }}
       />
     </div>
   );

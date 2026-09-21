@@ -196,7 +196,7 @@ export function WhiteboardRail({
     <aside
       aria-label="Whiteboard"
       className="absolute right-0 top-0 bottom-0 z-30 flex flex-col bg-board text-board-ink border-l-4 border-board-edge"
-      style={{ width: WHITEBOARD_RAIL_WIDTH_PX }}
+      style={{ width: `min(${WHITEBOARD_RAIL_WIDTH_PX}px, 100%)` }}
       data-testid="board-rail"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}

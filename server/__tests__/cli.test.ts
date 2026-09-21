@@ -65,6 +65,10 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
 }
 
 describe('parseArgs', () => {
+  it('--lan listens on every interface so a phone on the same Wi-Fi can connect', () => {
+    expect(parseArgs(['--lan']).host).toBe('0.0.0.0');
+  });
+
   // 1. No --port -> ephemeral default (unset), never a hardcoded port
   it('defaults port to undefined (ephemeral) when --port is omitted', () => {
     const args = parseArgs([]);
