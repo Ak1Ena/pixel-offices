@@ -70,8 +70,8 @@ export function parseArgs(argv: string[]): CliArgs {
       args.host = argv[i + 1];
       i++;
     } else if (argv[i] === '--help') {
-      console.log(`Usage: pixel-agents [options]
-       pixel-agents claude [claude args...]   Run Claude so the office chat can send to it
+      console.log(`Usage: pixel-office [options]
+       pixel-office claude [claude args...]   Run Claude so the office chat can send to it
 
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)

@@ -93,7 +93,7 @@ export class ChatSender {
     if (!this.writerFor(agent)) {
       this.report(
         agentId,
-        'This session has no office terminal. Start it with `npx pixel-agents claude` to chat from here.',
+        'This session has no office terminal. Start it with `pixel-office claude` to chat from here.',
       );
       return;
     }

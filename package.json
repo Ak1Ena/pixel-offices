@@ -1,12 +1,16 @@
 {
-  "name": "pixel-agents",
-  "displayName": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
-  "version": "1.4.1",
-  "publisher": "pablodelucca",
+  "name": "@ak1ena/pixel-office",
+  "displayName": "Pixel Office",
+  "description": "Pixel art office for your Claude Code agents, with session chat, a shared whiteboard, token usage and more. A fork of Pixel Agents.",
+  "version": "1.5.0",
+  "publisher": "ak1ena",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pixel-agents-hq/pixel-agents"
+    "url": "https://github.com/Ak1Ena/pixel-agents"
+  },
+  "homepage": "https://github.com/Ak1Ena/pixel-agents#readme",
+  "bugs": {
+    "url": "https://github.com/Ak1Ena/pixel-agents/issues"
   },
   "workspaces": [
     "server",
@@ -29,7 +33,7 @@
   ],
   "main": "./dist/extension.js",
   "bin": {
-    "pixel-agents": "./dist/cli.js"
+    "pixel-office": "./dist/cli.js"
   },
   "files": [
     "CHANGELOG.md",
@@ -175,5 +179,8 @@
     "webapi-parser": {
       "ajv": "^6.15.0"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

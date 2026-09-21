@@ -69,8 +69,8 @@ function chatReadOnlyReason(id: number, sendable: boolean): string | null {
   const ch = getOfficeState().characters.get(id);
   if (ch?.agentName && !ch.isTeamLead) return 'Teammates take their instructions from their lead.';
   return isBrowserRuntime
-    ? 'Start Claude with `npx pixel-agents claude` instead of `claude` to chat from here.'
-    : 'Start Claude with + Agent, in a VS Code terminal, or with `npx pixel-agents claude` to chat from here.';
+    ? 'Start Claude with `pixel-office claude` instead of `claude` to chat from here.'
+    : 'Start Claude with + Agent, in a VS Code terminal, or with `pixel-office claude` to chat from here.';
 }
 
 function App() {
