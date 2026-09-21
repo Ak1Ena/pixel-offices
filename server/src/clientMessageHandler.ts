@@ -307,6 +307,11 @@ export function handleClientMessage(
       break;
     }
 
+    case 'setAgentRelay':
+      if (ctx.privileged && typeof msg.enabled === 'boolean')
+        runtime?.relay.setEnabled(msg.enabled);
+      break;
+
     case 'sendAgentKeys':
       if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;

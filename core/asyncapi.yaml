@@ -112,6 +112,7 @@ components:
         - $ref: '#/components/schemas/OfficeCapabilities'
         - $ref: '#/components/schemas/AgentScreen'
         - $ref: '#/components/schemas/StartAgentResult'
+        - $ref: '#/components/schemas/AgentRelayState'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         # Layout
@@ -165,6 +166,7 @@ components:
         - $ref: '#/components/schemas/RenameAgent'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
+        - $ref: '#/components/schemas/SetAgentRelay'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -631,6 +633,21 @@ components:
           type: boolean
         error:
           type: string
+
+    AgentRelayState:
+      description: |
+        Whether agents may message each other: when on, an agent reply that
+        mentions another agent as `@Name` is passed to that agent as a prompt
+        (rate-limited). Off by default; not persisted. Sent in the handshake
+        and when it changes.
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: agentRelayState
+        enabled:
+          type: boolean
 
     BoardLoaded:
       description: |
@@ -1355,6 +1372,17 @@ components:
         firstMessage:
           type: string
         skipPermissions:
+          type: boolean
+
+    SetAgentRelay:
+      description: Turn agent-to-agent @mention passing on or off. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: setAgentRelay
+        enabled:
           type: boolean
 
     SendAgentKeys:

@@ -5,6 +5,7 @@ import * as path from 'path';
 import type { BoardPin, BoardPinKind } from '../../core/src/messages.js';
 import {
   BOARD_FILE_NAME,
+  BOARD_INDEX_FILE_NAME,
   BOARD_MAX_PINS,
   BOARD_PIN_TITLE_MAX_CHARS,
   BOARD_PIN_VALUE_MAX_CHARS,
@@ -78,6 +79,8 @@ export class BoardStore {
   constructor(
     private readonly onChange: (pins: BoardPin[]) => void,
     private readonly filePath: string = boardFilePath(),
+    /** Names an agent id in the index file's "for:" line. */
+    private readonly describeAgent: (agentId: number) => string = (id) => `agent #${id}`,
   ) {}
 
   /** Current pins. Loads from disk and starts watching on first use. */
@@ -149,6 +152,35 @@ export class BoardStore {
     return true;
   }
 
+  /**
+   * board.md beside board.json: the whiteboard as plain text, so agents (which
+   * can read files) can look things up whenever they want. Best effort.
+   */
+  private writeIndex(): void {
+    const lines = [
+      '# Pixel Office whiteboard',
+      '',
+      'Shared documents, links, snippets and notes for every agent in this office.',
+      'Kept up to date by the office. "for:" says who an item is meant for.',
+      '',
+    ];
+    for (const pin of this.pins) {
+      const who =
+        pin.scope.length === 0 ? 'everyone' : pin.scope.map(this.describeAgent).join(', ');
+      lines.push(`## ${pin.title}`, `- type: ${pin.kind}`, `- for: ${who}`);
+      if (pin.kind === 'file') lines.push(`- path: ${pin.value}`);
+      else if (pin.kind === 'link') lines.push(`- url: ${pin.value}`);
+      else if (pin.value.trim()) lines.push('', '```', pin.value, '```');
+      lines.push('');
+    }
+    try {
+      const indexPath = path.join(path.dirname(this.filePath), BOARD_INDEX_FILE_NAME);
+      fs.writeFileSync(indexPath, lines.join('\n'));
+    } catch {
+      /* the index is a convenience; board.json is the record */
+    }
+  }
+
   private commit(): void {
     const json = JSON.stringify({ version: 1, pins: this.pins } satisfies BoardFile, null, 2);
     try {
@@ -157,6 +189,7 @@ export class BoardStore {
       fs.writeFileSync(tmpPath, json, 'utf-8');
       fs.renameSync(tmpPath, this.filePath);
       this.lastSeen = json;
+      this.writeIndex();
     } catch (err) {
       console.error('[Pixel Agents] Failed to write board file:', err);
     }

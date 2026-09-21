@@ -184,10 +184,18 @@ function sourceFor(agent: AgentState, text: string): 'office' | 'terminal' {
   return 'terminal';
 }
 
+/** Called with every NEW assistant reply streamed from a transcript (not seeded history). */
+let replyListener: ((agentId: number, text: string) => void) | null = null;
+
+export function setReplyListener(listener: typeof replyListener): void {
+  replyListener = listener;
+}
+
 function applyDelta(
   agent: AgentState,
   delta: ChatDelta,
   onChange: (entry: ChatEntry) => void,
+  live = false,
 ): void {
   const log = (agent.chatLog ??= []);
   for (const entry of delta.entries) {
@@ -196,6 +204,7 @@ function applyDelta(
     if (existing !== -1) {
       log[existing] = entry;
     } else {
+      if (live && entry.role === 'assistant') replyListener?.(agent.id, entry.text);
       log.push(entry);
       if (log.length > CHAT_HISTORY_LIMIT) log.splice(0, log.length - CHAT_HISTORY_LIMIT);
     }
@@ -223,9 +232,14 @@ export function recordChat(
   if (chatRecord.type !== 'user' && chatRecord.type !== 'assistant') return;
   if (!belongsToAgent(agent, chatRecord)) return;
   const delta = extractChatDelta(chatRecord, formatToolStatus);
-  applyDelta(agent, delta, (entry) => {
-    agents.broadcast({ type: 'agentChatEntry', id: agentId, entry: { ...entry } });
-  });
+  applyDelta(
+    agent,
+    delta,
+    (entry) => {
+      agents.broadcast({ type: 'agentChatEntry', id: agentId, entry: { ...entry } });
+    },
+    true,
+  );
 }
 
 /**

@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest';
+
+import { AgentStateStore } from '../src/agentStateStore.js';
+import { RELAY_PAIR_LIMIT } from '../src/constants.js';
+import { mentionedAgents, MentionRelay } from '../src/mentionRelay.js';
+import type { AgentState } from '../src/types.js';
+
+function setup() {
+  const store = new AgentStateStore();
+  const add = (id: number, displayName?: string) =>
+    store.set(id, { id, displayName } as unknown as AgentState);
+  add(1, 'Backend Bob');
+  add(2, 'Pat');
+  add(3, 'Patrick');
+  add(4);
+  const sent: Array<[number, string]> = [];
+  const relay = new MentionRelay(store, (id, text) => sent.push([id, text]));
+  return { store, relay, sent };
+}
+
+describe('agent-to-agent mentions', () => {
+  it('matches whole names only, never the sender or unnamed agents', () => {
+    const { store } = setup();
+    expect(mentionedAgents('@pat amounts are in cents', 1, store)).toEqual([2]);
+    expect(mentionedAgents('@Patrick and @Backend Bob, see this', 1, store)).toEqual([3]);
+    expect(mentionedAgents('no mention here', 1, store)).toEqual([]);
+  });
+
+  it('is off by default and says who the message is from when on', () => {
+    const { relay, sent } = setup();
+    relay.onReply(1, '@Pat use amount_cents');
+    expect(sent).toEqual([]);
+    relay.setEnabled(true);
+    relay.onReply(1, '@Pat use amount_cents');
+    expect(sent).toEqual([
+      [2, 'Message from Backend Bob (teammate, via the office): @Pat use amount_cents'],
+    ]);
+  });
+
+  it('stops a back-and-forth at the per-pair limit', () => {
+    const { relay, sent } = setup();
+    relay.setEnabled(true);
+    for (let i = 0; i < RELAY_PAIR_LIMIT + 3; i++) relay.onReply(1, '@Pat again');
+    expect(sent).toHaveLength(RELAY_PAIR_LIMIT);
+  });
+});

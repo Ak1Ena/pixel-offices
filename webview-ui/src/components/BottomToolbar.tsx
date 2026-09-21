@@ -17,6 +17,8 @@ interface BottomToolbarProps {
   /** Standalone office: open the Add agent dialog (absent when it can't start agents). */
   onAddAgent?: () => void;
   onAddRoom: () => void;
+  isGroupChatOpen: boolean;
+  onToggleGroupChat: () => void;
   workspaceFolders: WorkspaceFolder[];
 }
 
@@ -30,6 +32,8 @@ export function BottomToolbar({
   onToggleBoard,
   onAddAgent,
   onAddRoom,
+  isGroupChatOpen,
+  onToggleGroupChat,
   workspaceFolders,
 }: BottomToolbarProps) {
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -148,6 +152,14 @@ export function BottomToolbar({
         title="Edit office layout"
       >
         Layout
+      </Button>
+      <Button
+        variant={isGroupChatOpen ? 'active' : 'default'}
+        onClick={onToggleGroupChat}
+        title="Group chat: everyone and each team"
+        data-testid="group-chat-toggle"
+      >
+        Chat
       </Button>
       <Button
         variant={isBoardOpen ? 'active' : 'default'}

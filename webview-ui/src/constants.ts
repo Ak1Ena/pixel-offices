@@ -378,3 +378,6 @@ export const TEAM_ROOM_WALL_PX = 1;
 export const TEAM_ROOM_LABEL_PX = 5;
 /** Color given to a new team room's area (its editing overlay). */
 export const TEAM_ROOM_AREA_COLOR = '#3f7fa8';
+
+/** Width of the group chat panel docked on the right (CSS px). */
+export const GROUP_CHAT_WIDTH_PX = 480;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { beforeAll, test } from 'vitest';
 
+import { TEAM_ROOM_AREA_COLOR } from '../src/constants.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { buildDynamicCatalog } from '../src/office/layout/furnitureCatalog.js';
 import type { OfficeLayout } from '../src/office/types.js';
@@ -15,19 +16,16 @@ beforeAll(() => {
     catalog: [
       {
         id: 'CHAIR',
-        name: 'Chair',
         label: 'Chair',
         category: 'chairs',
-        file: 'CHAIR.png',
         width: 16,
         height: 16,
         footprintW: 1,
         footprintH: 1,
         isDesk: false,
-        canPlaceOnWalls: false,
       },
     ],
-    sprites: { CHAIR: [['#000000']] },
+    sprites: { CHAIR: [[TEAM_ROOM_AREA_COLOR]] },
   });
 });
 
@@ -58,8 +56,8 @@ function layout(): OfficeLayout {
       chair('b3', 8, 4),
     ],
     areas: [
-      { label: 'Room A', color: '#3f7fa8', teamRoom: true },
-      { label: 'Room B', color: '#2f8f6b', teamRoom: true },
+      { label: 'Room A', color: TEAM_ROOM_AREA_COLOR, teamRoom: true },
+      { label: 'Room B', color: TEAM_ROOM_AREA_COLOR, teamRoom: true },
     ],
     areaTiles,
   } as OfficeLayout;

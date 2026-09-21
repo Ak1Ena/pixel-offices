@@ -77,6 +77,16 @@ export function looksLikeQuestion(lines: string[]): boolean {
   return lines.some((l) => option(1).test(l)) && lines.some((l) => option(2).test(l));
 }
 
+/**
+ * The ids a session can be known by. Team discovery adopts a teammate's
+ * transcript on its own and may give the agent a different `sessionId`, but
+ * the transcript file is always named after Claude's session id.
+ */
+function sessionKeys(agent: AgentState): string[] {
+  const fromFile = agent.jsonlFile ? path.basename(agent.jsonlFile, '.jsonl') : '';
+  return fromFile && fromFile !== agent.sessionId ? [agent.sessionId, fromFile] : [agent.sessionId];
+}
+
 function expandHome(p: string): string {
   const t = p.trim();
   return t === '~' || t.startsWith('~/') ? path.join(os.homedir(), t.slice(1)) : t;
@@ -217,14 +227,14 @@ export class OfficeSessions {
 
   get writer(): TerminalWriter {
     return {
-      canWrite: (agent) => this.sessions.has(agent.sessionId),
+      canWrite: (agent) => this.sessionOf(agent) !== null,
       write: (agent, text) => {
-        const session = this.sessions.get(agent.sessionId);
+        const session = this.sessionOf(agent);
         if (!session) throw new Error('session ended');
         void typePrompt(
           (data) => session.pty.write(data),
           text,
-          () => !this.sessions.has(agent.sessionId),
+          () => !this.sessions.has(session.sessionId),
         );
       },
     };
@@ -271,14 +281,23 @@ export class OfficeSessions {
   }
 
   private agentFor(sessionId: string): AgentState | undefined {
-    for (const agent of this.store.values()) if (agent.sessionId === sessionId) return agent;
+    for (const agent of this.store.values()) {
+      if (sessionKeys(agent).includes(sessionId)) return agent;
+    }
     return undefined;
   }
 
+  private sessionOf(agent: AgentState | undefined): OwnedSession | null {
+    if (!agent) return null;
+    for (const key of sessionKeys(agent)) {
+      const session = this.sessions.get(key);
+      if (session) return session;
+    }
+    return null;
+  }
+
   private sessionForAgent(agentId: unknown): OwnedSession | null {
-    if (typeof agentId !== 'number') return null;
-    const agent = this.store.get(agentId);
-    return (agent && this.sessions.get(agent.sessionId)) ?? null;
+    return typeof agentId === 'number' ? this.sessionOf(this.store.get(agentId)) : null;
   }
 
   private readScreen(session: OwnedSession): string[] {

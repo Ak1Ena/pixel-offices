@@ -34,6 +34,7 @@ export type ServerMessage =
   | OfficeCapabilities
   | AgentScreen
   | StartAgentResult
+  | AgentRelayState
   | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
@@ -79,7 +80,8 @@ export type ClientMessage =
   | RemoveBoardPin
   | RenameAgent
   | StartAgent
-  | SendAgentKeys;
+  | SendAgentKeys
+  | SetAgentRelay;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -288,6 +290,11 @@ export interface StartAgentResult {
   type: 'startAgentResult';
   ok: boolean;
   error?: string;
+}
+
+export interface AgentRelayState {
+  type: 'agentRelayState';
+  enabled: boolean;
 }
 
 export interface BoardLoaded {
@@ -592,3 +599,8 @@ export interface SendAgentKeys {
 }
 
 export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | '3' | 'y' | 'n';
+
+export interface SetAgentRelay {
+  type: 'setAgentRelay';
+  enabled: boolean;
+}

@@ -115,6 +115,7 @@ export function sendOfficeChatState(
   runtime: AgentRuntime,
 ): void {
   send({ type: 'boardLoaded', pins: runtime.board.getPins() });
+  send({ type: 'agentRelayState', enabled: runtime.relay.enabled });
   for (const id of runtime.chatSender.sendableSnapshot()) {
     send({ type: 'agentChatSendable', id, sendable: true });
   }

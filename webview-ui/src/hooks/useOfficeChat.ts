@@ -34,6 +34,9 @@ export interface OfficeChatState {
   /** True when this office can start agents (+ Agent in the browser). */
   canStartAgents: boolean;
   recentFolders: string[];
+  /** Whether agents may message each other with @Name (server state). */
+  relayEnabled: boolean;
+  setRelay: (enabled: boolean) => void;
   sendKeys: (agentId: number, keys: AgentKey[]) => void;
   renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
@@ -60,6 +63,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [asking, setAsking] = useState<Record<number, boolean>>({});
   const [canStartAgents, setCanStartAgents] = useState(false);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
+  const [relayEnabled, setRelayEnabled] = useState(false);
   const [pins, setPins] = useState<BoardPin[]>([]);
 
   useEffect(() => {
@@ -82,6 +86,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setAsking((prev) => (prev[msg.id] ? { ...prev, [msg.id]: false } : prev));
       } else if (msg.type === 'agentScreen') {
         setScreens((prev) => ({ ...prev, [msg.id]: msg.lines }));
+      } else if (msg.type === 'agentRelayState') {
+        setRelayEnabled(msg.enabled);
       } else if (msg.type === 'officeCapabilities') {
         setCanStartAgents(msg.canStartAgents);
         setRecentFolders(msg.recentFolders);
@@ -138,6 +144,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'renameAgent', id: agentId, name });
   }, []);
 
+  const setRelay = useCallback((enabled: boolean) => {
+    transport.send({ type: 'setAgentRelay', enabled });
+  }, []);
+
   const sendKeys = useCallback((agentId: number, keys: AgentKey[]) => {
     transport.send({ type: 'sendAgentKeys', id: agentId, keys });
   }, []);
@@ -157,6 +167,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     asking,
     canStartAgents,
     recentFolders,
+    relayEnabled,
+    setRelay,
     sendKeys,
     renameAgent,
     pins,

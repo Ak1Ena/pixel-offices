@@ -60,7 +60,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     tokenUsage.ts                    Session token totals + burn rate from transcript usage (each request counted once by message.id)
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
-  __tests__/                         34 Vitest files
+  __tests__/                         35 Vitest files
   manual-hook-events.http            Manual hook testing helper (REST-Client format)
 
 adapters/vscode/                     VS Code surface — composes core + server
@@ -406,6 +406,14 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Screen view**: pty output feeds `@xterm/headless`; the visible screen goes out as plain text (`agentScreen`, throttled) and `sendAgentKeys` (privileged, fixed key enum) presses keys — the only way to answer Claude's on-screen questions (trust this folder, permission prompts). A numbered choice on screen (`looksLikeQuestion`) sets `permissionSent` + `agentToolPermission`, which holds the chat queue (ChatSender never types during a prompt) and is cleared only if the screen set it.
 - **The first message rides the command line** (`claude "<prompt>"`), never the keyboard: typed text landed in the trust dialog and its Enter accepted it.
 - `officeCapabilities` (handshake) tells the client whether + Agent is available (`canStartAgents` needs node-pty AND a privileged connection) and lists recent folders (in memory). `resendAgentActivity` re-sends a pending `agentToolPermission`.
+
+## Team rooms and group chat
+
+- **Team room** = an Area with `teamRoom: true` (layout JSON; the server treats layouts as opaque). `renderTeamRooms` always draws its glass walls + name tab. `OfficeState.moveIntoTeamRoom` (from `setTeamInfo`): a team (lead id) takes the first team room nobody holds with a free seat and its members are reseated there; no free room/seat → the usual cluster-next-to-lead. Freed in `removeAgent(lead)`. `+ Room` = `handleAddTeamRoom` (adds the area, enters the editor on the Area paint tool). Solo agents avoid rooms for free: `findFreeSeat` prefers unzoned seats. The City Office preset has a 4-desk main floor and two 4-desk rooms — a room needs a seat per member.
+- **Group chat** (`GroupChatPanel.tsx`, helpers in `officeChat.ts`) is a client-side VIEW: channels = `# everyone` + one per team (`buildChannels`, named after the team's room); the conversation = members' own chats merged by time (`mergeTimeline`: tool rows dropped, the same prompt sent to several agents within 90 s collapses to one "you → N agents" line, relayed copies hidden). Sending loops `sendChatMessage` per ticked member. The first group message to an agent carries a one-line note (teammates, `~/.pixel-agents/board.md`, and `@Name` when the relay is on), stripped again for display.
+- **@mention relay** (`server/src/mentionRelay.ts`): OFF by default, in-memory, toggled by `setAgentRelay` (privileged) / reported by `agentRelayState`. A NEW streamed assistant reply (never seeded history — `setReplyListener` in chatLog) naming another agent as `@displayName|agentName` (whole-name match) is delivered through `ChatSender` as `Message from X (teammate, via the office): …`. Limits: `RELAY_PAIR_LIMIT` per sender→receiver and `RELAY_TOTAL_LIMIT` overall per `RELAY_WINDOW_MS` — every pass starts a paid turn and two agents can loop.
+- **Team docs**: `BoardStore` writes `~/.pixel-agents/board.md` (every pin with type, `for:` names, path/url/body) on each change, so agents can read shared docs whenever they want; pins scoped to agents = team docs.
+- Office-run teammates: team discovery may adopt a teammate's transcript under a different `sessionId`, so `OfficeSessions` matches agents by session id OR transcript basename.
 
 ## Document viewer
 

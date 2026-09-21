@@ -15,6 +15,7 @@ import * as path from 'path';
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { BoardStore } from './boardStore.js';
+import { setReplyListener } from './chatLog.js';
 import { ChatSender } from './chatSender.js';
 import {
   AGENT_NAME_MAX_CHARS,
@@ -43,6 +44,7 @@ import {
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
+import { MentionRelay } from './mentionRelay.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
@@ -92,6 +94,8 @@ export class AgentRuntime {
   readonly subagentWatch: SubagentWatch;
   /** Office chat: messages typed into agents' terminals (host supplies the writer). */
   readonly chatSender: ChatSender;
+  /** Agent-to-agent @mention passing (off by default). */
+  readonly relay: MentionRelay;
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
@@ -110,6 +114,8 @@ export class AgentRuntime {
     this.subagentWatch = new SubagentWatch(store);
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
+    this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
+    setReplyListener((id, text) => this.relay.onReply(id, text));
     this.tokenBurnTimer = setInterval(() => tickTokenBurn(this.store), TOKEN_BURN_TICK_MS);
     this.tokenBurnTimer.unref?.();
     this.launchers = new LauncherHub(() => this.chatSender.refreshSendable());
@@ -602,6 +608,8 @@ export class AgentRuntime {
   adoptLaunchedSession(sessionId: string, cwd: string): void {
     for (const agent of this.store.values()) {
       if (agent.sessionId === sessionId) return;
+      // Team discovery may already track this transcript under another session id.
+      if (agent.jsonlFile && path.basename(agent.jsonlFile, '.jsonl') === sessionId) return;
     }
     const sessionDir = this.provider.getSessionDirs?.(cwd)[0];
     if (!sessionDir) return; // brand-new project: the dir appears with the first prompt
@@ -630,8 +638,13 @@ export class AgentRuntime {
    *  so a runtime that never shows the office never touches board.json. Every
    *  change is broadcast to all clients as `boardLoaded`. */
   get board(): BoardStore {
-    this.boardStore ??= new BoardStore((pins) =>
-      this.store.broadcast({ type: 'boardLoaded', pins }),
+    this.boardStore ??= new BoardStore(
+      (pins) => this.store.broadcast({ type: 'boardLoaded', pins }),
+      undefined,
+      (agentId) => {
+        const agent = this.store.get(agentId);
+        return agent?.displayName ?? agent?.agentName ?? `agent #${agentId}`;
+      },
     );
     return this.boardStore;
   }

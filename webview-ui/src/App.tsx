@@ -10,6 +10,7 @@ import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DocViewer } from './components/DocViewer.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { SettingsModal } from './components/SettingsModal.js';
@@ -36,7 +37,13 @@ import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import cityOfficeLayout from './office/layout/presets/cityOffice.json';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout } from './office/types.js';
-import { burnLevelFor, composeMessage, pinsForAgent } from './officeChat.js';
+import {
+  buildChannels,
+  burnLevelFor,
+  composeMessage,
+  newPinId,
+  pinsForAgent,
+} from './officeChat.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
@@ -123,6 +130,7 @@ function App() {
   const [viewedPinId, setViewedPinId] = useState<string | null>(null);
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
+  const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
   const chat = useOfficeChat(chatAgentId);
 
   const {
@@ -612,7 +620,43 @@ function App() {
               );
             })()}
 
-          {!editor.isEditMode && (
+          {isGroupChatOpen && !editor.isEditMode && (
+            <GroupChatPanel
+              channels={buildChannels(
+                agents
+                  .filter((id) => !officeState.characters.get(id)?.isSubagent)
+                  .map((id) => {
+                    const ch = officeState.characters.get(id);
+                    return {
+                      id,
+                      label: agentLabel(id),
+                      leadId: ch?.isTeamLead ? id : ch?.leadAgentId,
+                      room: officeState.getTeamRoom(id),
+                    };
+                  }),
+              )}
+              chats={chat.chats}
+              labelOf={agentLabel}
+              sendable={chat.sendable}
+              relayEnabled={chat.relayEnabled}
+              onSetRelay={chat.canStartAgents || !isBrowserRuntime ? chat.setRelay : undefined}
+              onSend={chat.sendMessage}
+              onPin={(text, scope) =>
+                chat.savePin({
+                  id: newPinId(),
+                  kind: 'note',
+                  title: text.replace(/\s+/g, ' ').slice(0, 80),
+                  value: text,
+                  scope,
+                  createdAt: new Date().toISOString(),
+                })
+              }
+              onOpenAgent={openChat}
+              onClose={() => setIsGroupChatOpen(false)}
+            />
+          )}
+
+          {!editor.isEditMode && !isGroupChatOpen && (
             <WhiteboardRail
               isOpen={isBoardOpen}
               onToggle={() => setIsBoardOpen((v) => !v)}
@@ -717,9 +761,17 @@ function App() {
         isSettingsOpen={isSettingsOpen}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         isBoardOpen={isBoardOpen}
-        onToggleBoard={() => setIsBoardOpen((v) => !v)}
+        onToggleBoard={() => {
+          setIsBoardOpen((v) => !v);
+          setIsGroupChatOpen(false);
+        }}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
         onAddRoom={() => setRoomNameDraft('')}
+        isGroupChatOpen={isGroupChatOpen}
+        onToggleGroupChat={() => {
+          setIsGroupChatOpen((v) => !v);
+          setIsBoardOpen(false);
+        }}
         workspaceFolders={workspaceFolders}
       />
 

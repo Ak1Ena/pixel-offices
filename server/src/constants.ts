@@ -100,6 +100,18 @@ export const OFFICE_SESSION_ADOPT_TRIES = 600;
 /** Recent project folders remembered for the + Agent dialog. */
 export const OFFICE_RECENT_FOLDERS = 6;
 
+// ── Agent-to-agent @mention relay (mentionRelay.ts) ────────
+/** Window the relay limits are counted over. */
+export const RELAY_WINDOW_MS = 10 * 60_000;
+/** Passes allowed from one agent to one other agent per window. */
+export const RELAY_PAIR_LIMIT = 4;
+/** Passes allowed across the whole office per window. */
+export const RELAY_TOTAL_LIMIT = 20;
+/** Longest reply passed along. */
+export const RELAY_MAX_CHARS = 2_000;
+/** Human-readable index of the whiteboard that agents can read. */
+export const BOARD_INDEX_FILE_NAME = 'board.md';
+
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;

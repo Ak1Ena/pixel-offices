@@ -85,3 +85,111 @@ export function burnLevelFor(burnPerMinute: number): 0 | 1 | 2 {
   if (burnPerMinute >= BURN_WARM_PER_MIN) return 1;
   return 0;
 }
+
+// ── Group chat ──────────────────────────────────────────────
+
+export interface ChannelMember {
+  id: number;
+  label: string;
+  /** The member's lead (its own id when it leads a team); undefined for solo agents. */
+  leadId?: number;
+  /** Team room the member's team holds, if any. */
+  room?: string | null;
+}
+
+export interface ChatChannel {
+  id: string;
+  name: string;
+  members: number[];
+}
+
+/** `# everyone` plus one channel per team (named after its room, else its lead). */
+export function buildChannels(members: ChannelMember[]): ChatChannel[] {
+  const channels: ChatChannel[] = [
+    { id: 'everyone', name: 'everyone', members: members.map((m) => m.id) },
+  ];
+  const teams = new Map<number, ChannelMember[]>();
+  for (const m of members) {
+    if (m.leadId === undefined) continue;
+    teams.set(m.leadId, [...(teams.get(m.leadId) ?? []), m]);
+  }
+  for (const [leadId, team] of teams) {
+    if (team.length < 2) continue;
+    const lead = team.find((m) => m.id === leadId);
+    const room = team.find((m) => m.room)?.room;
+    channels.push({
+      id: `team-${leadId}`,
+      name: room ?? `${lead?.label ?? `#${leadId}`}'s team`,
+      members: team.map((m) => m.id),
+    });
+  }
+  return channels;
+}
+
+/** Marks a message the office passed from one agent to another; hidden from group timelines. */
+const RELAYED_RE = /^Message from .+ \(teammate, via the office\): /;
+/** One-time note the office appends to a group message; stripped for display. */
+const GROUP_NOTE_RE = / \(Team chat via Pixel Office\..*\)$/s;
+/** Group sends to several agents land within this window and collapse into one line. */
+const GROUP_SEND_WINDOW_MS = 90_000;
+
+export function groupNote(teammates: string[], relayEnabled: boolean): string {
+  const others = teammates.length > 0 ? ` Teammates: ${teammates.join(', ')}.` : '';
+  const mention = relayEnabled ? ' To message a teammate, write @Name in your reply.' : '';
+  return ` (Team chat via Pixel Office.${others} Shared docs and notes: ~/.pixel-agents/board.md.${mention})`;
+}
+
+export interface TimelineItem {
+  key: string;
+  /** null = you. */
+  agentId: number | null;
+  text: string;
+  timestamp?: string;
+  /** For your messages: the agents that received it. */
+  recipients: number[];
+}
+
+/** One conversation out of several agents' chats: prompts you sent and agents' replies, by time. */
+export function mergeTimeline(
+  chats: Record<number, ChatEntry[] | undefined>,
+  memberIds: number[],
+): TimelineItem[] {
+  const items: Array<TimelineItem & { at: number; order: number }> = [];
+  let order = 0;
+  for (const id of memberIds) {
+    for (const entry of chats[id] ?? []) {
+      if (entry.role === 'tool') continue;
+      if (entry.role === 'user' && RELAYED_RE.test(entry.text)) continue;
+      const at = entry.timestamp ? Date.parse(entry.timestamp) : NaN;
+      items.push({
+        key: `${id}:${entry.entryId}`,
+        agentId: entry.role === 'user' ? null : id,
+        text: entry.role === 'user' ? entry.text.replace(GROUP_NOTE_RE, '') : entry.text,
+        timestamp: entry.timestamp,
+        recipients: entry.role === 'user' ? [id] : [],
+        at: Number.isFinite(at) ? at : 0,
+        order: order++,
+      });
+    }
+  }
+  items.sort((a, b) => a.at - b.at || a.order - b.order);
+
+  const merged: TimelineItem[] = [];
+  for (const item of items) {
+    const same =
+      item.agentId === null
+        ? [...merged]
+            .reverse()
+            .find(
+              (m) =>
+                m.agentId === null &&
+                m.text === item.text &&
+                Math.abs((m.timestamp ? Date.parse(m.timestamp) : 0) - item.at) <=
+                  GROUP_SEND_WINDOW_MS,
+            )
+        : undefined;
+    if (same) same.recipients.push(...item.recipients);
+    else merged.push({ ...item, recipients: [...item.recipients] });
+  }
+  return merged;
+}
