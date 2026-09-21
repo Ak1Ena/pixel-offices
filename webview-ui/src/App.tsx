@@ -15,6 +15,7 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { SettingsModal } from './components/SettingsModal.js';
+import { TaskDesk } from './components/TaskDesk.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
@@ -28,6 +29,7 @@ import { useExtensionMessages } from './hooks/useExtensionMessages.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
+import { useTaskDesk } from './hooks/useTaskDesk.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -47,6 +49,7 @@ import {
   pinsForAgent,
 } from './officeChat.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
+import { needsYou } from './taskDesk.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
 
@@ -134,6 +137,8 @@ function App() {
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
   const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
   const chat = useOfficeChat(chatAgentId);
+  const desk = useTaskDesk();
+  const [isDeskOpen, setIsDeskOpen] = useState(false);
   const permissionAsks = usePermissionAsks();
 
   const {
@@ -672,6 +677,21 @@ function App() {
             />
           )}
 
+          {!editor.isEditMode && (
+            <TaskDesk
+              isOpen={isDeskOpen}
+              onToggle={() => setIsDeskOpen((v) => !v)}
+              desk={desk}
+              labelOf={agentLabel}
+              // Folders are browsed on the server's machine, which only the
+              // standalone office can do; the VS Code panel offers its workspace.
+              canBrowseFolders={isBrowserRuntime}
+              recentFolders={chat.recentFolders}
+              workspaceFolders={workspaceFolders}
+              canStartAgents={chat.canStartAgents}
+            />
+          )}
+
           {!editor.isEditMode && !isGroupChatOpen && (
             <WhiteboardRail
               isOpen={isBoardOpen}
@@ -783,6 +803,9 @@ function App() {
         }}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
         onAddRoom={() => setRoomNameDraft('')}
+        isDeskOpen={isDeskOpen}
+        onToggleDesk={() => setIsDeskOpen((v) => !v)}
+        deskWaiting={desk.tasks.filter(needsYou).length}
         isGroupChatOpen={isGroupChatOpen}
         onToggleGroupChat={() => {
           setIsGroupChatOpen((v) => !v);

@@ -118,6 +118,9 @@ components:
         - $ref: '#/components/schemas/FolderListing'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
+        # Task desk
+        - $ref: '#/components/schemas/TaskDeskLoaded'
+        - $ref: '#/components/schemas/TaskDeskNotice'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -166,6 +169,12 @@ components:
         - $ref: '#/components/schemas/CancelChatMessage'
         - $ref: '#/components/schemas/SaveBoardPin'
         - $ref: '#/components/schemas/RemoveBoardPin'
+        # Task desk
+        - $ref: '#/components/schemas/SaveDeskTask'
+        - $ref: '#/components/schemas/RemoveDeskTask'
+        - $ref: '#/components/schemas/DeskTaskAction'
+        - $ref: '#/components/schemas/SetDeskTaskAllow'
+        - $ref: '#/components/schemas/SetAgentPickup'
         - $ref: '#/components/schemas/RenameAgent'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
@@ -738,6 +747,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BoardPin'
+
+    TaskDeskLoaded:
+      description: |
+        The whole task desk: every card, and for every agent the folder it is
+        working in and whether it picks up cards. Sent during the
+        `webviewReady` handshake and to every client after any change (a card,
+        an agent's folder, an agent coming or going).
+      type: object
+      additionalProperties: false
+      required: [type, tasks, agents]
+      properties:
+        type:
+          const: taskDeskLoaded
+        tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskTask'
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskAgent'
+
+    TaskDeskNotice:
+      description: |
+        Why a task desk request was refused (no such card, a note is required,
+        the folder does not exist, not a privileged connection). Sent only to
+        the requesting client.
+      type: object
+      additionalProperties: false
+      required: [type, error]
+      properties:
+        type:
+          const: taskDeskNotice
+        error:
+          type: string
+        taskId:
+          type: string
 
     LayoutLoaded:
       description: |
@@ -1413,6 +1459,105 @@ components:
         pinId:
           type: string
 
+    SaveDeskTask:
+      description: |
+        Add a card to the task desk, or edit the card with the same id.
+        Privileged: a card is work an agent will spend tokens on. `folder` is
+        any path on the server's machine; the server resolves it to the git
+        root and branch the card is matched on. Title, body, kind and priority
+        can be edited until an agent starts building; the folder only while the
+        card is still in the inbox.
+      type: object
+      additionalProperties: false
+      required: [type, kind, title, body, priority, folder]
+      properties:
+        type:
+          const: saveDeskTask
+        taskId:
+          type: string
+          description: Absent for a new card.
+        kind:
+          $ref: '#/components/schemas/DeskTaskKind'
+        title:
+          type: string
+        body:
+          type: string
+        priority:
+          $ref: '#/components/schemas/DeskTaskPriority'
+        folder:
+          type: string
+
+    RemoveDeskTask:
+      description: Remove a card from the task desk. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, taskId]
+      properties:
+        type:
+          const: removeDeskTask
+        taskId:
+          type: string
+
+    DeskTaskAction:
+      description: |
+        The human's call on a card. Privileged. `verified`, `do` and `rejected`
+        answer an agent's brief; `accept` and `sendBack` answer a finished
+        result. `rejected` and `sendBack` need a `note`. `answers` are the
+        replies to the brief's questions, by position. `subtasks` replaces the
+        newest brief's subtask list (titles and skip flags only).
+      type: object
+      additionalProperties: false
+      required: [type, taskId, action]
+      properties:
+        type:
+          const: deskTaskAction
+        taskId:
+          type: string
+        action:
+          $ref: '#/components/schemas/DeskHumanAction'
+        note:
+          type: string
+        answers:
+          type: array
+          items:
+            type: string
+        subtasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskSubtask'
+
+    SetDeskTaskAllow:
+      description: |
+        Which agents may take a card. Privileged. Empty = any agent working in
+        the card's folder.
+      type: object
+      additionalProperties: false
+      required: [type, taskId, allow]
+      properties:
+        type:
+          const: setDeskTaskAllow
+        taskId:
+          type: string
+        allow:
+          type: array
+          items:
+            type: integer
+
+    SetAgentPickup:
+      description: |
+        Whether an agent picks up cards from the task desk. Privileged.
+        Persisted with the agent.
+      type: object
+      additionalProperties: false
+      required: [type, id, enabled]
+      properties:
+        type:
+          const: setAgentPickup
+        id:
+          type: integer
+        enabled:
+          type: boolean
+
     RenameAgent:
       description: Give an agent's character a name (empty string clears it).
       type: object
@@ -1613,6 +1758,214 @@ components:
             type: integer
         createdAt:
           type: string
+
+    DeskTask:
+      description: One card on the task desk.
+      type: object
+      additionalProperties: false
+      required:
+        [id, num, kind, title, body, priority, folder, allow, state, round, briefs, log, createdAt]
+      properties:
+        id:
+          type: string
+        num:
+          type: integer
+          description: Short number people and agents use to name the card (#12).
+        kind:
+          $ref: '#/components/schemas/DeskTaskKind'
+        title:
+          type: string
+        body:
+          type: string
+        priority:
+          $ref: '#/components/schemas/DeskTaskPriority'
+        folder:
+          $ref: '#/components/schemas/DeskFolder'
+        allow:
+          type: array
+          description: Agent ids that may take the card. Empty = any agent in the folder.
+          items:
+            type: integer
+        state:
+          $ref: '#/components/schemas/DeskTaskState'
+        round:
+          type: integer
+          description: 1, plus one for every rejected brief.
+        claimedBy:
+          type: integer
+          description: Agent id looking at or building the card.
+        owner:
+          type: string
+          description: |
+            The office process that made the claim. Agent ids are only
+            meaningful inside one process, and two may share this file (VS Code
+            and standalone), so each leaves the other's claims alone.
+        queued:
+          type: boolean
+          description: The human said "do the task"; it starts when an agent is free.
+        attempts:
+          type: integer
+          description: Looks that ended without a brief, this round.
+        briefs:
+          type: array
+          description: Oldest first. The last one is current.
+          items:
+            $ref: '#/components/schemas/DeskBrief'
+        result:
+          $ref: '#/components/schemas/DeskResult'
+        log:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskLogEntry'
+        createdAt:
+          type: string
+
+    DeskFolder:
+      description: |
+        Where a card's work happens. `root` is what agents are matched on: the
+        git top-level folder, or the folder itself outside a git project.
+      type: object
+      additionalProperties: false
+      required: [root, name, isGit]
+      properties:
+        root:
+          type: string
+        name:
+          type: string
+        isGit:
+          type: boolean
+        branch:
+          type: string
+        subPath:
+          type: string
+          description: Folder inside the project the human pointed at. A hint for the agent only.
+
+    DeskBrief:
+      description: What an agent understood a card to want. Its subtasks belong to this one card.
+      type: object
+      additionalProperties: false
+      required: [by, understanding, subtasks, files, questions, risk, size, createdAt]
+      properties:
+        by:
+          type: string
+          description: The agent's label when it wrote the brief (ids do not survive restarts).
+        understanding:
+          type: string
+        subtasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskSubtask'
+        files:
+          type: array
+          items:
+            type: string
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskQuestion'
+        risk:
+          type: string
+        size:
+          type: string
+        createdAt:
+          type: string
+
+    DeskSubtask:
+      type: object
+      additionalProperties: false
+      required: [title, skip, done, by]
+      properties:
+        title:
+          type: string
+        skip:
+          type: boolean
+        done:
+          type: boolean
+        by:
+          $ref: '#/components/schemas/DeskSubtaskAuthor'
+
+    DeskSubtaskAuthor:
+      type: string
+      enum: [agent, you]
+
+    DeskQuestion:
+      type: object
+      additionalProperties: false
+      required: [q, a]
+      properties:
+        q:
+          type: string
+        a:
+          type: string
+
+    DeskResult:
+      type: object
+      additionalProperties: false
+      required: [by, summary]
+      properties:
+        by:
+          type: string
+        summary:
+          type: string
+        branch:
+          type: string
+        diffStat:
+          type: string
+        tests:
+          type: string
+
+    DeskLogEntry:
+      type: object
+      additionalProperties: false
+      required: [at, who, kind, text]
+      properties:
+        at:
+          type: string
+        who:
+          type: string
+        kind:
+          $ref: '#/components/schemas/DeskLogKind'
+        text:
+          type: string
+
+    DeskLogKind:
+      type: string
+      enum: [agent, verified, rejected, system]
+
+    DeskTaskKind:
+      type: string
+      enum: [task, issue, feature]
+
+    DeskTaskPriority:
+      type: string
+      enum: [p1, p2]
+
+    DeskTaskState:
+      type: string
+      enum: [inbox, looking, brief, ready, working, result, done]
+
+    DeskHumanAction:
+      type: string
+      enum: [verified, do, rejected, accept, sendBack]
+
+    DeskAgent:
+      description: What the task desk knows about one agent.
+      type: object
+      additionalProperties: false
+      required: [id, pickup, canReach]
+      properties:
+        id:
+          type: integer
+        root:
+          type: string
+          description: Same meaning as DeskFolder.root. Absent until the agent's folder is known.
+        branch:
+          type: string
+        pickup:
+          type: boolean
+        canReach:
+          type: boolean
+          description: The office can type into this agent's terminal, so it can be handed a card.
 
     BoardPinKind:
       type: string

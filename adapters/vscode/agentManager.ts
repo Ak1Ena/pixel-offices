@@ -100,6 +100,7 @@ export async function launchNewTerminal(
     terminalRef: terminal,
     isExternal: false,
     projectDir,
+    cwd,
     jsonlFile: expectedFile,
     fileOffset: 0,
     lineBuffer: '',
@@ -295,6 +296,8 @@ export function persistAgents(agents: AgentStateStore, adapter: StateAdapter): v
       backgroundAgentToolIds:
         agent.backgroundAgentToolIds.size > 0 ? [...agent.backgroundAgentToolIds] : undefined,
       displayName: agent.displayName,
+      cwd: agent.cwd,
+      pickup: agent.pickup,
     });
   }
   adapter.saveAgents(persisted);
@@ -395,6 +398,8 @@ export function restoreAgents(
       palette: p.palette,
       hueShift: p.hueShift,
       displayName: p.displayName,
+      cwd: p.cwd,
+      pickup: p.pickup,
     };
 
     assignPaletteIfNeeded(agent, store);

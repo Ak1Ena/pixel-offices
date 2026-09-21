@@ -50,6 +50,7 @@ import { PathSet, pathsMatch } from './pathKey.js';
 import { PermissionBroker } from './permissionBroker.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
+import { TaskDesk } from './taskDesk.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
 import { tickTokenBurn } from './tokenUsage.js';
 import {
@@ -102,6 +103,9 @@ export class AgentRuntime {
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
+  private taskDesk: TaskDesk | null = null;
+  /** Which agents pick up task desk cards without being asked to (the host knows which it started). */
+  deskDefaultPickup: (agentId: number) => boolean = () => false;
   private readonly tokenBurnTimer: ReturnType<typeof setInterval>;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
@@ -264,6 +268,7 @@ export class AgentRuntime {
           () => this.store.persist(),
           (agent) => {
             if (providerId && providerId !== this.provider.id) agent.providerId = providerId;
+            if (cwd) agent.cwd = cwd;
             this.registerAgent(agent.sessionId, agent.id);
           },
         );
@@ -610,6 +615,8 @@ export class AgentRuntime {
         palette: p.palette,
         hueShift: p.hueShift,
         displayName: p.displayName,
+        cwd: p.cwd,
+        pickup: p.pickup,
       };
 
       assignPaletteIfNeeded(agent, this.store);
@@ -694,7 +701,10 @@ export class AgentRuntime {
       this.waitingTimers,
       this.permissionTimers,
       () => this.store.persist(),
-      (agent) => this.registerAgent(agent.sessionId, agent.id),
+      (agent) => {
+        agent.cwd = cwd;
+        this.registerAgent(agent.sessionId, agent.id);
+      },
     );
     this.chatSender.refreshSendable();
   }
@@ -716,6 +726,19 @@ export class AgentRuntime {
     return this.boardStore;
   }
 
+  // ── Task desk ──
+
+  /** The task desk. Like the whiteboard, created on first use: a runtime that
+   *  never shows the office never reads tasks.json or hands out a card. */
+  get desk(): TaskDesk {
+    this.taskDesk ??= new TaskDesk({
+      store: this.store,
+      chatSender: this.chatSender,
+      defaultPickup: (agentId) => this.deskDefaultPickup(agentId),
+    });
+    return this.taskDesk;
+  }
+
   // ── Cleanup ──
 
   /** Clean up all scanners, timers, and agents. Called on shutdown. */
@@ -727,6 +750,7 @@ export class AgentRuntime {
     clearInterval(this.tokenBurnTimer);
     this.launchers.dispose();
     this.boardStore?.dispose();
+    this.taskDesk?.dispose();
 
     if (this.projectScanTimer.current) {
       clearInterval(this.projectScanTimer.current);

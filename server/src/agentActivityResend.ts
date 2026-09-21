@@ -115,6 +115,8 @@ export function sendOfficeChatState(
   runtime: AgentRuntime,
 ): void {
   send({ type: 'boardLoaded', pins: runtime.board.getPins() });
+  send({ ...runtime.desk.snapshot() });
+  void runtime.desk.tick(); // agents' folders resolve asynchronously; this broadcasts them
   send({ type: 'agentRelayState', enabled: runtime.relay.enabled });
   for (const ask of runtime.permissions.snapshot()) send(ask);
   for (const id of runtime.chatSender.sendableSnapshot()) {

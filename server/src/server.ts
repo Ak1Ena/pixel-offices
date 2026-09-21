@@ -23,6 +23,7 @@ import type { LauncherHub } from './launcherHub.js';
 import type { OfficeSessions } from './officeSessions.js';
 import type { ServerConfig } from './serverConfig.js';
 import { isServerConfig, isServerTarget } from './serverConfig.js';
+import type { TaskDesk } from './taskDesk.js';
 
 export type { ServerConfig } from './serverConfig.js';
 
@@ -79,6 +80,7 @@ export class PixelAgentsServer {
     saveBoardPin?: (pin: BoardPin) => boolean;
     removeBoardPin?: (pinId: string) => boolean;
     resolveBoardAgent?: (name: string) => number | undefined;
+    taskDesk?: () => TaskDesk;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -123,6 +125,7 @@ export class PixelAgentsServer {
       saveBoardPin: options?.saveBoardPin,
       removeBoardPin: options?.removeBoardPin,
       resolveBoardAgent: options?.resolveBoardAgent,
+      taskDesk: options?.taskDesk,
     });
 
     this.app = app;

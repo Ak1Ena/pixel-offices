@@ -24,6 +24,7 @@ import {
   claudeProvider,
   hookProviderById,
 } from './providers/index.js';
+import { handleTaskDeskMessage } from './taskDeskMessages.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
@@ -94,6 +95,8 @@ export function handleClientMessage(
 ): void {
   const { store, runtime, cache } = ctx;
   const adapter = store.getAdapter();
+
+  if (handleTaskDeskMessage(msg, send, runtime?.desk, ctx.privileged === true)) return;
 
   switch (msg.type) {
     case 'webviewReady':

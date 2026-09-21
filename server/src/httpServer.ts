@@ -37,12 +37,15 @@ import {
   MAX_HOOK_BODY_SIZE,
   PERMISSION_POLL_MS,
   PERMISSION_POLL_SEGMENT,
+  TASK_NO_SUCH_CARD_ERROR,
+  TASKS_API_PATH,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
 import type { LauncherHub } from './launcherHub.js';
 import type { OfficeSessions } from './officeSessions.js';
 import { isPermissionRequestId } from './permissionBroker.js';
+import { describeTask, type DeskReply, type TaskDesk } from './taskDesk.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -81,6 +84,8 @@ export interface HttpServerOptions {
   removeBoardPin?: (pinId: string) => boolean;
   /** Resolve an agent's display/agent name to its id, for `scope` names on POSTed pins. */
   resolveBoardAgent?: (name: string) => number | undefined;
+  /** The task desk, for agents reporting back (`pixel-office task …`). Lazy: created on first use. */
+  taskDesk?: () => TaskDesk;
   /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession). */
   onLauncherPoll?: (sessionId: string, cwd: string) => void;
 }
@@ -134,6 +139,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   );
   registerBoardUploadRoute(app, options);
   registerBoardPinRoutes(app, options);
+  registerTaskRoutes(app, options);
   registerChatFileRoute(app, options);
   registerWebSocketRoute(app, options);
 
@@ -401,6 +407,60 @@ function registerChatFileRoute(app: FastifyInstance, options: HttpServerOptions)
         .header('Cache-Control', 'no-store')
         .send(fs.createReadStream(file.filePath));
     },
+  );
+}
+
+/**
+ * The task desk for AGENTS (`pixel-office task …`): read a card, hand in a
+ * brief, tick a subtask, report the result. Same gate as the board routes —
+ * Bearer token, and any request carrying an Origin is refused: the office UI
+ * works the desk over /ws, so a browser is never the caller here.
+ *
+ * 409 means "this office did not hand that card out": with two offices
+ * running, the CLI tries the next one.
+ */
+function registerTaskRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const { taskDesk } = options;
+  if (!taskDesk) return;
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  const route = {
+    preHandler: [noBrowsers, bearerAuth(options.token)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: { ref: { type: 'string', pattern: '^[A-Za-z0-9_#-]{1,64}$' } },
+        required: ['ref'],
+      },
+    },
+  };
+  type Ref = { Params: { ref: string }; Body: unknown };
+  const answer = (reply: FastifyReply, result: DeskReply) => {
+    if (result.ok) return { task: result.value, text: describeTask(result.value) };
+    const status =
+      result.error === TASK_NO_SUCH_CARD_ERROR
+        ? 404
+        : result.error.startsWith('Nobody here')
+          ? 409
+          : 400;
+    return reply.code(status).send({ error: result.error });
+  };
+
+  app.get<Ref>(`${TASKS_API_PATH}/:ref`, route, async (request, reply) =>
+    answer(reply, taskDesk().show(request.params.ref)),
+  );
+  app.post<Ref>(`${TASKS_API_PATH}/:ref/brief`, route, async (request, reply) =>
+    answer(reply, taskDesk().submitBrief(request.params.ref, request.body)),
+  );
+  app.post<Ref>(`${TASKS_API_PATH}/:ref/step`, route, async (request, reply) =>
+    answer(
+      reply,
+      taskDesk().markSubtask(request.params.ref, (request.body as { step?: unknown } | null)?.step),
+    ),
+  );
+  app.post<Ref>(`${TASKS_API_PATH}/:ref/done`, route, async (request, reply) =>
+    answer(reply, taskDesk().submitResult(request.params.ref, request.body)),
   );
 }
 

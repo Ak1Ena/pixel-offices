@@ -30,6 +30,7 @@ const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
 import type { HookProvider } from '../../core/src/provider.js';
 import type { TeamProvider } from '../../core/src/teamProvider.js';
 import type { ITerminalAdapter } from '../../core/src/terminalAdapter.js';
+import { seedAgentCwd } from './agentCwd.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { seedChatHistory } from './chatLog.js';
 import {
@@ -117,6 +118,7 @@ export function startFileWatching(
   seedContextUsage(agentId, agents, getHookProvider());
   seedChatHistory(agentId, agents, formatToolStatus);
   seedTokenUsage(agentId, agents);
+  seedAgentCwd(agentId, agents);
 
   // Single polling approach: reliable on all platforms (macOS, Linux, WSL2, Windows).
   // Previously used triple-redundant fs.watch + fs.watchFile + setInterval, but

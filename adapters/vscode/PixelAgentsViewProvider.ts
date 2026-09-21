@@ -55,6 +55,7 @@ import {
   secondaryHookProviders,
 } from '../../server/src/providers/index.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
+import { handleTaskDeskMessage } from '../../server/src/taskDeskMessages.js';
 import { typePrompt } from '../../server/src/terminalTyping.js';
 import {
   getProjectDirPath,
@@ -244,6 +245,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         embedded: true,
         launchers: this.runtime.launchers,
         onLauncherPoll: (sessionId, cwd) => this.runtime.adoptLaunchedSession(sessionId, cwd),
+        taskDesk: () => this.runtime.desk,
       })
       .then((config) => {
         // Server always starts regardless of hooks-enabled state.
@@ -504,6 +506,11 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.runtime.permissions.answer(message.id, message.requestId, message.decision);
       } else if (message.type === 'renameAgent') {
         this.runtime.renameAgent(message.id, message.name);
+      } else if (
+        // The VS Code webview is privileged by construction (our own iframe).
+        handleTaskDeskMessage(message, (m) => this.sendOrBuffer(m), this.runtime.desk, true)
+      ) {
+        // handled
       } else if (message.type === 'saveBoardPin') {
         this.runtime.board.savePin(message.pin);
       } else if (message.type === 'removeBoardPin') {

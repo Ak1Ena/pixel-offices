@@ -174,6 +174,8 @@ export class AgentStateStore {
         palette: agent.palette,
         hueShift: agent.hueShift,
         displayName: agent.displayName,
+        cwd: agent.cwd,
+        pickup: agent.pickup,
       });
     }
     this.adapter.saveAgents(persisted);

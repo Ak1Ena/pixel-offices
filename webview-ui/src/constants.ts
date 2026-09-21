@@ -400,3 +400,23 @@ export const PERMISSION_PROMPTS_WIDTH_PX = 420;
 export const PERMISSION_PROMPTS_MAX_SHOWN = 3;
 /** Above every modal (they top out at 54 + 1): an agent is blocked until it's answered. */
 export const PERMISSION_PROMPTS_Z_INDEX = 60;
+
+// ── Task desk ────────────────────────────────────────────────
+export const TASK_DESK_WIDTH_PX = 420;
+export const TASK_TITLE_MAX_CHARS = 120;
+export const TASK_BODY_MAX_CHARS = 4000;
+export const TASK_NOTE_MAX_CHARS = 2000;
+export const TASK_SUBTASK_MAX_CHARS = 200;
+/** localStorage key: the command the desk last started an agent with (`claude`, or an alias of it). */
+export const TASK_DESK_COMMAND_KEY = 'pixel-agents.deskLaunchCommand';
+/** Models offered when the desk starts an agent. An empty flag leaves the choice to Claude Code. */
+export const TASK_DESK_MODELS = [
+  { label: "Claude Code's default", flag: '' },
+  { label: 'Sonnet 5', flag: 'claude-sonnet-5' },
+  { label: 'Opus 5', flag: 'claude-opus-5' },
+  { label: 'Haiku 4.5', flag: 'claude-haiku-4-5' },
+] as const;
+/** The first prompt of an agent the desk starts. It needs one: the office only
+ *  sees a session once its transcript exists, and that starts with a prompt. */
+export const TASK_DESK_FIRST_MESSAGE =
+  'You were started by the Pixel Office task desk. A card will follow. Reply with just: ready';

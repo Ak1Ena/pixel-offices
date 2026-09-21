@@ -82,6 +82,31 @@ _Avoid_: track
 **Focus**:
 Bring an agent's terminal to the front. Reserved exclusively for terminals — never the in-office highlight.
 
+## Task Desk
+
+**Card**:
+One task, issue or feature on the task desk. Never "task" alone in prose — that word already means Claude's Task tool and its Subtask characters.
+_Avoid_: task, ticket
+
+**Look**:
+A free agent reading a card and the code, without changing anything, to write a brief.
+_Avoid_: scout, triage
+
+**Brief**:
+What a looking agent hands back: what it understood, a subtask list, files, questions, risk, size. A card keeps every brief it ever got; the last one is current.
+
+**Desk subtask**:
+One step in a brief, numbered `#12.3`. Belongs to exactly one card. Not a Sub-agent and not a Subtask character.
+
+**Call**:
+The human's decision on a card waiting for them: Verified, Do the task, Rejected (on a brief); Accept, Send back (on a result).
+
+**Folder (of a card)**:
+The git top-level folder the card's work happens in — what agents are matched on. An agent in a sub-folder matches; a worktree is its own folder.
+
+**Pick-up**:
+Per-agent switch: whether the desk may hand this agent a card. On by default only for agents the office started.
+
 ## First Run
 
 **Intro**:

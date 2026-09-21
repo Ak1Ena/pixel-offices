@@ -39,6 +39,8 @@ export type ServerMessage =
   | AgentPermissionAnswered
   | FolderListing
   | BoardLoaded
+  | TaskDeskLoaded
+  | TaskDeskNotice
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -81,6 +83,11 @@ export type ClientMessage =
   | CancelChatMessage
   | SaveBoardPin
   | RemoveBoardPin
+  | SaveDeskTask
+  | RemoveDeskTask
+  | DeskTaskAction
+  | SetDeskTaskAllow
+  | SetAgentPickup
   | RenameAgent
   | StartAgent
   | SendAgentKeys
@@ -354,6 +361,103 @@ export interface BoardPin {
 
 export type BoardPinKind = 'link' | 'file' | 'snippet' | 'note';
 
+export interface TaskDeskLoaded {
+  type: 'taskDeskLoaded';
+  tasks: DeskTask[];
+  agents: DeskAgent[];
+}
+
+export interface DeskTask {
+  id: string;
+  num: number;
+  kind: DeskTaskKind;
+  title: string;
+  body: string;
+  priority: DeskTaskPriority;
+  folder: DeskFolder;
+  allow: number[];
+  state: DeskTaskState;
+  round: number;
+  claimedBy?: number;
+  owner?: string;
+  queued?: boolean;
+  attempts?: number;
+  briefs: DeskBrief[];
+  result?: DeskResult;
+  log: DeskLogEntry[];
+  createdAt: string;
+}
+
+export type DeskTaskKind = 'task' | 'issue' | 'feature';
+
+export type DeskTaskPriority = 'p1' | 'p2';
+
+export interface DeskFolder {
+  root: string;
+  name: string;
+  isGit: boolean;
+  branch?: string;
+  subPath?: string;
+}
+
+export type DeskTaskState = 'inbox' | 'looking' | 'brief' | 'ready' | 'working' | 'result' | 'done';
+
+export interface DeskBrief {
+  by: string;
+  understanding: string;
+  subtasks: DeskSubtask[];
+  files: string[];
+  questions: DeskQuestion[];
+  risk: string;
+  size: string;
+  createdAt: string;
+}
+
+export interface DeskSubtask {
+  title: string;
+  skip: boolean;
+  done: boolean;
+  by: DeskSubtaskAuthor;
+}
+
+export type DeskSubtaskAuthor = 'agent' | 'you';
+
+export interface DeskQuestion {
+  q: string;
+  a: string;
+}
+
+export interface DeskResult {
+  by: string;
+  summary: string;
+  branch?: string;
+  diffStat?: string;
+  tests?: string;
+}
+
+export interface DeskLogEntry {
+  at: string;
+  who: string;
+  kind: DeskLogKind;
+  text: string;
+}
+
+export type DeskLogKind = 'agent' | 'verified' | 'rejected' | 'system';
+
+export interface DeskAgent {
+  id: number;
+  root?: string;
+  branch?: string;
+  pickup: boolean;
+  canReach: boolean;
+}
+
+export interface TaskDeskNotice {
+  type: 'taskDeskNotice';
+  error: string;
+  taskId?: string;
+}
+
 export interface LayoutLoaded {
   type: 'layoutLoaded';
   layout: Record<string, any> | null;
@@ -616,6 +720,44 @@ export interface SaveBoardPin {
 export interface RemoveBoardPin {
   type: 'removeBoardPin';
   pinId: string;
+}
+
+export interface SaveDeskTask {
+  type: 'saveDeskTask';
+  taskId?: string;
+  kind: DeskTaskKind;
+  title: string;
+  body: string;
+  priority: DeskTaskPriority;
+  folder: string;
+}
+
+export interface RemoveDeskTask {
+  type: 'removeDeskTask';
+  taskId: string;
+}
+
+export interface DeskTaskAction {
+  type: 'deskTaskAction';
+  taskId: string;
+  action: DeskHumanAction;
+  note?: string;
+  answers?: string[];
+  subtasks?: DeskSubtask[];
+}
+
+export type DeskHumanAction = 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack';
+
+export interface SetDeskTaskAllow {
+  type: 'setDeskTaskAllow';
+  taskId: string;
+  allow: number[];
+}
+
+export interface SetAgentPickup {
+  type: 'setAgentPickup';
+  id: number;
+  enabled: boolean;
 }
 
 export interface RenameAgent {

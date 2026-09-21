@@ -17,6 +17,10 @@ interface BottomToolbarProps {
   /** Standalone office: open the Add agent dialog (absent when it can't start agents). */
   onAddAgent?: () => void;
   onAddRoom: () => void;
+  isDeskOpen: boolean;
+  onToggleDesk: () => void;
+  /** Cards waiting on the human (a brief to judge, a result to check). */
+  deskWaiting: number;
   isGroupChatOpen: boolean;
   onToggleGroupChat: () => void;
   workspaceFolders: WorkspaceFolder[];
@@ -32,6 +36,9 @@ export function BottomToolbar({
   onToggleBoard,
   onAddAgent,
   onAddRoom,
+  isDeskOpen,
+  onToggleDesk,
+  deskWaiting,
   isGroupChatOpen,
   onToggleGroupChat,
   workspaceFolders,
@@ -160,6 +167,14 @@ export function BottomToolbar({
         data-testid="group-chat-toggle"
       >
         Chat
+      </Button>
+      <Button
+        variant={isDeskOpen ? 'active' : 'default'}
+        onClick={onToggleDesk}
+        title="Task desk: cards for free agents to look at, built when you say so"
+        data-testid="desk-toggle"
+      >
+        Desk{deskWaiting > 0 ? ` · ${deskWaiting}` : ''}
       </Button>
       <Button
         variant={isBoardOpen ? 'active' : 'default'}

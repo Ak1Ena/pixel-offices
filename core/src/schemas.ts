@@ -36,6 +36,10 @@ export interface PersistedAgent {
   hueShift?: number;
   /** User-given character name (renameAgent). */
   displayName?: string;
+  /** The folder the session works in (task desk folder matching). */
+  cwd?: string;
+  /** Task desk pick-up switch; absent = default for how it was started. */
+  pickup?: boolean;
 }
 
 /** Agent seat assignment with visual identity

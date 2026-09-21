@@ -41,6 +41,7 @@ import {
   secondaryHookProviders,
 } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
+import { runTaskCommand } from './taskCli.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -89,6 +90,7 @@ export function parseArgs(argv: string[]): CliArgs {
                                            e.g. pixel-office claude --model opus
                                            (Claude sessions show up in the office and
                                            can be sent messages; other programs run as usual)
+       pixel-office task <show|brief|step|done> …  Answer a task desk card (for agents)
        pixel-office board <list|add|rm> …  Read and post to the shared whiteboard
                                            (pixel-office board --help for details)
 
@@ -237,6 +239,10 @@ async function main(): Promise<void> {
   if (first === 'board') {
     process.exit(await runBoardCommand(process.argv.slice(3)));
   }
+  // `pixel-office task …`: agents answer the task desk.
+  if (first === 'task') {
+    process.exit(await runTaskCommand(process.argv.slice(3)));
+  }
   if (first !== undefined && !first.startsWith('-')) {
     await runLauncher(first, process.argv.slice(3));
     return;
@@ -374,6 +380,8 @@ async function main(): Promise<void> {
       inputReady: (id) => runtime.chatSender.retry(id),
     });
     runtime.chatSender.addWriter(officeSessions.writer);
+    // Agents the office started were started to be given work.
+    runtime.deskDefaultPickup = (agentId) => officeSessions.owns(agentId);
     disposeOfficeSessions = () => officeSessions.dispose();
 
     const config = await server.start({
@@ -389,6 +397,7 @@ async function main(): Promise<void> {
       launchers: runtime.launchers,
       onLauncherPoll: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
       officeSessions,
+      taskDesk: () => runtime.desk,
       getBoardPins: () => runtime.board.getPins(),
       saveBoardPin: (pin) => runtime.board.savePin(pin),
       removeBoardPin: (pinId) => runtime.board.removePin(pinId),

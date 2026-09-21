@@ -240,3 +240,33 @@ export const FOLDER_PROJECT_MARKERS: readonly string[] = [
   'Cargo.toml',
   'go.mod',
 ];
+
+// ── Task desk ────────────────────────────────────────────────
+/** Bytes read from a transcript's tail (then head) to learn the session's working folder. */
+export const AGENT_CWD_SEED_BYTES = 64 * 1024;
+/** `git rev-parse` must answer within this, or the folder counts as not-a-project. */
+export const GIT_ROOT_TIMEOUT_MS = 2_000;
+/** How long a folder's resolved git root + branch is trusted. */
+export const GIT_ROOT_CACHE_MS = 5_000;
+export const TASK_DESK_FILE_NAME = 'tasks.json';
+export const TASK_DESK_INDEX_FILE_NAME = 'tasks.md';
+export const TASK_DESK_MAX_TASKS = 200;
+export const TASK_TITLE_MAX_CHARS = 120;
+export const TASK_BODY_MAX_CHARS = 4_000;
+export const TASK_NOTE_MAX_CHARS = 2_000;
+export const TASK_BRIEF_TEXT_MAX_CHARS = 4_000;
+export const TASK_BRIEF_SHORT_MAX_CHARS = 200;
+export const TASK_MAX_BRIEFS = 8;
+export const TASK_MAX_SUBTASKS = 20;
+export const TASK_MAX_FILES = 40;
+export const TASK_MAX_QUESTIONS = 10;
+export const TASK_MAX_LOG = 60;
+/** Looks that may end without a brief before the card goes to the human anyway. */
+export const TASK_MAX_LOOK_ATTEMPTS = 2;
+/** How often the desk re-checks who is free (store events cover the fast path). */
+export const TASK_DESK_TICK_MS = 3_000;
+/** What agents are told to run. The installed bin, not `npx <package>`: the package is
+ *  installed from a release tarball, and npx would look for it on the npm registry. */
+export const TASK_CLI_COMMAND = 'pixel-office task';
+export const TASKS_API_PATH = '/api/tasks';
+export const TASK_NO_SUCH_CARD_ERROR = 'No such card.';

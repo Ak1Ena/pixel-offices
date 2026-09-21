@@ -79,6 +79,11 @@ export class ChatSender {
     }
   }
 
+  /** Nothing queued and no turn running: a message sent now is typed at once. */
+  isIdle(agentId: number): boolean {
+    return !this.busy.has(agentId) && !this.queues.has(agentId);
+  }
+
   /** Agents the office can type into, for a connecting client. */
   sendableSnapshot(): number[] {
     return [...this.store.keys()].filter((id) => this.canSend(id));

@@ -76,6 +76,16 @@ export interface AgentState {
   /** User-given character name (renameAgent). Persisted. */
   displayName?: string;
 
+  // -- Task desk (server/src/taskDesk.ts) --
+  /** The folder the session actually works in. NOT `projectDir`, which is the
+   *  transcript folder whose name is a lossy encoding of this path. Learned
+   *  from hook events, launcher adoption and the transcript's own records;
+   *  undefined until one of them says so. Persisted. */
+  cwd?: string;
+  /** Whether this agent picks up cards from the task desk. Undefined = the
+   *  default for how it was started (see `defaultPickup`). Persisted. */
+  pickup?: boolean;
+
   // -- Agent Teams --
   teamName?: string;
   agentName?: string;
@@ -134,4 +144,8 @@ export interface PersistedAgent {
   hueShift?: number;
   /** User-given character name. */
   displayName?: string;
+  /** The folder the session works in (task desk folder matching). */
+  cwd?: string;
+  /** Task desk pick-up switch; absent = default for how it was started. */
+  pickup?: boolean;
 }

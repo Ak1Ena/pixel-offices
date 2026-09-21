@@ -1,6 +1,7 @@
 const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
 
 import type { HookProvider } from '../../core/src/provider.js';
+import { cwdFromRecord } from './agentCwd.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { recordChat } from './chatLog.js';
 import { TEXT_IDLE_DELAY_MS, TOOL_DONE_DELAY_MS } from './constants.js';
@@ -105,6 +106,12 @@ export function processTranscriptLine(
   agent.linesProcessed++;
   try {
     const record = JSON.parse(line);
+
+    // The session's working folder (task desk folder matching). A sidechain
+    // record may be a sub-agent in its own worktree, so it only ever fills an
+    // unknown folder (a teammate's transcript is sidechain top to bottom).
+    const cwd = cwdFromRecord(record);
+    if (cwd && cwd !== agent.cwd && (!agent.cwd || record.isSidechain !== true)) agent.cwd = cwd;
 
     // -- Agent Teams: extract team metadata via the active provider --
     // The provider reads its CLI's own field names (Claude: record.teamName + record.agentName).
