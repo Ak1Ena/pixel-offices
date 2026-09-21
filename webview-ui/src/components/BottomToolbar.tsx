@@ -14,6 +14,8 @@ interface BottomToolbarProps {
   onToggleSettings: () => void;
   isBoardOpen: boolean;
   onToggleBoard: () => void;
+  /** Standalone office: open the Add agent dialog (absent when it can't start agents). */
+  onAddAgent?: () => void;
   workspaceFolders: WorkspaceFolder[];
 }
 
@@ -25,6 +27,7 @@ export function BottomToolbar({
   onToggleSettings,
   isBoardOpen,
   onToggleBoard,
+  onAddAgent,
   workspaceFolders,
 }: BottomToolbarProps) {
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -123,6 +126,16 @@ export function BottomToolbar({
             ))}
           </Dropdown>
         </div>
+      )}
+      {isBrowserRuntime && onAddAgent && (
+        <Button
+          variant="accent"
+          onClick={onAddAgent}
+          className="bg-accent hover:bg-accent-bright"
+          data-testid="add-agent"
+        >
+          + Agent
+        </Button>
       )}
       <Button
         variant={isEditMode ? 'active' : 'default'}

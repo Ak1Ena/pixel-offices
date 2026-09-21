@@ -31,6 +31,9 @@ export type ServerMessage =
   | AgentChatSendable
   | AgentTokenUsage
   | AgentRenamed
+  | OfficeCapabilities
+  | AgentScreen
+  | StartAgentResult
   | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
@@ -74,7 +77,9 @@ export type ClientMessage =
   | CancelChatMessage
   | SaveBoardPin
   | RemoveBoardPin
-  | RenameAgent;
+  | RenameAgent
+  | StartAgent
+  | SendAgentKeys;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -265,6 +270,24 @@ export interface AgentRenamed {
   type: 'agentRenamed';
   id: number;
   name: string;
+}
+
+export interface OfficeCapabilities {
+  type: 'officeCapabilities';
+  canStartAgents: boolean;
+  recentFolders: string[];
+}
+
+export interface AgentScreen {
+  type: 'agentScreen';
+  id: number;
+  lines: string[];
+}
+
+export interface StartAgentResult {
+  type: 'startAgentResult';
+  ok: boolean;
+  error?: string;
 }
 
 export interface BoardLoaded {
@@ -552,3 +575,20 @@ export interface RenameAgent {
   id: number;
   name: string;
 }
+
+export interface StartAgent {
+  type: 'startAgent';
+  cwd: string;
+  name?: string;
+  command?: string;
+  firstMessage?: string;
+  skipPermissions?: boolean;
+}
+
+export interface SendAgentKeys {
+  type: 'sendAgentKeys';
+  id: number;
+  keys: AgentKey[];
+}
+
+export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | '3' | 'y' | 'n';

@@ -87,6 +87,19 @@ export const TOKEN_BURN_TICK_MS = 5_000;
 /** Longest user-given character name. */
 export const AGENT_NAME_MAX_CHARS = 32;
 
+// ── Agents the office runs itself (officeSessions.ts) ──────
+/** Most agents the office will run at once. */
+export const OFFICE_SESSION_LIMIT = 8;
+/** Terminal size given to an office-run agent (its screen is shown as text). */
+export const OFFICE_SESSION_SCREEN_COLS = 100;
+export const OFFICE_SESSION_SCREEN_ROWS = 30;
+/** Screen updates are sent at most this often. */
+export const OFFICE_SESSION_SCREEN_MS = 700;
+/** Seconds to keep trying to adopt a just-started agent's session. */
+export const OFFICE_SESSION_ADOPT_TRIES = 600;
+/** Recent project folders remembered for the + Agent dialog. */
+export const OFFICE_RECENT_FOLDERS = 6;
+
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;

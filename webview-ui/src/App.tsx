@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
+import { AddAgentModal } from './components/AddAgentModal.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { ChatCard } from './components/ChatCard.js';
@@ -119,6 +120,7 @@ function App() {
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
   const [viewedPinId, setViewedPinId] = useState<string | null>(null);
+  const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
   const chat = useOfficeChat(chatAgentId);
 
   const {
@@ -569,6 +571,7 @@ function App() {
                 .map((pinId) => chat.pins.find((p) => p.id === pinId))
                 .filter((p) => p !== undefined);
               const needsApproval =
+                chat.asking[id] === true ||
                 (agentTools[id]?.some((t) => t.permissionWait && !t.done) ?? false) ||
                 officeState.characters.get(id)?.bubbleType === 'permission';
               return (
@@ -597,6 +600,8 @@ function App() {
                   usage={chat.usage[id]}
                   customName={chat.names[id] ?? ''}
                   onRename={(name) => chat.renameAgent(id, name)}
+                  screen={chat.screens[id]}
+                  onKeys={(keys) => chat.sendKeys(id, keys)}
                   onClose={closeChat}
                   onOpenTerminal={
                     isBrowserRuntime ? undefined : () => transport.send({ type: 'focusAgent', id })
@@ -711,7 +716,14 @@ function App() {
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
         isBoardOpen={isBoardOpen}
         onToggleBoard={() => setIsBoardOpen((v) => !v)}
+        onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
         workspaceFolders={workspaceFolders}
+      />
+
+      <AddAgentModal
+        isOpen={isAddAgentOpen}
+        onClose={() => setIsAddAgentOpen(false)}
+        recentFolders={chat.recentFolders}
       />
 
       <VersionIndicator

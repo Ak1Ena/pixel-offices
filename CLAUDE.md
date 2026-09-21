@@ -60,7 +60,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     tokenUsage.ts                    Session token totals + burn rate from transcript usage (each request counted once by message.id)
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
-  __tests__/                         33 Vitest files
+  __tests__/                         34 Vitest files
   manual-hook-events.http            Manual hook testing helper (REST-Client format)
 
 adapters/vscode/                     VS Code surface — composes core + server
@@ -399,6 +399,13 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Fire**: the webview maps burn to `burnLevel` (`BURN_WARM_PER_MIN` smoke, `BURN_FIRE_PER_MIN` flames + glow, `webview-ui/src/constants.ts`); `renderBurnEffects` draws before speech bubbles, and TYPE frames speed up by `BURN_TYPING_SPEED`.
 - **Rename**: `renameAgent` → `runtime.renameAgent` (control chars stripped, 32 chars) → `displayName` persisted on both surfaces' `PersistedAgent` → `agentRenamed` (also in the handshake). Labels prefer it everywhere.
 - **City Office**: furniture `OFFICE_DESK`, `DUAL_MONITOR` (electronics, on/off), `CITY_WINDOW`, `PLANTER`, `CUBICLE_DIVIDER` plus the bundled preset `webview-ui/src/office/layout/presets/cityOffice.json`, applied from Settings → Use City Office Layout as an undoable editor edit (Undo/Reset restore the old layout). Floor pattern 3 (low contrast) — pattern 9 is a checkerboard.
+
+## Agents the office runs (+ Agent in the browser)
+
+- `startAgent` (privileged, standalone) → `OfficeSessions` (`server/src/officeSessions.ts`) spawns Claude in a node-pty the server owns — no terminal window. `planLaunch` mints the session id; the command may be an alias but must run Claude. The agent is adopted at once via `runtime.adoptLaunchedSession` (retried each second; the transcript only appears with the first prompt). `OfficeSessions.writer` is a third `TerminalWriter` for `ChatSender`. `closeAgent` kills the pty; pty exit removes the agent. Max `OFFICE_SESSION_LIMIT`.
+- **Screen view**: pty output feeds `@xterm/headless`; the visible screen goes out as plain text (`agentScreen`, throttled) and `sendAgentKeys` (privileged, fixed key enum) presses keys — the only way to answer Claude's on-screen questions (trust this folder, permission prompts). A numbered choice on screen (`looksLikeQuestion`) sets `permissionSent` + `agentToolPermission`, which holds the chat queue (ChatSender never types during a prompt) and is cleared only if the screen set it.
+- **The first message rides the command line** (`claude "<prompt>"`), never the keyboard: typed text landed in the trust dialog and its Enter accepted it.
+- `officeCapabilities` (handshake) tells the client whether + Agent is available (`canStartAgents` needs node-pty AND a privileged connection) and lists recent folders (in memory). `resendAgentActivity` re-sends a pending `agentToolPermission`.
 
 ## Document viewer
 

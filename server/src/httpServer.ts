@@ -28,6 +28,7 @@ import {
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
 import type { LauncherHub } from './launcherHub.js';
+import type { OfficeSessions } from './officeSessions.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -56,6 +57,8 @@ export interface HttpServerOptions {
   onReloadAssets?: ReloadAssetsSideEffect;
   /** Sessions started with `pixel-agents claude` poll here for office input. */
   launchers?: LauncherHub;
+  /** Agents the office runs itself (standalone). */
+  officeSessions?: OfficeSessions;
   /** Current whiteboard pins, for serving file pins to the document viewer. */
   getBoardPins?: () => BoardPin[];
   /** Add a whiteboard pin (used when a file is uploaded). Returns false when rejected. */
@@ -365,6 +368,7 @@ function registerWebSocketRoute(app: FastifyInstance, options: HttpServerOptions
           cache: options.assetCache ?? null,
           onSetHooksEnabled: options.onSetHooksEnabled,
           onReloadAssets: options.onReloadAssets,
+          officeSessions: options.officeSessions,
           privileged,
         });
       } catch {

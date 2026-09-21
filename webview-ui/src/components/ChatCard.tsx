@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { AgentTokenUsage, BoardPin, ChatEntry } from '../../../core/src/messages.js';
+import type { AgentKey, AgentTokenUsage, BoardPin, ChatEntry } from '../../../core/src/messages.js';
 import {
   AGENT_NAME_INPUT_MAX_CHARS,
   CHAT_CARD_EDGE_MARGIN_PX,
@@ -42,7 +42,20 @@ interface ChatCardProps {
   /** The user-given name, '' when none (then `title` is the default label). */
   customName: string;
   onRename: (name: string) => void;
+  /** Terminal screen of an agent the office runs itself; undefined for every other agent. */
+  screen?: string[];
+  onKeys?: (keys: AgentKey[]) => void;
 }
+
+const SCREEN_KEYS: Array<{ label: string; keys: AgentKey[] }> = [
+  { label: 'Enter', keys: ['enter'] },
+  { label: '1', keys: ['1'] },
+  { label: '2', keys: ['2'] },
+  { label: '3', keys: ['3'] },
+  { label: '↑', keys: ['up'] },
+  { label: '↓', keys: ['down'] },
+  { label: 'Esc', keys: ['escape'] },
+];
 
 function timeLabel(timestamp: string | undefined): string {
   if (!timestamp) return '';
@@ -146,7 +159,10 @@ export function ChatCard({
   usage,
   customName,
   onRename,
+  screen,
+  onKeys,
 }: ChatCardProps) {
+  const [showScreen, setShowScreen] = useState(false);
   const [draft, setDraft] = useState('');
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
@@ -341,6 +357,17 @@ export function ChatCard({
           </span>
         )}
         <span className="flex-1" />
+        {screen && (
+          <Button
+            size="sm"
+            variant={showScreen ? 'active' : 'default'}
+            onClick={() => setShowScreen((v) => !v)}
+            title="Show what is on this agent's terminal screen"
+            data-testid="chat-screen-toggle"
+          >
+            Screen
+          </Button>
+        )}
         {onOpenTerminal && (
           <Button size="sm" onClick={onOpenTerminal} title="Show this session's terminal">
             Terminal
@@ -405,6 +432,27 @@ export function ChatCard({
         </div>
       </div>
 
+      {screen && showScreen && (
+        <div
+          className="flex flex-col gap-4 p-8 bg-bg-dark border-b-2 border-bg-thumb"
+          data-testid="chat-screen"
+        >
+          <pre className="m-0 max-h-200 overflow-auto p-6 bg-chat-tool text-text text-2xs leading-tight whitespace-pre">
+            {screen.length > 0 ? screen.join('\n') : '(nothing on screen yet)'}
+          </pre>
+          {onKeys && (
+            <div className="flex flex-wrap items-center gap-4">
+              <span className="text-2xs text-text-muted">Press:</span>
+              {SCREEN_KEYS.map((k) => (
+                <Button key={k.label} size="sm" onClick={() => onKeys(k.keys)}>
+                  {k.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-6 p-10">
         {entries.length === 0 && (
           <div className="text-sm text-text-muted text-center my-auto">
@@ -420,7 +468,16 @@ export function ChatCard({
             data-testid="chat-permission"
           >
             <span className="text-xs text-status-permission">Permission needed</span>
-            <span className="text-sm">Claude is waiting for your answer in the terminal.</span>
+            <span className="text-sm">
+              {screen
+                ? 'Claude is asking something on its screen. Open Screen to answer.'
+                : 'Claude is waiting for your answer in the terminal.'}
+            </span>
+            {screen && !showScreen && (
+              <Button size="sm" className="self-start" onClick={() => setShowScreen(true)}>
+                Open Screen
+              </Button>
+            )}
             {onOpenTerminal && (
               <Button size="sm" className="self-start" onClick={onOpenTerminal}>
                 Open terminal

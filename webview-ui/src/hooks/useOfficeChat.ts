@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type {
+  AgentKey,
   AgentTokenUsage,
   BoardPin,
   ChatEntry,
@@ -26,6 +27,14 @@ export interface OfficeChatState {
   usage: Record<number, AgentTokenUsage>;
   /** User-given character names. */
   names: Record<number, string>;
+  /** Agents waiting on a permission prompt or an on-screen question (server state, survives bubble clicks). */
+  asking: Record<number, boolean>;
+  /** Terminal screens of agents the office runs itself (plain text lines). */
+  screens: Record<number, string[]>;
+  /** True when this office can start agents (+ Agent in the browser). */
+  canStartAgents: boolean;
+  recentFolders: string[];
+  sendKeys: (agentId: number, keys: AgentKey[]) => void;
   renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
   sendMessage: (agentId: number, text: string) => void;
@@ -47,6 +56,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [sendable, setSendable] = useState<Record<number, boolean>>({});
   const [usage, setUsage] = useState<Record<number, AgentTokenUsage>>({});
   const [names, setNames] = useState<Record<number, string>>({});
+  const [screens, setScreens] = useState<Record<number, string[]>>({});
+  const [asking, setAsking] = useState<Record<number, boolean>>({});
+  const [canStartAgents, setCanStartAgents] = useState(false);
+  const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [pins, setPins] = useState<BoardPin[]>([]);
 
   useEffect(() => {
@@ -63,6 +76,15 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setUsage((prev) => ({ ...prev, [msg.id]: msg }));
       } else if (msg.type === 'agentRenamed') {
         setNames((prev) => ({ ...prev, [msg.id]: msg.name }));
+      } else if (msg.type === 'agentToolPermission') {
+        setAsking((prev) => ({ ...prev, [msg.id]: true }));
+      } else if (msg.type === 'agentToolPermissionClear' || msg.type === 'agentToolsClear') {
+        setAsking((prev) => (prev[msg.id] ? { ...prev, [msg.id]: false } : prev));
+      } else if (msg.type === 'agentScreen') {
+        setScreens((prev) => ({ ...prev, [msg.id]: msg.lines }));
+      } else if (msg.type === 'officeCapabilities') {
+        setCanStartAgents(msg.canStartAgents);
+        setRecentFolders(msg.recentFolders);
       } else if (msg.type === 'agentChatSendable') {
         setSendable((prev) => ({ ...prev, [msg.id]: msg.sendable }));
       } else if (msg.type === 'boardLoaded') {
@@ -80,6 +102,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setSendable(drop);
         setUsage(drop);
         setNames(drop);
+        setScreens(drop);
+        setAsking(drop);
       }
     });
   }, []);
@@ -114,6 +138,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'renameAgent', id: agentId, name });
   }, []);
 
+  const sendKeys = useCallback((agentId: number, keys: AgentKey[]) => {
+    transport.send({ type: 'sendAgentKeys', id: agentId, keys });
+  }, []);
+
   const removePin = useCallback((pinId: string) => {
     transport.send({ type: 'removeBoardPin', pinId });
   }, []);
@@ -125,6 +153,11 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     sendable,
     usage,
     names,
+    screens,
+    asking,
+    canStartAgents,
+    recentFolders,
+    sendKeys,
     renameAgent,
     pins,
     sendMessage,

@@ -13,6 +13,7 @@ import {
 } from './configPersistence.js';
 import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
+import type { OfficeSessions } from './officeSessions.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
@@ -60,6 +61,8 @@ export interface ClientMessageContext {
    * to false so a caller that forgets to pass it gets the safe answer.
    */
   privileged?: boolean;
+  /** Agents the office runs itself (standalone with node-pty). Absent where the host has terminals. */
+  officeSessions?: OfficeSessions;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -100,7 +103,8 @@ export function handleClientMessage(
       const agent = store.get(id);
       if (agent && runtime) {
         runtime.dismissalTracker.dismiss(agent.jsonlFile);
-        runtime.removeAgent(id);
+        // An agent the office runs is stopped, not just hidden.
+        if (!ctx.officeSessions?.stop(id)) runtime.removeAgent(id);
       }
       break;
     }
@@ -278,6 +282,33 @@ export function handleClientMessage(
 
     case 'cancelChatMessage':
       if (typeof msg.id === 'number') runtime?.chatSender.cancel(msg.id, msg.queueId);
+      break;
+
+    case 'startAgent': {
+      // Starts a program on this machine: same proof as typing into a terminal.
+      if (!ctx.privileged || !ctx.officeSessions) {
+        send({
+          type: 'startAgentResult',
+          ok: false,
+          error: ctx.officeSessions
+            ? 'Open the office from your private link to start agents.'
+            : 'This office cannot start agents.',
+        });
+        break;
+      }
+      const result = ctx.officeSessions.start({
+        cwd: msg.cwd as string,
+        name: typeof msg.name === 'string' ? msg.name : undefined,
+        command: typeof msg.command === 'string' ? msg.command : undefined,
+        firstMessage: typeof msg.firstMessage === 'string' ? msg.firstMessage : undefined,
+        skipPermissions: msg.skipPermissions === true,
+      });
+      send({ type: 'startAgentResult', ...result });
+      break;
+    }
+
+    case 'sendAgentKeys':
+      if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;
 
     case 'renameAgent':
@@ -546,4 +577,14 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
 
   // 9. Whiteboard + queued office messages.
   if (runtime) sendOfficeChatState(send, runtime);
+
+  // 10. What this office can do, and the screens of agents it runs.
+  send({
+    type: 'officeCapabilities',
+    canStartAgents: ctx.privileged === true && ctx.officeSessions?.available === true,
+    recentFolders: ctx.officeSessions?.recentFolders() ?? [],
+  });
+  for (const { id, lines } of ctx.officeSessions?.screens() ?? []) {
+    send({ type: 'agentScreen', id, lines });
+  }
 }

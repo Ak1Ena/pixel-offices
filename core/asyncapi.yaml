@@ -108,6 +108,10 @@ components:
         # Token usage + naming
         - $ref: '#/components/schemas/AgentTokenUsage'
         - $ref: '#/components/schemas/AgentRenamed'
+        # Agents the office runs itself
+        - $ref: '#/components/schemas/OfficeCapabilities'
+        - $ref: '#/components/schemas/AgentScreen'
+        - $ref: '#/components/schemas/StartAgentResult'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         # Layout
@@ -159,6 +163,8 @@ components:
         - $ref: '#/components/schemas/SaveBoardPin'
         - $ref: '#/components/schemas/RemoveBoardPin'
         - $ref: '#/components/schemas/RenameAgent'
+        - $ref: '#/components/schemas/StartAgent'
+        - $ref: '#/components/schemas/SendAgentKeys'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -573,6 +579,57 @@ components:
         id:
           type: integer
         name:
+          type: string
+
+    OfficeCapabilities:
+      description: |
+        What this office can do beyond watching. `canStartAgents` is true when
+        the server can run Claude itself (standalone with node-pty); the
+        client then offers + Agent. Sent during the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, canStartAgents, recentFolders]
+      properties:
+        type:
+          const: officeCapabilities
+        canStartAgents:
+          type: boolean
+        recentFolders:
+          type: array
+          items:
+            type: string
+
+    AgentScreen:
+      description: |
+        The visible terminal screen of an agent the office runs itself, as
+        plain text lines (no colors). Such an agent has no terminal window, so
+        this is how its on-screen questions (trust this folder, permission
+        prompts) are seen and answered (sendAgentKeys). Sent when it changes,
+        at most about once a second.
+      type: object
+      additionalProperties: false
+      required: [type, id, lines]
+      properties:
+        type:
+          const: agentScreen
+        id:
+          type: integer
+        lines:
+          type: array
+          items:
+            type: string
+
+    StartAgentResult:
+      description: Reply to startAgent, sent only to the requesting client.
+      type: object
+      additionalProperties: false
+      required: [type, ok]
+      properties:
+        type:
+          const: startAgentResult
+        ok:
+          type: boolean
+        error:
           type: string
 
     BoardLoaded:
@@ -1277,7 +1334,51 @@ components:
         name:
           type: string
 
+    StartAgent:
+      description: |
+        Start Claude in `cwd` as an agent the office runs itself (no terminal
+        window; its chat card is the interface). Privileged: it starts a
+        program on the machine. `command` is `claude` by default; it may be a
+        shell alias or carry flags, but must run Claude.
+      type: object
+      additionalProperties: false
+      required: [type, cwd]
+      properties:
+        type:
+          const: startAgent
+        cwd:
+          type: string
+        name:
+          type: string
+        command:
+          type: string
+        firstMessage:
+          type: string
+        skipPermissions:
+          type: boolean
+
+    SendAgentKeys:
+      description: |
+        Press keys in the terminal of an agent the office runs itself, to
+        answer an on-screen question. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, keys]
+      properties:
+        type:
+          const: sendAgentKeys
+        id:
+          type: integer
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentKey'
+
     # ── Supporting schemas ─────────────────────────────────────────
+
+    AgentKey:
+      type: string
+      enum: [enter, escape, up, down, tab, '1', '2', '3', y, n]
 
     ChatEntry:
       type: object

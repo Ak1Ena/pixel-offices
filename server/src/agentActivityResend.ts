@@ -70,6 +70,9 @@ export function resendAgentActivity(
       });
     }
 
+    // 3b. A pending permission prompt / on-screen question
+    if (agent.permissionSent) send({ type: 'agentToolPermission', id });
+
     // 4. Waiting status
     if (agent.isWaiting) {
       send({

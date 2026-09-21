@@ -30,7 +30,8 @@ import { typePrompt } from './terminalTyping.js';
  */
 
 /** The slice of node-pty the launcher uses. */
-interface Pty {
+export interface Pty {
+  kill(signal?: string): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   onData(listener: (data: string) => void): void;
@@ -197,7 +198,10 @@ const ALIAS_DEPTH_LIMIT = 3;
  * so invisible to a direct spawn). Returns the expanded command, or null when
  * it is not an alias. Follows aliases of aliases a few levels deep.
  */
-function expandAlias(program: string, args: string[]): { program: string; args: string[] } | null {
+export function expandAlias(
+  program: string,
+  args: string[],
+): { program: string; args: string[] } | null {
   let current = { program, args };
   let expanded = false;
   for (let depth = 0; depth < ALIAS_DEPTH_LIMIT; depth++) {
@@ -244,7 +248,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function loadPty(): PtyModule | null {
+export function loadPty(): PtyModule | null {
   try {
     const pty = require('node-pty') as PtyModule;
     // node-pty's prebuilt spawn-helper ships without its execute bit on some

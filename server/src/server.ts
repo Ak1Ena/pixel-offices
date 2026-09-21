@@ -20,6 +20,7 @@ import {
 } from './constants.js';
 import { createHttpServer } from './httpServer.js';
 import type { LauncherHub } from './launcherHub.js';
+import type { OfficeSessions } from './officeSessions.js';
 import type { ServerConfig } from './serverConfig.js';
 import { isServerConfig, isServerTarget } from './serverConfig.js';
 
@@ -73,6 +74,7 @@ export class PixelAgentsServer {
     onReloadAssets?: ReloadAssetsSideEffect;
     launchers?: LauncherHub;
     onLauncherPoll?: (sessionId: string, cwd: string) => void;
+    officeSessions?: OfficeSessions;
     getBoardPins?: () => BoardPin[];
     saveBoardPin?: (pin: BoardPin) => boolean;
   }): Promise<ServerConfig> {
@@ -114,6 +116,7 @@ export class PixelAgentsServer {
       onReloadAssets: options?.onReloadAssets,
       launchers: options?.launchers,
       onLauncherPoll: options?.onLauncherPoll,
+      officeSessions: options?.officeSessions,
       getBoardPins: options?.getBoardPins,
       saveBoardPin: options?.saveBoardPin,
     });

@@ -30,6 +30,7 @@ import {
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { runLauncher } from './launcher.js';
+import { OfficeSessions } from './officeSessions.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { PixelAgentsServer } from './server.js';
 
@@ -204,6 +205,7 @@ async function main(): Promise<void> {
 
   // ── Create server ──
   const server = new PixelAgentsServer();
+  let disposeOfficeSessions = (): void => {};
 
   try {
     // Create runtime first (before server.start, so we can pass it in)
@@ -291,6 +293,16 @@ async function main(): Promise<void> {
       console.log('[Pixel Agents] Assets reloaded (external directory change)');
     };
 
+    // Agents the office runs itself (+ Agent in the browser).
+    const officeSessions = new OfficeSessions(store, {
+      adoptLaunchedSession: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
+      renameAgent: (id, name) => runtime.renameAgent(id, name),
+      removeAgent: (id) => runtime.removeAgent(id),
+      refreshSendable: () => runtime.chatSender.refreshSendable(),
+    });
+    runtime.chatSender.addWriter(officeSessions.writer);
+    disposeOfficeSessions = () => officeSessions.dispose();
+
     const config = await server.start({
       store,
       runtime,
@@ -303,6 +315,7 @@ async function main(): Promise<void> {
       onReloadAssets,
       launchers: runtime.launchers,
       onLauncherPoll: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
+      officeSessions,
       getBoardPins: () => runtime.board.getPins(),
       saveBoardPin: (pin) => runtime.board.savePin(pin),
     });
@@ -393,6 +406,7 @@ async function main(): Promise<void> {
     // ── Graceful shutdown ──
     function shutdown(): void {
       console.log('\nShutting down...');
+      disposeOfficeSessions();
       runtime.dispose();
       server.stop();
       process.exit(0);
