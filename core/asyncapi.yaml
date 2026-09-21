@@ -1486,6 +1486,11 @@ components:
           $ref: '#/components/schemas/DeskTaskPriority'
         folder:
           type: string
+        draft:
+          type: boolean
+          description: |
+            New cards only: keep it as a draft. No agent looks at a draft until
+            the human sends it to the desk (`deskTaskAction: publish`).
 
     RemoveDeskTask:
       description: Remove a card from the task desk. Privileged.
@@ -1500,7 +1505,8 @@ components:
 
     DeskTaskAction:
       description: |
-        The human's call on a card. Privileged. `verified`, `do` and `rejected`
+        The human's call on a card. Privileged. `publish` sends a draft to the
+        desk. `verified`, `do` and `rejected`
         answer an agent's brief; `accept` and `sendBack` answer a finished
         result. `rejected` and `sendBack` need a `note`. `answers` are the
         replies to the brief's questions, by position. `subtasks` replaces the
@@ -1942,11 +1948,11 @@ components:
 
     DeskTaskState:
       type: string
-      enum: [inbox, looking, brief, ready, working, result, done]
+      enum: [draft, inbox, looking, brief, ready, working, result, done]
 
     DeskHumanAction:
       type: string
-      enum: [verified, do, rejected, accept, sendBack]
+      enum: [publish, verified, do, rejected, accept, sendBack]
 
     DeskAgent:
       description: What the task desk knows about one agent.

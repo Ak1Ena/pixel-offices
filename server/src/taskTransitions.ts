@@ -20,7 +20,7 @@ import {
  * looks like afterwards. Each function returns a new card or an error — the
  * input is never mutated.
  *
- *   inbox → looking → brief → ready → working → result → done
+ *   draft → inbox → looking → brief → ready → working → result → done
  *                       ↑        │ rejected (round + 1)
  *                       └────────┘
  */
@@ -71,6 +71,9 @@ export function applyHumanCall(task: DeskTask, call: HumanCall, at: string): Tra
   const waitingOnBrief = task.state === 'brief' || task.state === 'ready';
 
   switch (call.action) {
+    case 'publish':
+      if (task.state !== 'draft') return fail('Only a draft can be sent to the desk.');
+      return { ok: true, task: { ...task, state: 'inbox' } };
     case 'verified':
       if (task.state !== 'brief') return fail('Only a card with a new brief can be verified.');
       return {

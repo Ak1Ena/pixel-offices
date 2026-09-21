@@ -158,6 +158,46 @@ describe('who gets a card', () => {
     t.desk.dispose();
   });
 
+  it('a draft stays off the desk until it is sent, and can be edited meanwhile', async () => {
+    const t = setup();
+    t.addAgent(1);
+    const made = await t.desk.saveTask({
+      kind: 'task',
+      title: 'idea',
+      body: '',
+      priority: 'p2',
+      folder: OTHER,
+      draft: true,
+    });
+    if (!made.ok) throw new Error(made.error);
+    await t.desk.tick();
+    expect(t.card(made.value).value.state).toBe('draft');
+    expect(t.sent).toEqual([]);
+
+    // Still a draft after an edit — and the folder can still change.
+    const edited = await t.desk.saveTask({
+      taskId: made.value.id,
+      kind: 'issue',
+      title: 'better idea',
+      body: 'b',
+      priority: 'p1',
+      folder: REPO,
+    });
+    expect(edited.ok && edited.value).toMatchObject({
+      state: 'draft',
+      title: 'better idea',
+      kind: 'issue',
+      folder: { root: REPO },
+    });
+    expect(t.desk.humanCall(made.value.id, { action: 'do' }).ok).toBe(false);
+
+    expect(t.desk.humanCall(made.value.id, { action: 'publish' }).ok).toBe(true);
+    await t.desk.tick();
+    expect(t.card(made.value).value).toMatchObject({ state: 'looking', claimedBy: 1 });
+    expect(t.desk.humanCall(made.value.id, { action: 'publish' }).ok).toBe(false);
+    t.desk.dispose();
+  });
+
   it('refuses a card for a folder that does not exist', async () => {
     const t = setup();
     const reply = await t.desk.saveTask({

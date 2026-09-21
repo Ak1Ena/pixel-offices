@@ -16,6 +16,10 @@ export interface NewCard {
   body: string;
   priority: DeskTaskPriority;
   folder: string;
+  /** Editing: the card to change. Absent for a new card. */
+  taskId?: string;
+  /** New cards only: keep it off the desk until it is sent. */
+  draft?: boolean;
 }
 
 export interface TaskDeskState {
@@ -23,7 +27,8 @@ export interface TaskDeskState {
   agents: DeskAgent[];
   /** Why the server refused the latest request, until the next one goes out. */
   notice: string | null;
-  addCard: (card: NewCard) => void;
+  /** Add a card, or (with `taskId`) edit one. */
+  saveCard: (card: NewCard) => void;
   removeCard: (taskId: string) => void;
   call: (
     taskId: string,
@@ -56,7 +61,7 @@ export function useTaskDesk(): TaskDeskState {
     });
   }, []);
 
-  const addCard = useCallback((card: NewCard) => {
+  const saveCard = useCallback((card: NewCard) => {
     setNotice(null);
     transport.send({ type: 'saveDeskTask', ...card });
   }, []);
@@ -76,5 +81,5 @@ export function useTaskDesk(): TaskDeskState {
     transport.send({ type: 'setAgentPickup', id: agentId, enabled });
   }, []);
 
-  return { tasks, agents, notice, addCard, removeCard, call, setAllow, setPickup };
+  return { tasks, agents, notice, saveCard, removeCard, call, setAllow, setPickup };
 }

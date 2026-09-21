@@ -400,7 +400,8 @@ export interface DeskFolder {
   subPath?: string;
 }
 
-export type DeskTaskState = 'inbox' | 'looking' | 'brief' | 'ready' | 'working' | 'result' | 'done';
+export type DeskTaskState =
+  'draft' | 'inbox' | 'looking' | 'brief' | 'ready' | 'working' | 'result' | 'done';
 
 export interface DeskBrief {
   by: string;
@@ -730,6 +731,7 @@ export interface SaveDeskTask {
   body: string;
   priority: DeskTaskPriority;
   folder: string;
+  draft?: boolean;
 }
 
 export interface RemoveDeskTask {
@@ -746,7 +748,7 @@ export interface DeskTaskAction {
   subtasks?: DeskSubtask[];
 }
 
-export type DeskHumanAction = 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack';
+export type DeskHumanAction = 'publish' | 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack';
 
 export interface SetDeskTaskAllow {
   type: 'setDeskTaskAllow';

@@ -151,6 +151,7 @@ export class TaskDesk {
     body: unknown;
     priority: unknown;
     folder: unknown;
+    draft?: unknown;
   }): Promise<DeskReply> {
     const existing = input.taskId === undefined ? undefined : this.cards.find(input.taskId);
     if (input.taskId !== undefined && !existing) return { ok: false, error: NO_CARD };
@@ -162,7 +163,7 @@ export class TaskDesk {
     }
 
     let folder = existing?.folder;
-    if (!existing || existing.state === 'inbox') {
+    if (!existing || existing.state === 'inbox' || existing.state === 'draft') {
       const resolved =
         typeof input.folder === 'string' ? await this.resolveRoot(input.folder) : null;
       if (!resolved) return { ok: false, error: 'That folder does not exist on this computer.' };
@@ -170,7 +171,7 @@ export class TaskDesk {
     }
 
     if (!existing) {
-      const created = this.cards.create({ ...input, folder: folder! });
+      const created = this.cards.create({ ...input, folder: folder!, draft: input.draft === true });
       if (!created)
         return {
           ok: false,

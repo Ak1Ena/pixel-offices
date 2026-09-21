@@ -48,6 +48,7 @@ import {
 const KINDS: ReadonlySet<string> = new Set<DeskTaskKind>(['task', 'issue', 'feature']);
 const PRIORITIES: ReadonlySet<string> = new Set<DeskTaskPriority>(['p1', 'p2']);
 const STATES: ReadonlySet<string> = new Set<DeskTaskState>([
+  'draft',
   'inbox',
   'looking',
   'brief',
@@ -247,6 +248,8 @@ export interface NewTaskInput {
   body: unknown;
   priority: unknown;
   folder: DeskFolder;
+  /** Keep it off the desk: no agent looks at a draft until the human sends it. */
+  draft?: boolean;
 }
 
 function parseFile(raw: string): { tasks: DeskTask[]; nextNum: number } {
@@ -306,7 +309,7 @@ export class TaskStore {
       priority: input.priority,
       folder: input.folder,
       allow: [],
-      state: 'inbox',
+      state: input.draft === true ? 'draft' : 'inbox',
       round: 1,
       briefs: [],
       log: [],
@@ -389,7 +392,7 @@ export class TaskStore {
       '',
     ];
     for (const task of this.tasks) {
-      if (task.state === 'done') continue;
+      if (task.state === 'done' || task.state === 'draft') continue; // drafts are the human's own notes
       lines.push(
         `## #${task.num} ${task.title}`,
         `- kind: ${task.kind}, priority: ${task.priority}, state: ${task.state}`,

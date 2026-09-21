@@ -403,6 +403,8 @@ export const PERMISSION_PROMPTS_Z_INDEX = 60;
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;
+/** Narrowest a column of the full board gets before the board scrolls sideways. */
+export const TASK_DESK_COLUMN_MIN_PX = 230;
 export const TASK_TITLE_MAX_CHARS = 120;
 export const TASK_BODY_MAX_CHARS = 4000;
 export const TASK_NOTE_MAX_CHARS = 2000;
