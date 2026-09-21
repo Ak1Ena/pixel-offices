@@ -312,3 +312,23 @@ export const PET_THUMB_SCALE_MARGIN = 0.85;
 export const EMPTY_SPRITE_THUMBNAIL_BG = '#333';
 /** Maximum string length for a PlacedPet.id (defends against pathologically-long layout entries). */
 export const MAX_PET_ID_LENGTH = 128;
+
+// ── Office chat + whiteboard ────────────────────────────────
+/** Width of the chat card anchored next to a character (CSS px). */
+export const CHAT_CARD_WIDTH_PX = 440;
+/** Height of the chat card (CSS px). */
+export const CHAT_CARD_HEIGHT_PX = 520;
+/** Horizontal gap between the character and the chat card's tail (CSS px). */
+export const CHAT_CARD_GAP_PX = 36;
+/** Margin the chat card keeps from the panel edges (CSS px). */
+export const CHAT_CARD_EDGE_MARGIN_PX = 8;
+/** Width of the open whiteboard rail (CSS px). */
+export const WHITEBOARD_RAIL_WIDTH_PX = 320;
+/** How far above the character's feet a message preview bubble sits (world px). */
+export const CHAT_PEEK_VERTICAL_OFFSET = 44;
+/** Longest preview shown in a message bubble above a character. */
+export const CHAT_PEEK_MAX_CHARS = 80;
+/** Entries kept per agent in the webview (matches the server's history cap). */
+export const CHAT_CLIENT_HISTORY_LIMIT = 200;
+/** DataTransfer type carrying a whiteboard pin id while it is dragged. */
+export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';

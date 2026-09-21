@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toMajorMinor } from './changelogData.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { ChatCard } from './components/ChatCard.js';
+import { ChatPeekBubbles } from './components/ChatPeekBubbles.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { EditActionBar } from './components/EditActionBar.js';
@@ -12,11 +14,13 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
+import { WhiteboardRail } from './components/WhiteboardRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
+import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -27,6 +31,7 @@ import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout } from './office/types.js';
+import { composeMessage, pinsForAgent } from './officeChat.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
@@ -47,6 +52,25 @@ function getOfficeState(): OfficeState {
   return officeStateRef.current;
 }
 
+/** How a session is named in its chat card, the whiteboard and pin scopes. */
+function agentLabel(id: number): string {
+  const ch = getOfficeState().characters.get(id);
+  if (ch?.agentName) return ch.agentName;
+  if (ch?.folderName) return `${ch.folderName} #${id}`;
+  return `Agent #${id}`;
+}
+
+/** Why the office can't type into this session, or null when it can. */
+function chatReadOnlyReason(id: number): string | null {
+  if (isBrowserRuntime) {
+    return 'The standalone office has no terminals to type into. Reply from the terminal where it started.';
+  }
+  const ch = getOfficeState().characters.get(id);
+  if (ch?.isHeadless) return 'You can read along here. Reply from the terminal where it started.';
+  if (ch?.agentName && !ch.isTeamLead) return 'Teammates take their instructions from their lead.';
+  return null;
+}
+
 function App() {
   // Browser runtime (dev or static dist): dispatch mock messages after the
   // useExtensionMessages listener has been registered.
@@ -65,6 +89,13 @@ function App() {
     () => editor.isEditMode && editor.isDirty,
     [editor.isEditMode, editor.isDirty],
   );
+
+  // Office chat + whiteboard. Registered before useExtensionMessages so its
+  // listener is in place when that hook sends webviewReady.
+  const [chatAgentId, setChatAgentId] = useState<number | null>(null);
+  const [isBoardOpen, setIsBoardOpen] = useState(false);
+  const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
+  const chat = useOfficeChat(chatAgentId);
 
   const {
     agents,
@@ -232,13 +263,56 @@ function App() {
     transport.send({ type: 'closeAgent', id });
   }, []);
 
+  // Clicking a character opens its session's chat (a sub-agent's is its
+  // parent's); clicking it again, which deselects it, closes the chat.
   const handleClick = useCallback((agentId: number) => {
-    // If clicked agent is a sub-agent, focus the parent's terminal instead
     const os = getOfficeState();
     const meta = os.subagentMeta.get(agentId);
-    const focusId = meta ? meta.parentAgentId : agentId;
-    transport.send({ type: 'focusAgent', id: focusId });
+    const chatId = meta ? meta.parentAgentId : agentId;
+    setChatAgentId(os.selectedAgentId === agentId ? chatId : null);
   }, []);
+
+  const openChat = useCallback((agentId: number) => {
+    const os = getOfficeState();
+    os.selectedAgentId = agentId;
+    os.cameraFollowId = agentId;
+    setChatAgentId(agentId);
+  }, []);
+
+  const closeChat = useCallback(() => {
+    const os = getOfficeState();
+    os.selectedAgentId = null;
+    os.cameraFollowId = null;
+    setChatAgentId(null);
+  }, []);
+
+  // A closed agent takes its chat card with it.
+  useEffect(() => {
+    if (chatAgentId !== null && !agents.includes(chatAgentId)) setChatAgentId(null);
+  }, [agents, chatAgentId]);
+
+  const attachPin = useCallback((agentId: number, pinId: string) => {
+    setAttachedPinIds((prev) => {
+      const current = prev[agentId] ?? [];
+      return current.includes(pinId) ? prev : { ...prev, [agentId]: [...current, pinId] };
+    });
+  }, []);
+
+  const detachPin = useCallback((agentId: number, pinId: string) => {
+    setAttachedPinIds((prev) => ({
+      ...prev,
+      [agentId]: (prev[agentId] ?? []).filter((id) => id !== pinId),
+    }));
+  }, []);
+
+  // A pin dropped on a character opens its chat with the pin attached.
+  const handlePinDrop = useCallback(
+    (agentId: number, pinId: string) => {
+      attachPin(agentId, pinId);
+      openChat(agentId);
+    },
+    [attachPin, openChat],
+  );
 
   const officeState = getOfficeState();
 
@@ -350,6 +424,7 @@ function App() {
         panRef={editor.panRef}
         showAreas={effectiveShowAreas}
         activeAreaLabel={activeAreaLabel}
+        onPinDrop={handlePinDrop}
       />
 
       {!isDebugMode ? (
@@ -437,6 +512,82 @@ function App() {
             onCloseAgent={handleCloseAgent}
             alwaysShowOverlay={alwaysShowOverlay}
           />
+
+          {!editor.isEditMode && (
+            <ChatPeekBubbles
+              officeState={officeState}
+              agents={agents}
+              chats={chat.chats}
+              unread={chat.unread}
+              openAgentId={chatAgentId}
+              containerRef={containerRef}
+              zoom={editor.zoom}
+              panRef={editor.panRef}
+              onOpen={openChat}
+            />
+          )}
+
+          {chatAgentId !== null &&
+            !editor.isEditMode &&
+            (() => {
+              const id = chatAgentId;
+              const attached = (attachedPinIds[id] ?? [])
+                .map((pinId) => chat.pins.find((p) => p.id === pinId))
+                .filter((p) => p !== undefined);
+              const needsApproval =
+                (agentTools[id]?.some((t) => t.permissionWait && !t.done) ?? false) ||
+                officeState.characters.get(id)?.bubbleType === 'permission';
+              return (
+                <ChatCard
+                  key={id}
+                  agentId={id}
+                  title={agentLabel(id)}
+                  officeState={officeState}
+                  containerRef={containerRef}
+                  zoom={editor.zoom}
+                  panRef={editor.panRef}
+                  entries={chat.chats[id] ?? []}
+                  queue={chat.queues[id]}
+                  readOnlyReason={chatReadOnlyReason(id)}
+                  needsApproval={needsApproval}
+                  attachedPins={attached}
+                  onAttachPin={(pinId) => attachPin(id, pinId)}
+                  onDetachPin={(pinId) => detachPin(id, pinId)}
+                  onSend={(text) => {
+                    const message = composeMessage(text, attached);
+                    if (!message) return;
+                    chat.sendMessage(id, message);
+                    setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
+                  }}
+                  onCancel={(queueId) => chat.cancelMessage(id, queueId)}
+                  onClose={closeChat}
+                  onOpenTerminal={
+                    isBrowserRuntime ? undefined : () => transport.send({ type: 'focusAgent', id })
+                  }
+                />
+              );
+            })()}
+
+          {!editor.isEditMode && (
+            <WhiteboardRail
+              isOpen={isBoardOpen}
+              onToggle={() => setIsBoardOpen((v) => !v)}
+              pins={chatAgentId === null ? chat.pins : pinsForAgent(chat.pins, chatAgentId)}
+              agents={agents
+                .filter((id) => !officeState.characters.get(id)?.isSubagent)
+                .map((id) => ({ id, label: agentLabel(id) }))}
+              chatAgentLabel={
+                chatAgentId !== null && chatReadOnlyReason(chatAgentId) === null
+                  ? agentLabel(chatAgentId)
+                  : null
+              }
+              onAttach={(pinId) => {
+                if (chatAgentId !== null) attachPin(chatAgentId, pinId);
+              }}
+              onSave={chat.savePin}
+              onRemove={chat.removePin}
+            />
+          )}
         </>
       ) : (
         <DebugView
@@ -517,6 +668,8 @@ function App() {
         onToggleEditMode={editor.handleToggleEditMode}
         isSettingsOpen={isSettingsOpen}
         onToggleSettings={() => setIsSettingsOpen((v) => !v)}
+        isBoardOpen={isBoardOpen}
+        onToggleBoard={() => setIsBoardOpen((v) => !v)}
         workspaceFolders={workspaceFolders}
       />
 

@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 
 import type { StateAdapter } from '../../core/src/adapter.js';
 import type { HookProvider } from '../../core/src/provider.js';
+import { sendOfficeChatState } from '../../server/src/agentActivityResend.js';
 import { buildAgentDiagnostics } from '../../server/src/agentDiagnostics.js';
 import { AgentRuntime } from '../../server/src/agentRuntime.js';
 import { AgentStateStore } from '../../server/src/agentStateStore.js';
@@ -61,6 +62,7 @@ import {
   sendLayout,
 } from './agentManager.js';
 import {
+  CHAT_SUBMIT_DELAY_MS,
   CONFIG_KEY_AUTO_SHOW_PANEL,
   CONFIG_KEY_AUTO_SPAWN_AGENT,
   GLOBAL_KEY_ALWAYS_SHOW_LABELS,
@@ -180,6 +182,12 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
 
     // Create shared runtime (owns timer Maps, scanners, hook handler, dismissal tracker)
     this.runtime = new AgentRuntime(this.store, claudeProvider);
+    // Office chat types into the terminals this extension owns. Headless and
+    // external agents have none, so they stay read-only.
+    this.runtime.chatSender.setWriter({
+      canWrite: (agent) => !!agent.terminalRef && !agent.isExternal,
+      write: (agent, text) => typeIntoTerminal(agent.terminalRef!, text),
+    });
 
     this.initServer();
   }
@@ -209,6 +217,13 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       this.pendingBroadcasts.shift();
     }
     this.pendingBroadcasts.push(message);
+  }
+
+  /** Whiteboard + queued office messages, sent at the end of the handshake. */
+  private sendOfficeChatState(): void {
+    const wv = this.webview;
+    if (!wv) return;
+    sendOfficeChatState((msg) => void wv.postMessage(msg), this.runtime);
   }
 
   private initServer(): void {
@@ -454,6 +469,15 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             }
           }
         }
+      } else if (message.type === 'sendChatMessage') {
+        // The VS Code webview is privileged by construction (our own iframe).
+        this.runtime.chatSender.send(message.id, message.text);
+      } else if (message.type === 'cancelChatMessage') {
+        this.runtime.chatSender.cancel(message.id, message.queueId);
+      } else if (message.type === 'saveBoardPin') {
+        this.runtime.board.savePin(message.pin);
+      } else if (message.type === 'removeBoardPin') {
+        this.runtime.board.removePin(message.pinId);
       } else if (message.type === 'closeAgent') {
         const agent = this.store.get(message.id);
         if (agent) {
@@ -762,6 +786,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
                 sendLayout(this.webview, this.defaultLayout);
                 // Send agent statuses AFTER layoutLoaded so characters exist when messages arrive
                 sendCurrentAgentStatuses(this.store, this.webview);
+                this.sendOfficeChatState();
                 this.startLayoutWatcher();
               }
               return;
@@ -826,6 +851,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
             sendLayout(this.webview, this.defaultLayout);
             // Send agent statuses AFTER layoutLoaded so characters exist when messages arrive
             sendCurrentAgentStatuses(this.store, this.webview);
+            this.sendOfficeChatState();
             this.startLayoutWatcher();
           }
         })();
@@ -1060,4 +1086,14 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
   });
 
   return html;
+}
+
+/**
+ * Type an office chat message into Claude's prompt and submit it. Wrapped in a
+ * bracketed paste so newlines stay inside the one message instead of each
+ * submitting a line; Enter goes separately, after the paste lands.
+ */
+function typeIntoTerminal(terminal: vscode.Terminal, text: string): void {
+  terminal.sendText(`\x1b[200~${text}\x1b[201~`, false);
+  setTimeout(() => terminal.sendText('\r', false), CHAT_SUBMIT_DELAY_MS);
 }

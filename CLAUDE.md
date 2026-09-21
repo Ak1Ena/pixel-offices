@@ -51,9 +51,12 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     timerManager.ts                  Waiting / permission timers
     assetLoader.ts                   PNG → SpriteData via pngjs
     teamUtils.ts                     isInlineTeammateOf, getInlineTeammates, hasInlineTeammates
+    chatLog.ts                       Session chat: transcript records → bounded per-agent log, upserting agentChatEntry, tail seed
+    chatSender.ts                    Office → terminal messages: per-agent queue, held mid-turn and ALWAYS during a permission prompt
+    boardStore.ts                    Whiteboard pins: ~/.pixel-agents/board.json, validated + bounded, polled across windows
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
-  __tests__/                         28 Vitest files
+  __tests__/                         30 Vitest files
   manual-hook-events.http            Manual hook testing helper (REST-Client format)
 
 adapters/vscode/                     VS Code surface — composes core + server
@@ -117,6 +120,11 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
       components/
         OfficeCanvas.tsx             Canvas, resize, DPR, mouse hit-testing, drag-to-move
         ToolOverlay.tsx              Activity label above hovered/selected character
+    officeChat.ts                    Pure chat/whiteboard helpers (pin → prompt text, entry upsert, preview)
+    hooks/useOfficeChat.ts           Chat + queue + board state (own transport listener)
+    components/ChatCard.tsx          Chat card anchored beside a character (click to open)
+    components/ChatPeekBubbles.tsx   Unread-reply previews above characters
+    components/WhiteboardRail.tsx    Right-edge whiteboard: pins, add form, drag onto characters/chat
 
 e2e/                                 Playwright suite (real VS Code + mock-claude scenarios)
   playwright.config.ts
@@ -196,8 +204,8 @@ Adding a new CLI integration is one subdirectory under `server/src/providers/hoo
 
 `core/asyncapi.yaml` is the contract. Pinned to **3.0.0** because `@asyncapi/modelina@5.10.1` declares `supportedVersions: ['3.0.0']` only; bumping to 3.1.0 produces `export type Root = any`. Revisit when Modelina ships 3.1.0 support.
 
-- **27 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, assets, settings + workspace, diagnostics.
-- **18 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
+- **35 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, session chat (`agentChatEntry`, `agentChatHistory`, `agentChatQueue`), whiteboard (`boardLoaded`), assets, settings + workspace, diagnostics.
+- **26 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), chat (`sendChatMessage` — privileged, `cancelChatMessage`), whiteboard (`saveBoardPin`, `removeBoardPin`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
 
 Both unions use `oneOf` with `discriminator: type`. Every concrete message sets `additionalProperties: false`.
 
@@ -372,6 +380,13 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **The window comes from the provider**, not from the runtime: `HookProvider.contextWindowForModel(model)` (Claude: 1M for the current line, 200k for Haiku and the older models, `undefined` for ids it can't place). Transcripts state usage but never the limit, and guessing 200k for a 1M model reads five times too full. `widenContextWindow` is the backstop for unrecognized models and unknown-larger windows — it only ever widens, since a context that doesn't fit disproves the assumption while a shrinking one proves nothing.
 - **`seedContextUsage` runs once per agent in `startFileWatching`** — the single seam every watched agent passes through. Agents adopted or restored mid-session start at end-of-file, so without a tail read they'd have no gauge until their next turn.
 - Sub-agents get no gauge: no session of their own, and the shadow store never forwards `agentContextUsage`.
+
+## Office Chat + Whiteboard
+
+- **Chat comes from the transcript**, never from a hook: `recordChat` runs inside `processTranscriptLine` (both modes read the JSONL), so `UserPromptSubmit` stays uninstalled. User prompts, assistant text and tool rows become `ChatEntry`s; a tool row is re-sent with `toolDone` (upsert by `entryId`). Harness-written user text (`<local-command-…>`, `<system-reminder>`, `Caveat:` …) is hidden; slash commands show as `/name args`. Sidechain latch mirrors the context gauge. `seedChatHistory` (in `startFileWatching`) replays the tail BEFORE `fileOffset` once, so nothing shows twice. Hooks-only agents have no chat.
+- **Sending types into the terminal** (`ChatSender`, owned by `AgentRuntime`, host supplies a `TerminalWriter`). Only VS Code provides one: `terminalRef` agents that aren't external; bracketed paste + Enter after `CHAT_SUBMIT_DELAY_MS`; control characters stripped. Standalone, headless and teammate sessions are read-only. Queue holds while the agent is mid-turn and **always while `permissionSent`** — the Enter would answer the permission prompt. `sendChatMessage` needs `ctx.privileged`. Office-typed prompts are tagged `source: 'office'` by matching text (`pendingOfficeTexts`).
+- **Whiteboard** (`runtime.board`, created lazily): pins `{id, kind: link|file|snippet|note, title, value, scope: agentIds (empty = all)}`; every change broadcasts `boardLoaded`. Attaching a pin prefixes the message text (`@path`, `title: url`, fenced snippet, note) — agents need nothing new. Permission Allow/Deny from the chat is NOT implemented (the hook is fire-and-forget); the card offers "Terminal".
+- Clicking a character opens its chat (a sub-agent opens its parent's); "Terminal" in the card is what `focusAgent` used to be on click.
 
 ## Office UI
 

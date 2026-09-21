@@ -12,6 +12,8 @@ interface BottomToolbarProps {
   onToggleEditMode: () => void;
   isSettingsOpen: boolean;
   onToggleSettings: () => void;
+  isBoardOpen: boolean;
+  onToggleBoard: () => void;
   workspaceFolders: WorkspaceFolder[];
 }
 
@@ -21,6 +23,8 @@ export function BottomToolbar({
   onToggleEditMode,
   isSettingsOpen,
   onToggleSettings,
+  isBoardOpen,
+  onToggleBoard,
   workspaceFolders,
 }: BottomToolbarProps) {
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -126,6 +130,13 @@ export function BottomToolbar({
         title="Edit office layout"
       >
         Layout
+      </Button>
+      <Button
+        variant={isBoardOpen ? 'active' : 'default'}
+        onClick={onToggleBoard}
+        title="Whiteboard: resources shared by every session"
+      >
+        Board
       </Button>
       <Button
         variant={isSettingsOpen ? 'active' : 'default'}

@@ -37,6 +37,19 @@
   --color-status-success: #89d185;
   --color-status-error: var(--color-danger);
 
+  /* Office chat + whiteboard */
+  --color-chat-office: #2c2b6d;
+  --color-chat-tool: #16161f;
+  --color-chat-permission: #2a2410;
+  --color-board: #e9e5d8;
+  --color-board-edge: #8a8aa6;
+  --color-board-ink: #1e1e2e;
+  --color-board-ink-muted: #3a3a4a;
+  --color-pin-link: #d8d4ff;
+  --color-pin-file: #c6efc6;
+  --color-pin-snippet: #cfe3ff;
+  --color-pin-note: #ffd966;
+
   /* Shadow */
   --shadow-pixel: 2px 2px 0px #0a0a14;
 
@@ -83,6 +96,17 @@
   --color-status-active: var(--color-status-active);
   --color-status-success: var(--color-status-success);
   --color-status-error: var(--color-status-error);
+  --color-chat-office: var(--color-chat-office);
+  --color-chat-tool: var(--color-chat-tool);
+  --color-chat-permission: var(--color-chat-permission);
+  --color-board: var(--color-board);
+  --color-board-edge: var(--color-board-edge);
+  --color-board-ink: var(--color-board-ink);
+  --color-board-ink-muted: var(--color-board-ink-muted);
+  --color-pin-link: var(--color-pin-link);
+  --color-pin-file: var(--color-pin-file);
+  --color-pin-snippet: var(--color-pin-snippet);
+  --color-pin-note: var(--color-pin-note);
 
   /* Shadow */
   --shadow-pixel: var(--shadow-pixel);

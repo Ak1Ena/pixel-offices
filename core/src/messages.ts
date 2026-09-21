@@ -25,6 +25,10 @@ export type ServerMessage =
   | SubagentToolPermission
   | AgentTeamInfo
   | AgentContextUsage
+  | AgentChatEntry
+  | AgentChatHistory
+  | AgentChatQueue
+  | BoardLoaded
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -62,7 +66,11 @@ export type ClientMessage =
   | RemoveExternalAssetDirectory
   | SaveAreaMappings
   | SetShowAreas
-  | RequestDiagnostics;
+  | RequestDiagnostics
+  | SendChatMessage
+  | CancelChatMessage
+  | SaveBoardPin
+  | RemoveBoardPin;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -187,6 +195,59 @@ export interface AgentContextUsage {
   contextTokens: number;
   maxContextTokens: number;
 }
+
+export interface AgentChatEntry {
+  type: 'agentChatEntry';
+  id: number;
+  entry: ChatEntry;
+}
+
+export interface ChatEntry {
+  entryId: string;
+  role: ChatRole;
+  text: string;
+  source?: ChatSource;
+  toolDone?: boolean;
+  timestamp?: string;
+}
+
+export type ChatRole = 'user' | 'assistant' | 'tool';
+
+export type ChatSource = 'terminal' | 'office';
+
+export interface AgentChatHistory {
+  type: 'agentChatHistory';
+  id: number;
+  entries: ChatEntry[];
+}
+
+export interface AgentChatQueue {
+  type: 'agentChatQueue';
+  id: number;
+  queued: QueuedChatMessage[];
+  error?: string;
+}
+
+export interface QueuedChatMessage {
+  queueId: string;
+  text: string;
+}
+
+export interface BoardLoaded {
+  type: 'boardLoaded';
+  pins: BoardPin[];
+}
+
+export interface BoardPin {
+  id: string;
+  kind: BoardPinKind;
+  title: string;
+  value: string;
+  scope: number[];
+  createdAt: string;
+}
+
+export type BoardPinKind = 'link' | 'file' | 'snippet' | 'note';
 
 export interface LayoutLoaded {
   type: 'layoutLoaded';
@@ -428,4 +489,26 @@ export interface SetShowAreas {
 
 export interface RequestDiagnostics {
   type: 'requestDiagnostics';
+}
+
+export interface SendChatMessage {
+  type: 'sendChatMessage';
+  id: number;
+  text: string;
+}
+
+export interface CancelChatMessage {
+  type: 'cancelChatMessage';
+  id: number;
+  queueId: string;
+}
+
+export interface SaveBoardPin {
+  type: 'saveBoardPin';
+  pin: BoardPin;
+}
+
+export interface RemoveBoardPin {
+  type: 'removeBoardPin';
+  pinId: string;
 }

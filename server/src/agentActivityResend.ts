@@ -1,3 +1,4 @@
+import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 
@@ -10,6 +11,7 @@ import { hasPromotedBackgroundAgent } from './teamUtils.js';
  * 3. Background tools with runInBackground + isTeammateSpawn flags, skipping promoted spawns
  * 4. Waiting status
  * 5. Context usage
+ * 6. Session chat
  */
 export function resendAgentActivity(
   send: (message: Record<string, unknown>) => void,
@@ -84,5 +86,26 @@ export function resendAgentActivity(
         maxContextTokens: agent.maxContextTokens,
       });
     }
+
+    // 6. Session chat
+    if (agent.chatLog && agent.chatLog.length > 0) {
+      send({
+        type: 'agentChatHistory',
+        id,
+        entries: agent.chatLog.map((e) => ({ ...e })),
+      });
+    }
+  }
+}
+
+/** Whiteboard pins and queued office messages, for a connecting client.
+ *  Both surfaces call this at the end of their handshake. */
+export function sendOfficeChatState(
+  send: (message: Record<string, unknown>) => void,
+  runtime: AgentRuntime,
+): void {
+  send({ type: 'boardLoaded', pins: runtime.board.getPins() });
+  for (const { id, queued } of runtime.chatSender.snapshot()) {
+    send({ type: 'agentChatQueue', id, queued });
   }
 }

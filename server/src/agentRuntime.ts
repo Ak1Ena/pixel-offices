@@ -14,6 +14,8 @@ import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { BoardStore } from './boardStore.js';
+import { ChatSender } from './chatSender.js';
 import { DEFAULT_MAX_CONTEXT_TOKENS } from './constants.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import {
@@ -82,6 +84,9 @@ export class AgentRuntime {
   readonly dismissalTracker = new DismissalTracker();
   /** Shadow-store watcher for unnamed background spawns (sub-agents). */
   readonly subagentWatch: SubagentWatch;
+  /** Office chat: messages typed into agents' terminals (host supplies the writer). */
+  readonly chatSender: ChatSender;
+  private boardStore: BoardStore | null = null;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
 
@@ -95,6 +100,7 @@ export class AgentRuntime {
     setFileWatcherHookProvider(provider);
     this.subagentWatch = new SubagentWatch(store);
     setSubagentWatch(this.subagentWatch);
+    this.chatSender = new ChatSender(store);
     if (provider.team) {
       setTeamProvider(provider.team);
     }
@@ -554,12 +560,26 @@ export class AgentRuntime {
     this.store.persist();
   }
 
+  // ── Whiteboard ──
+
+  /** The shared whiteboard. Created (and its file read and watched) on first use,
+   *  so a runtime that never shows the office never touches board.json. Every
+   *  change is broadcast to all clients as `boardLoaded`. */
+  get board(): BoardStore {
+    this.boardStore ??= new BoardStore((pins) =>
+      this.store.broadcast({ type: 'boardLoaded', pins }),
+    );
+    return this.boardStore;
+  }
+
   // ── Cleanup ──
 
   /** Clean up all scanners, timers, and agents. Called on shutdown. */
   dispose(): void {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
+    this.chatSender.dispose();
+    this.boardStore?.dispose();
 
     if (this.projectScanTimer.current) {
       clearInterval(this.projectScanTimer.current);

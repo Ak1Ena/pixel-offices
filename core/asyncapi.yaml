@@ -100,6 +100,12 @@ components:
         - $ref: '#/components/schemas/AgentTeamInfo'
         # Context window
         - $ref: '#/components/schemas/AgentContextUsage'
+        # Session chat
+        - $ref: '#/components/schemas/AgentChatEntry'
+        - $ref: '#/components/schemas/AgentChatHistory'
+        - $ref: '#/components/schemas/AgentChatQueue'
+        # Whiteboard
+        - $ref: '#/components/schemas/BoardLoaded'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -144,6 +150,10 @@ components:
         - $ref: '#/components/schemas/SaveAreaMappings'
         - $ref: '#/components/schemas/SetShowAreas'
         - $ref: '#/components/schemas/RequestDiagnostics'
+        - $ref: '#/components/schemas/SendChatMessage'
+        - $ref: '#/components/schemas/CancelChatMessage'
+        - $ref: '#/components/schemas/SaveBoardPin'
+        - $ref: '#/components/schemas/RemoveBoardPin'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -441,6 +451,77 @@ components:
           type: integer
         maxContextTokens:
           type: integer
+
+    AgentChatEntry:
+      description: |
+        One entry of an agent's session chat, read from its transcript: a user
+        prompt, an assistant reply, or a tool row. Upsert semantics — an entry
+        re-sent with the same `entryId` replaces the earlier one (a tool row is
+        re-sent with `toolDone: true` when its result lands).
+      type: object
+      additionalProperties: false
+      required: [type, id, entry]
+      properties:
+        type:
+          const: agentChatEntry
+        id:
+          type: integer
+        entry:
+          $ref: '#/components/schemas/ChatEntry'
+
+    AgentChatHistory:
+      description: |
+        The recent chat of one agent, oldest first. Sent during the
+        `webviewReady` handshake and when a mid-session agent is first watched.
+        Replaces whatever the client held for that agent.
+      type: object
+      additionalProperties: false
+      required: [type, id, entries]
+      properties:
+        type:
+          const: agentChatHistory
+        id:
+          type: integer
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatEntry'
+
+    AgentChatQueue:
+      description: |
+        Messages sent from the office that are waiting for the agent's turn to
+        end before they are typed into its terminal. Sent whenever the queue
+        changes; an empty list means nothing is pending. `error` reports why the
+        latest send could not be delivered (no terminal, not permitted).
+      type: object
+      additionalProperties: false
+      required: [type, id, queued]
+      properties:
+        type:
+          const: agentChatQueue
+        id:
+          type: integer
+        queued:
+          type: array
+          items:
+            $ref: '#/components/schemas/QueuedChatMessage'
+        error:
+          type: string
+
+    BoardLoaded:
+      description: |
+        The whole shared whiteboard. Sent during the `webviewReady` handshake
+        and to every client after any change (from this or another window).
+      type: object
+      additionalProperties: false
+      required: [type, pins]
+      properties:
+        type:
+          const: boardLoaded
+        pins:
+          type: array
+          items:
+            $ref: '#/components/schemas/BoardPin'
 
     LayoutLoaded:
       description: |
@@ -1064,7 +1145,125 @@ components:
         type:
           const: requestDiagnostics
 
+    SendChatMessage:
+      description: |
+        Type `text` into the agent's terminal as a prompt. Privileged: it drives
+        a shell on the machine. Only agents the host owns a terminal for can
+        receive it; while the agent is mid-turn the message is queued (see
+        `agentChatQueue`) and typed in when the turn ends.
+      type: object
+      additionalProperties: false
+      required: [type, id, text]
+      properties:
+        type:
+          const: sendChatMessage
+        id:
+          type: integer
+        text:
+          type: string
+
+    CancelChatMessage:
+      description: Drop a queued office message before it is typed in.
+      type: object
+      additionalProperties: false
+      required: [type, id, queueId]
+      properties:
+        type:
+          const: cancelChatMessage
+        id:
+          type: integer
+        queueId:
+          type: string
+
+    SaveBoardPin:
+      description: Add a whiteboard pin, or replace the pin with the same id.
+      type: object
+      additionalProperties: false
+      required: [type, pin]
+      properties:
+        type:
+          const: saveBoardPin
+        pin:
+          $ref: '#/components/schemas/BoardPin'
+
+    RemoveBoardPin:
+      description: Remove a whiteboard pin.
+      type: object
+      additionalProperties: false
+      required: [type, pinId]
+      properties:
+        type:
+          const: removeBoardPin
+        pinId:
+          type: string
+
     # ── Supporting schemas ─────────────────────────────────────────
+
+    ChatEntry:
+      type: object
+      additionalProperties: false
+      required: [entryId, role, text]
+      properties:
+        entryId:
+          type: string
+          description: Stable id (transcript uuid, or the tool_use id for tool rows).
+        role:
+          $ref: '#/components/schemas/ChatRole'
+        text:
+          type: string
+          description: Message text, or the formatted tool status for tool rows.
+        source:
+          $ref: '#/components/schemas/ChatSource'
+        toolDone:
+          type: boolean
+        timestamp:
+          type: string
+          description: ISO 8601 time from the transcript record.
+
+    ChatRole:
+      type: string
+      enum: [user, assistant, tool]
+
+    ChatSource:
+      description: Where a user prompt was typed.
+      type: string
+      enum: [terminal, office]
+
+    QueuedChatMessage:
+      type: object
+      additionalProperties: false
+      required: [queueId, text]
+      properties:
+        queueId:
+          type: string
+        text:
+          type: string
+
+    BoardPin:
+      type: object
+      additionalProperties: false
+      required: [id, kind, title, value, scope, createdAt]
+      properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/BoardPinKind'
+        title:
+          type: string
+        value:
+          type: string
+          description: URL for a link, path for a file, code for a snippet, text for a note.
+        scope:
+          type: array
+          description: Agent ids the pin is meant for. Empty = every session.
+          items:
+            type: integer
+        createdAt:
+          type: string
+
+    BoardPinKind:
+      type: string
+      enum: [link, file, snippet, note]
 
     AgentSeatMeta:
       description: |

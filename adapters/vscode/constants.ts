@@ -40,3 +40,7 @@ export const CONFIG_KEY_AUTO_SPAWN_AGENT = 'pixel-agents.autoSpawnAgent';
 export const VIEW_ID = 'pixel-agents.panelView';
 export const COMMAND_SHOW_PANEL = 'pixel-agents.showPanel';
 export const COMMAND_EXPORT_DEFAULT_LAYOUT = 'pixel-agents.exportDefaultLayout';
+
+/** Delay between pasting an office chat message into a terminal and pressing
+ *  Enter, so the TUI has processed the paste before it is submitted. */
+export const CHAT_SUBMIT_DELAY_MS = 80;

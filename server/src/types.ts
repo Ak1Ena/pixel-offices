@@ -1,5 +1,7 @@
 import type * as vscode from 'vscode';
 
+import type { ChatEntry } from '../../core/src/messages.js';
+
 export interface AgentState {
   id: number;
   sessionId: string;
@@ -57,6 +59,16 @@ export interface AgentState {
   /** True once this transcript produced a main-chain turn, after which
    *  sidechain records belong to sub-agents and stop moving the gauge. */
   sawMainChainUsage?: boolean;
+
+  // -- Session chat (server/src/chatLog.ts) --
+  /** Recent chat, oldest first, capped at CHAT_HISTORY_LIMIT. Undefined until
+   *  the transcript is first watched (seeding runs once, when it is). */
+  chatLog?: ChatEntry[];
+  /** Sidechain latch for the chat, mirroring sawMainChainUsage. */
+  sawMainChainChat?: boolean;
+  /** Prompts typed in from the office, not yet seen in the transcript. Lets
+   *  the chat tag them `office` instead of `terminal` when they come back. */
+  pendingOfficeTexts?: string[];
 
   // -- Agent Teams --
   teamName?: string;

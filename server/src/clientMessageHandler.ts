@@ -1,5 +1,5 @@
 import type { HookProvider } from '../../core/src/provider.js';
-import { resendAgentActivity } from './agentActivityResend.js';
+import { resendAgentActivity, sendOfficeChatState } from './agentActivityResend.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -264,6 +264,30 @@ export function handleClientMessage(
       break;
     }
 
+    case 'sendChatMessage': {
+      // Types into a terminal: that drives a shell, so it needs the same
+      // out-of-band proof as setHooksEnabled. (Standalone owns no terminals
+      // today, so ChatSender refuses with a reason either way.)
+      if (!ctx.privileged) {
+        console.warn('[Pixel Agents] Ignoring sendChatMessage from an untokened client.');
+        break;
+      }
+      if (typeof msg.id === 'number') runtime?.chatSender.send(msg.id, msg.text);
+      break;
+    }
+
+    case 'cancelChatMessage':
+      if (typeof msg.id === 'number') runtime?.chatSender.cancel(msg.id, msg.queueId);
+      break;
+
+    case 'saveBoardPin':
+      runtime?.board.savePin(msg.pin);
+      break;
+
+    case 'removeBoardPin':
+      runtime?.board.removePin(msg.pinId);
+      break;
+
     case 'setShowAreas': {
       const enabled = msg.enabled as boolean;
       adapter?.setSetting(KEY_SHOW_AREAS, enabled);
@@ -515,4 +539,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // exist once the layout flush creates them. Without this a reconnecting
   // client shows bare characters until each agent takes another turn.
   resendAgentActivity(send, store);
+
+  // 9. Whiteboard + queued office messages.
+  if (runtime) sendOfficeChatState(send, runtime);
 }

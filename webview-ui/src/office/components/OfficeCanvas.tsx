@@ -4,6 +4,7 @@ import {
   CAMERA_FOLLOW_LERP,
   CAMERA_FOLLOW_SNAP_THRESHOLD,
   PAN_MARGIN_FRACTION,
+  PIN_DRAG_MIME,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
@@ -45,6 +46,8 @@ interface OfficeCanvasProps {
   showAreas: boolean;
   /** Currently-selected area label in the editor (alpha-bumped overlay). null otherwise. */
   activeAreaLabel: string | null;
+  /** A whiteboard pin was dropped on a character. */
+  onPinDrop?: (agentId: number, pinId: string) => void;
 }
 
 export function OfficeCanvas({
@@ -64,6 +67,7 @@ export function OfficeCanvas({
   panRef,
   showAreas,
   activeAreaLabel,
+  onPinDrop,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -735,7 +739,7 @@ export function OfficeCanvas({
           officeState.selectedAgentId = hitId;
           officeState.cameraFollowId = hitId;
         }
-        onClick(hitId); // still focus terminal
+        onClick(hitId); // App opens (or closes) this agent's chat
         return;
       }
 
@@ -790,6 +794,48 @@ export function OfficeCanvas({
     },
     [officeState, onClick, screenToWorld, screenToTile, isEditMode],
   );
+
+  // Whiteboard pins dragged over the office: the character under the pointer
+  // lights up (hover outline + its status panel) and takes the pin on drop.
+  const pinTargetAt = useCallback(
+    (e: React.DragEvent): number | null => {
+      if (isEditMode || !onPinDrop || !e.dataTransfer.types.includes(PIN_DRAG_MIME)) return null;
+      const pos = screenToWorld(e.clientX, e.clientY);
+      if (!pos) return null;
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
+      if (hitId === null) return null;
+      // A sub-agent shares its parent's session: the pin goes to the parent.
+      return officeState.subagentMeta.get(hitId)?.parentAgentId ?? hitId;
+    },
+    [isEditMode, onPinDrop, screenToWorld, officeState],
+  );
+
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (isEditMode || !onPinDrop || !e.dataTransfer.types.includes(PIN_DRAG_MIME)) return;
+      e.preventDefault();
+      const target = pinTargetAt(e);
+      officeState.hoveredAgentId = target;
+      e.dataTransfer.dropEffect = target === null ? 'none' : 'copy';
+    },
+    [isEditMode, onPinDrop, pinTargetAt, officeState],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      const target = pinTargetAt(e);
+      officeState.hoveredAgentId = null;
+      const pinId = e.dataTransfer.getData(PIN_DRAG_MIME);
+      if (target === null || !pinId) return;
+      e.preventDefault();
+      onPinDrop?.(target, pinId);
+    },
+    [pinTargetAt, officeState, onPinDrop],
+  );
+
+  const handleDragLeave = useCallback(() => {
+    officeState.hoveredAgentId = null;
+  }, [officeState]);
 
   const handleMouseLeave = useCallback(() => {
     isPanningRef.current = false;
@@ -883,6 +929,9 @@ export function OfficeCanvas({
         onAuxClick={handleAuxClick}
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className="block"
       />
     </div>

@@ -41,6 +41,24 @@ export const CONTEXT_WINDOW_TIERS = [200_000, 1_000_000] as const;
  *  adoption or restore. Comfortably more than one turn's worth of records. */
 export const CONTEXT_SEED_TAIL_BYTES = 256 * 1024;
 
+// ── Session Chat ────────────────────────────────────────────
+/** Entries kept per agent (oldest dropped first). */
+export const CHAT_HISTORY_LIMIT = 200;
+/** Longest text one chat entry carries; longer text is cut with an ellipsis. */
+export const CHAT_ENTRY_MAX_CHARS = 4_000;
+/** How much transcript before the read offset to replay into a restored agent's chat. */
+export const CHAT_SEED_TAIL_BYTES = 512 * 1024;
+/** Longest message the office will type into a terminal. */
+export const CHAT_SEND_MAX_CHARS = 16_000;
+/** Office messages waiting for one agent's turn to end. */
+export const CHAT_QUEUE_LIMIT = 10;
+
+// ── Whiteboard ──────────────────────────────────────────────
+export const BOARD_FILE_NAME = 'board.json';
+export const BOARD_MAX_PINS = 200;
+export const BOARD_PIN_TITLE_MAX_CHARS = 200;
+export const BOARD_PIN_VALUE_MAX_CHARS = 8_000;
+
 // ── Global Session Scanning ─────────────────────────────────
 /** Only adopt global JSONL files larger than this (filters out empty/init-only sessions) */
 export const GLOBAL_SCAN_ACTIVE_MIN_SIZE = 3_072; // 3KB

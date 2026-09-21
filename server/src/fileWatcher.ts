@@ -31,6 +31,7 @@ import type { HookProvider } from '../../core/src/provider.js';
 import type { TeamProvider } from '../../core/src/teamProvider.js';
 import type { ITerminalAdapter } from '../../core/src/terminalAdapter.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { seedChatHistory } from './chatLog.js';
 import {
   CLEAR_IDLE_THRESHOLD_MS,
   DEFAULT_MAX_CONTEXT_TOKENS,
@@ -48,7 +49,7 @@ import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { pathsMatch } from './pathKey.js';
 import type { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer, clearAgentActivity } from './timerManager.js';
-import { getHookProvider, processTranscriptLine } from './transcriptParser.js';
+import { formatToolStatus, getHookProvider, processTranscriptLine } from './transcriptParser.js';
 import type { AgentState } from './types.js';
 
 /** Dismissal tracker instance. Set once at startup via setDismissalTracker().
@@ -113,6 +114,7 @@ export function startFileWatching(
   // give an agent adopted or restored mid-session a context gauge without
   // replaying its whole transcript.
   seedContextUsage(agentId, agents, getHookProvider());
+  seedChatHistory(agentId, agents, formatToolStatus);
 
   // Single polling approach: reliable on all platforms (macOS, Linux, WSL2, Windows).
   // Previously used triple-redundant fs.watch + fs.watchFile + setInterval, but
