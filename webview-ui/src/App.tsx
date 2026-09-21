@@ -280,13 +280,14 @@ function App() {
   // show-areas gate on the test-hooks namespace (module-load installTestHooks
   // can't reach these React callbacks). Bypasses only canvas pixel→tile
   // geometry — the handlers still own undo/dirty/rebuild. Guarded on isE2E.
+  const { handleEditorTileAction, handleEditorEraseAction } = editor;
   useEffect(() => {
     if (!isE2E || typeof window === 'undefined') return;
     const hooks = (window.__pixelAgentsTestHooks ??= {});
-    hooks.editorTileAction = (col, row) => editor.handleEditorTileAction(col, row);
-    hooks.editorEraseAction = (col, row) => editor.handleEditorEraseAction(col, row);
+    hooks.editorTileAction = (col, row) => handleEditorTileAction(col, row);
+    hooks.editorEraseAction = (col, row) => handleEditorEraseAction(col, row);
     hooks.getShowAreas = () => effectiveShowAreas;
-  }, [editor.handleEditorTileAction, editor.handleEditorEraseAction, effectiveShowAreas]);
+  }, [handleEditorTileAction, handleEditorEraseAction, effectiveShowAreas]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
