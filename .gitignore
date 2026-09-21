@@ -50,3 +50,5 @@ agent-orchestrator.yaml
 .ao/
 .serena/
 tasks/
+# npm pack output (release tarballs are attached to GitHub releases)
+*.tgz
