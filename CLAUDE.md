@@ -60,7 +60,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     tokenUsage.ts                    Session token totals + burn rate from transcript usage (each request counted once by message.id)
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
-  __tests__/                         32 Vitest files
+  __tests__/                         33 Vitest files
   manual-hook-events.http            Manual hook testing helper (REST-Client format)
 
 adapters/vscode/                     VS Code surface — composes core + server
@@ -399,6 +399,12 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Fire**: the webview maps burn to `burnLevel` (`BURN_WARM_PER_MIN` smoke, `BURN_FIRE_PER_MIN` flames + glow, `webview-ui/src/constants.ts`); `renderBurnEffects` draws before speech bubbles, and TYPE frames speed up by `BURN_TYPING_SPEED`.
 - **Rename**: `renameAgent` → `runtime.renameAgent` (control chars stripped, 32 chars) → `displayName` persisted on both surfaces' `PersistedAgent` → `agentRenamed` (also in the handshake). Labels prefer it everywhere.
 - **City Office**: furniture `OFFICE_DESK`, `DUAL_MONITOR` (electronics, on/off), `CITY_WINDOW`, `PLANTER`, `CUBICLE_DIVIDER` plus the bundled preset `webview-ui/src/office/layout/presets/cityOffice.json`, applied from Settings → Use City Office Layout as an undoable editor edit (Undo/Reset restore the old layout). Floor pattern 3 (low contrast) — pattern 9 is a checkerboard.
+
+## Document viewer
+
+- Whiteboard **file pins** open inside the standalone office (`DocViewer.tsx`): PDF and images natively (blob URL), Word via `mammoth` rendered in a **sandboxed iframe** (`sandbox=""` — document HTML never runs in the office page), Excel via `read-excel-file` and CSV as a table (capped at `DOC_TABLE_MAX_ROWS`), text as text. Both libraries are dynamic imports, so they load only when such a file is opened.
+- Server (`boardFiles.ts`, routes in `httpServer.ts`): `GET /api/board/files/:pinId` — the client names a PIN, never a path; only `kind: 'file'` pins, absolute or `~` paths, an extension allowlist (no html/svg/js), `realpath` re-checked, 25 MB cap, `nosniff`. `POST /api/board/files?name=` stores an upload under `~/.pixel-agents/files/<pinId>-<safe name>` (0600, `wx`) and pins it. Both need the Bearer token (the page reads `?token=`): a token holder can already type into sessions, an untokened LAN viewer gets nothing.
+- VS Code panel: no View/upload (no HTTP route to call from the webview) — file pins still attach as `@path`.
 
 ## Phones
 

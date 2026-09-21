@@ -303,6 +303,8 @@ async function main(): Promise<void> {
       onReloadAssets,
       launchers: runtime.launchers,
       onLauncherPoll: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
+      getBoardPins: () => runtime.board.getPins(),
+      saveBoardPin: (pin) => runtime.board.savePin(pin),
     });
     currentConfig = { port: config.port, token: config.token };
 

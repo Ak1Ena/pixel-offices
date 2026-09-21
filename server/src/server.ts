@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { BoardPin } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
@@ -72,6 +73,8 @@ export class PixelAgentsServer {
     onReloadAssets?: ReloadAssetsSideEffect;
     launchers?: LauncherHub;
     onLauncherPoll?: (sessionId: string, cwd: string) => void;
+    getBoardPins?: () => BoardPin[];
+    saveBoardPin?: (pin: BoardPin) => boolean;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -111,6 +114,8 @@ export class PixelAgentsServer {
       onReloadAssets: options?.onReloadAssets,
       launchers: options?.launchers,
       onLauncherPoll: options?.onLauncherPoll,
+      getBoardPins: options?.getBoardPins,
+      saveBoardPin: options?.saveBoardPin,
     });
 
     this.app = app;

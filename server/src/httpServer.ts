@@ -4,9 +4,12 @@ import fastifyWebsocket from '@fastify/websocket';
 import * as crypto from 'crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import Fastify from 'fastify';
+import * as fs from 'fs';
 
+import type { BoardPin } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { isViewableName, resolvePinFile, saveUploadedFile } from './boardFiles.js';
 import type {
   AssetCache,
   ReloadAssetsSideEffect,
@@ -14,6 +17,8 @@ import type {
 } from './clientMessageHandler.js';
 import { handleClientMessage } from './clientMessageHandler.js';
 import {
+  BOARD_FILE_API_PREFIX,
+  BOARD_FILE_MAX_BYTES,
   HOOK_API_PREFIX,
   LAUNCHER_API_PREFIX,
   LAUNCHER_POLL_TIMEOUT_MS,
@@ -51,6 +56,10 @@ export interface HttpServerOptions {
   onReloadAssets?: ReloadAssetsSideEffect;
   /** Sessions started with `pixel-agents claude` poll here for office input. */
   launchers?: LauncherHub;
+  /** Current whiteboard pins, for serving file pins to the document viewer. */
+  getBoardPins?: () => BoardPin[];
+  /** Add a whiteboard pin (used when a file is uploaded). Returns false when rejected. */
+  saveBoardPin?: (pin: BoardPin) => boolean;
   /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession). */
   onLauncherPoll?: (sessionId: string, cwd: string) => void;
 }
@@ -97,6 +106,8 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerHealthRoute(app);
   registerHookRoute(app, options);
   registerLauncherRoutes(app, options);
+  registerBoardFileRoute(app, options);
+  registerBoardUploadRoute(app, options);
   registerWebSocketRoute(app, options);
 
   // ── Listen ──────────────────────────────────────────────────
@@ -203,6 +214,83 @@ function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions
     async (request) => {
       launchers.end(request.params.sessionId);
       return { ok: true };
+    },
+  );
+}
+
+// ── Whiteboard files ───────────────────────────────────────────
+
+/** The document viewer fetches a pinned file by PIN id (see boardFiles.ts). Token required. */
+function registerBoardFileRoute(app: FastifyInstance, options: HttpServerOptions): void {
+  const { getBoardPins } = options;
+  if (!getBoardPins) return;
+  app.get<{ Params: { pinId: string } }>(
+    `${BOARD_FILE_API_PREFIX}/:pinId`,
+    {
+      preHandler: bearerAuth(options.token),
+      schema: {
+        params: {
+          type: 'object',
+          properties: { pinId: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
+          required: ['pinId'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      if (!file.ok) return reply.code(file.status).send({ error: file.error });
+      return reply
+        .header('Content-Type', file.contentType)
+        .header('Content-Length', file.size)
+        .header('X-Content-Type-Options', 'nosniff')
+        .header('Content-Disposition', 'inline')
+        .header('Cache-Control', 'no-store')
+        .send(fs.createReadStream(file.filePath));
+    },
+  );
+}
+
+/** Upload a document from the browser: stored locally and pinned to the whiteboard. Token required. */
+function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptions): void {
+  const { saveBoardPin } = options;
+  if (!saveBoardPin) return;
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) =>
+    done(null, body),
+  );
+  app.post<{ Querystring: { name?: string }; Body: Buffer }>(
+    BOARD_FILE_API_PREFIX,
+    {
+      preHandler: bearerAuth(options.token),
+      bodyLimit: BOARD_FILE_MAX_BYTES,
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: { name: { type: 'string', minLength: 1, maxLength: 255 } },
+          required: ['name'],
+        },
+      },
+    },
+    async (request, reply) => {
+      const name = request.query.name ?? '';
+      if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: 'No file sent.' });
+      if (!isViewableName(name)) {
+        return reply.code(415).send({
+          error: 'The viewer opens PDF, Word (.docx), Excel (.xlsx), CSV, text and image files.',
+        });
+      }
+      const id = `pin_${crypto.randomUUID().replace(/-/g, '')}`;
+      const filePath = saveUploadedFile(name, request.body, id);
+      if (!filePath) return reply.code(400).send({ error: 'Could not store that file.' });
+      const pin: BoardPin = {
+        id,
+        kind: 'file',
+        title: name.slice(0, 200),
+        value: filePath,
+        scope: [],
+        createdAt: new Date().toISOString(),
+      };
+      if (!saveBoardPin(pin)) return reply.code(400).send({ error: 'The whiteboard is full.' });
+      return { pin };
     },
   );
 }

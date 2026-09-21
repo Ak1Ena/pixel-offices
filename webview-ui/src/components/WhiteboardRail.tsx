@@ -20,13 +20,17 @@ interface WhiteboardRailProps {
   onAttach: (pinId: string) => void;
   onSave: (pin: BoardPin) => void;
   onRemove: (pinId: string) => void;
+  /** Open a file pin in the document viewer; absent where the viewer isn't available. */
+  onView?: (pinId: string) => void;
+  /** Upload a file from this device and pin it; resolves with an error message or null. */
+  onUpload?: (file: File) => Promise<string | null>;
 }
 
 const KINDS: BoardPinKind[] = ['link', 'file', 'snippet', 'note'];
 
 const VALUE_LABEL: Record<BoardPinKind, string> = {
   link: 'URL',
-  file: 'Path',
+  file: 'Full path (e.g. ~/Documents/plan.pdf)',
   snippet: 'Code',
   note: 'Text',
 };
@@ -38,11 +42,15 @@ function PinForm({
   agents,
   onSave,
   onCancel,
+  onUpload,
 }: {
   agents: AgentOption[];
   onSave: (pin: BoardPin) => void;
   onCancel: () => void;
+  onUpload?: (file: File) => Promise<string | null>;
 }) {
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [kind, setKind] = useState<BoardPinKind>('link');
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
@@ -122,6 +130,32 @@ function PinForm({
           />
         )}
       </label>
+      {kind === 'file' && onUpload && (
+        <label className="flex flex-col gap-2 text-2xs">
+          Or upload from this device (PDF, Word, Excel, CSV, text, image · up to 25 MB)
+          <input
+            type="file"
+            accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.log,.json,.png,.jpg,.jpeg,.gif,.webp"
+            disabled={uploading}
+            className="text-2xs"
+            data-testid="pin-upload"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = '';
+              if (!file) return;
+              setUploading(true);
+              setUploadError(null);
+              void onUpload(file).then((error) => {
+                setUploading(false);
+                if (error) setUploadError(error);
+                else onCancel(); // pinned by the server; close the form
+              });
+            }}
+          />
+          {uploading && <span>Uploading…</span>}
+          {uploadError && <span className="text-danger">{uploadError}</span>}
+        </label>
+      )}
       {agents.length > 0 && (
         <fieldset className="flex flex-wrap gap-8 items-center border-0 p-0 m-0 text-2xs">
           <legend className="mb-2">Visible to</legend>
@@ -174,6 +208,8 @@ export function WhiteboardRail({
   onAttach,
   onSave,
   onRemove,
+  onView,
+  onUpload,
 }: WhiteboardRailProps) {
   const [isAdding, setIsAdding] = useState(false);
   const labelFor = (id: number) => agents.find((a) => a.id === id)?.label ?? `#${id}`;
@@ -225,6 +261,7 @@ export function WhiteboardRail({
             setIsAdding(false);
           }}
           onCancel={() => setIsAdding(false)}
+          onUpload={onUpload}
         />
       )}
 
@@ -258,6 +295,15 @@ export function WhiteboardRail({
               </span>
             )}
             <div className="flex gap-6 justify-end">
+              {pin.kind === 'file' && onView && (
+                <button
+                  onClick={() => onView(pin.id)}
+                  className={`px-6 text-2xs ${boardButton}`}
+                  data-testid="pin-view"
+                >
+                  View
+                </button>
+              )}
               {chatAgentLabel && (
                 <button
                   onClick={() => onAttach(pin.id)}

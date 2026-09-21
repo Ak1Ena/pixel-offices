@@ -356,3 +356,15 @@ export const MOBILE_BREAKPOINT_PX = 640;
 export const CHAT_SHEET_HEIGHT_FRACTION = 0.72;
 /** A touch that moves less than this (CSS px) is a tap, not a pan. */
 export const TOUCH_TAP_SLOP_PX = 8;
+
+// ── Document viewer ─────────────────────────────────────────
+/** Route pinned files are fetched from (server: BOARD_FILE_API_PREFIX). */
+export const BOARD_FILE_API = '/api/board/files';
+/** Most table rows the viewer draws for a sheet or CSV. */
+export const DOC_TABLE_MAX_ROWS = 2_000;
+/** Largest upload the office accepts (server enforces the same). */
+export const DOC_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+/** Page styling for Word documents, shown inside a sandboxed frame. */
+export const DOCX_FRAME_CSS =
+  'body{margin:0;padding:40px 48px;font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#1f242b;background:#ffffff}' +
+  'img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #c9ccd1;padding:4px 8px}a{color:#1f5a94}';

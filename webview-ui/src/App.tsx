@@ -7,6 +7,7 @@ import { ChatCard } from './components/ChatCard.js';
 import { ChatPeekBubbles } from './components/ChatPeekBubbles.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
+import { DocViewer } from './components/DocViewer.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
@@ -16,6 +17,7 @@ import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { WhiteboardRail } from './components/WhiteboardRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
+import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES } from './constants.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
@@ -62,6 +64,25 @@ function agentLabel(id: number): string {
   return `Agent #${id}`;
 }
 
+/** Upload a document to the whiteboard (standalone server). Resolves with an error message or null. */
+async function uploadBoardFile(file: File): Promise<string | null> {
+  if (file.size > DOC_UPLOAD_MAX_BYTES) return 'File is too large (limit 25 MB).';
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) return 'Open the office from your private link to upload files.';
+  try {
+    const res = await fetch(`${BOARD_FILE_API}?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    if (res.ok) return null;
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    return body?.error ?? `Upload failed (${res.status}).`;
+  } catch {
+    return 'Upload failed. Is the office still running?';
+  }
+}
+
 /** Why the office can't type into this session, or null when it can. The
  *  server decides reach (agentChatSendable); this only words the refusal. */
 function chatReadOnlyReason(id: number, sendable: boolean): string | null {
@@ -97,6 +118,7 @@ function App() {
   const [chatAgentId, setChatAgentId] = useState<number | null>(null);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
+  const [viewedPinId, setViewedPinId] = useState<string | null>(null);
   const chat = useOfficeChat(chatAgentId);
 
   const {
@@ -601,6 +623,10 @@ function App() {
               }}
               onSave={chat.savePin}
               onRemove={chat.removePin}
+              // The viewer fetches files over HTTP from the standalone server;
+              // the VS Code panel has no such route to call.
+              onView={isBrowserRuntime ? setViewedPinId : undefined}
+              onUpload={isBrowserRuntime ? uploadBoardFile : undefined}
             />
           )}
         </>
@@ -745,6 +771,28 @@ function App() {
           editor.applyPresetLayout(migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout))
         }
       />
+
+      {(() => {
+        const viewed = viewedPinId ? chat.pins.find((p) => p.id === viewedPinId) : undefined;
+        if (!viewed) return null;
+        const canAttach = chatAgentId !== null && chat.sendable[chatAgentId] === true;
+        return (
+          <DocViewer
+            pin={viewed}
+            filePins={chat.pins.filter((p) => p.kind === 'file')}
+            onSelect={setViewedPinId}
+            onClose={() => setViewedPinId(null)}
+            onAttach={
+              canAttach
+                ? () => {
+                    attachPin(chatAgentId, viewed.id);
+                    setViewedPinId(null);
+                  }
+                : undefined
+            }
+          />
+        );
+      })()}
 
       {showMigrationNotice && (
         <MigrationNotice onDismiss={() => setMigrationNoticeDismissed(true)} />

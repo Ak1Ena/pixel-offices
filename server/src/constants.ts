@@ -92,6 +92,12 @@ export const BOARD_FILE_NAME = 'board.json';
 export const BOARD_MAX_PINS = 200;
 export const BOARD_PIN_TITLE_MAX_CHARS = 200;
 export const BOARD_PIN_VALUE_MAX_CHARS = 8_000;
+/** Largest pinned file the document viewer is sent. */
+export const BOARD_FILE_MAX_BYTES = 25 * 1024 * 1024;
+/** Folder under ~/.pixel-agents where files uploaded to the whiteboard are kept. */
+export const BOARD_UPLOAD_DIR = 'files';
+/** Route the document viewer fetches pinned files from. */
+export const BOARD_FILE_API_PREFIX = '/api/board/files';
 
 // ── Global Session Scanning ─────────────────────────────────
 /** Only adopt global JSONL files larger than this (filters out empty/init-only sessions) */
