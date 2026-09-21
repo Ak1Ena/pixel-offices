@@ -1,4 +1,4 @@
-import { spawn as spawnChild } from 'child_process';
+import { spawn as spawnChild, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
@@ -59,6 +59,8 @@ export interface LaunchPlan {
   sessionId: string | null;
   /** False for print mode: nothing to type into. */
   interactive: boolean;
+  /** True when the command runs Claude, directly or through a wrapper like `caffeinate -i claude`. */
+  tracksClaude: boolean;
 }
 
 function flagValue(args: string[], ...names: string[]): string | undefined {
@@ -86,7 +88,10 @@ export function isClaudeProgram(program: string): boolean {
 /**
  * Decide how to run `program` and which session id the office will know it
  * by. Only Claude sessions are addressable (the office follows their
- * transcripts); any other program runs as-is with no session id.
+ * transcripts). Claude may be the program itself or wrapped by another
+ * (`caffeinate -i claude`, `env FOO=1 claude`): the first word that names
+ * Claude is where Claude's own arguments begin. Any other command runs as-is
+ * with no session id.
  *
  * For Claude: a fresh session gets an id minted here and passed as
  * `--session-id`; an explicit `--session-id` or `--resume <id>` is used as
@@ -98,21 +103,117 @@ export function planLaunch(
   args: string[],
   newId: () => string = randomUUID,
 ): LaunchPlan {
+  const claudeAt = isClaudeProgram(program) ? -1 : args.findIndex(isClaudeProgram);
+  if (claudeAt === -1 && !isClaudeProgram(program)) {
+    return { program, args, sessionId: null, interactive: true, tracksClaude: false };
+  }
+  const before = args.slice(0, claudeAt + 1); // the wrapper and `claude` itself
+  const claudeArgs = args.slice(claudeAt + 1);
   const plan = (a: string[], sessionId: string | null, interactive = true): LaunchPlan => ({
     program,
-    args: a,
+    args: [...before, ...a],
     sessionId,
     interactive,
+    tracksClaude: true,
   });
-  if (!isClaudeProgram(program)) return plan(args, null);
-  if (flagValue(args, '-p', '--print') !== undefined) return plan(args, null, false);
-  const explicit = flagValue(args, '--session-id');
-  if (explicit) return plan(args, explicit);
-  const resumed = flagValue(args, '-r', '--resume');
-  if (resumed !== undefined) return plan(args, resumed || null);
-  if (flagValue(args, '-c', '--continue') !== undefined) return plan(args, null);
+  if (flagValue(claudeArgs, '-p', '--print') !== undefined) return plan(claudeArgs, null, false);
+  const explicit = flagValue(claudeArgs, '--session-id');
+  if (explicit) return plan(claudeArgs, explicit);
+  const resumed = flagValue(claudeArgs, '-r', '--resume');
+  if (resumed !== undefined) return plan(claudeArgs, resumed || null);
+  if (flagValue(claudeArgs, '-c', '--continue') !== undefined) return plan(claudeArgs, null);
   const sessionId = newId();
-  return plan(['--session-id', sessionId, ...args], sessionId);
+  return plan(['--session-id', sessionId, ...claudeArgs], sessionId);
+}
+
+/** Whether `program` can be started directly (a path that exists, or a name on PATH). */
+export function isOnPath(program: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (program.includes('/') || program.includes('\\')) return fs.existsSync(program);
+  const exts =
+    process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').concat('') : [''];
+  for (const dir of (env.PATH ?? '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try {
+        fs.accessSync(path.join(dir, program + ext), fs.constants.X_OK);
+        return true;
+      } catch {
+        /* keep looking */
+      }
+    }
+  }
+  return false;
+}
+
+/** Split a shell-style command line into words (quotes and backslashes; no expansion). */
+export function splitShellWords(line: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let inWord = false;
+  let quote: '"' | "'" | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else if (ch === '\\' && quote === '"' && i + 1 < line.length) word += line[++i];
+      else word += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      inWord = true;
+    } else if (ch === '\\' && i + 1 < line.length) {
+      word += line[++i];
+      inWord = true;
+    } else if (/\s/.test(ch)) {
+      if (inWord) words.push(word);
+      word = '';
+      inWord = false;
+    } else {
+      word += ch;
+      inWord = true;
+    }
+  }
+  if (inWord) words.push(word);
+  return words;
+}
+
+/** The words an alias expands to, from `alias` output (zsh `name='…'`, bash `alias name='…'`). */
+export function parseAliasOutput(name: string, output: string): string[] | null {
+  for (const raw of output.split('\n')) {
+    const line = raw.trim().replace(/^alias\s+/, '');
+    if (!line.startsWith(`${name}=`)) continue;
+    const words = splitShellWords(line.slice(name.length + 1));
+    // The value is one quoted word holding the whole command; split that again.
+    return words.length === 1 ? splitShellWords(words[0]) : words;
+  }
+  return null;
+}
+
+/** Names safe to hand to the user's shell inside `alias <name>`. */
+const ALIAS_NAME_RE = /^[A-Za-z0-9._+-]+$/;
+const ALIAS_DEPTH_LIMIT = 3;
+
+/**
+ * Expand `program` when it is a shell alias (defined in ~/.zshrc and the like,
+ * so invisible to a direct spawn). Returns the expanded command, or null when
+ * it is not an alias. Follows aliases of aliases a few levels deep.
+ */
+function expandAlias(program: string, args: string[]): { program: string; args: string[] } | null {
+  let current = { program, args };
+  let expanded = false;
+  for (let depth = 0; depth < ALIAS_DEPTH_LIMIT; depth++) {
+    if (isOnPath(current.program) || !ALIAS_NAME_RE.test(current.program)) break;
+    const shell = process.env.SHELL || '/bin/sh';
+    const result = spawnSync(shell, ['-ic', `alias ${current.program}`], {
+      encoding: 'utf8',
+      timeout: 5_000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const words = parseAliasOutput(current.program, result.stdout ?? '');
+    if (!words || words.length === 0) break;
+    current = { program: words[0], args: [...words.slice(1), ...current.args] };
+    expanded = true;
+  }
+  return expanded ? current : null;
 }
 
 /** Live servers from the multi-server registry (same records the hook script fans out to). */
@@ -234,9 +335,16 @@ function runPlain(program: string, args: string[]): Promise<never> {
   });
 }
 
-export async function runLauncher(program: string, argv: string[]): Promise<never> {
+export async function runLauncher(typed: string, typedArgs: string[]): Promise<never> {
+  const alias = expandAlias(typed, typedArgs);
+  if (alias) {
+    console.error(
+      `[Pixel Agents] ${typed} is an alias for: ${[alias.program, ...alias.args].join(' ')}`,
+    );
+  }
+  const { program, args: argv } = alias ?? { program: typed, args: typedArgs };
   const plan = planLaunch(program, argv);
-  if (!isClaudeProgram(program)) {
+  if (!plan.tracksClaude) {
     console.error(
       `[Pixel Agents] The office follows Claude sessions only for now, so ${program} runs normally and won't appear in it.`,
     );

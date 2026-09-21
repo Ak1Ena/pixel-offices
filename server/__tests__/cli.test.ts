@@ -65,6 +65,11 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
 }
 
 describe('parseArgs', () => {
+  it('opens the browser by default, and --no-open turns it off', () => {
+    expect(parseArgs([]).open).toBe(true);
+    expect(parseArgs(['--no-open']).open).toBe(false);
+  });
+
   it('--lan listens on every interface so a phone on the same Wi-Fi can connect', () => {
     expect(parseArgs(['--lan']).host).toBe('0.0.0.0');
   });

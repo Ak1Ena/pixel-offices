@@ -8,6 +8,7 @@
  * Each connecting WebSocket client receives the full state on webviewReady.
  */
 
+import { spawn } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -39,6 +40,8 @@ export interface CliArgs {
    *  can run at once without a collision. --port picks a fixed one. */
   port?: number;
   host: string;
+  /** Open the office in the default browser once it is up (interactive runs only). */
+  open: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -47,7 +50,7 @@ export interface CliArgs {
 export class CliArgsError extends Error {}
 
 export function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { host: '127.0.0.1' };
+  const args: CliArgs = { host: '127.0.0.1', open: true };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
       const raw = argv[i + 1];
@@ -64,6 +67,8 @@ export function parseArgs(argv: string[]): CliArgs {
       }
       args.port = parsed;
       i++;
+    } else if (argv[i] === '--no-open') {
+      args.open = false;
     } else if (argv[i] === '--lan') {
       args.host = '0.0.0.0';
     } else if (argv[i] === '--host' && argv[i + 1]) {
@@ -80,6 +85,7 @@ Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
   --host <string>       Host to bind to (default: 127.0.0.1)
   --lan                 Listen on your local network too, so a phone on the same Wi-Fi can open it
+  --no-open             Don't open the office in your browser
   --help                Show this help message`);
       process.exit(0);
     }
@@ -108,6 +114,36 @@ function copyHookScriptOrReport(packageRoot: string, context = ''): boolean {
   if (copyHookScript(packageRoot)) return true;
   console.error(`[Pixel Agents] Hooks NOT installed${context}: hook script missing.`);
   return false;
+}
+
+/** The office link, boxed so it stands out from the startup logs. */
+function printOfficeBanner(url: string): void {
+  const lines = ['Pixel Office is ready. Open this link:', url, 'Stop with Ctrl+C.'];
+  const width = Math.max(...lines.map((l) => l.length)) + 2;
+  const bold = process.stdout.isTTY ? (s: string) => `\x1b[1m${s}\x1b[0m` : (s: string) => s;
+  console.log(`  ┌${'─'.repeat(width)}┐`);
+  for (const line of lines) {
+    const text = line === url ? bold(line) : line;
+    console.log(`  │ ${text}${' '.repeat(width - line.length - 1)}│`);
+  }
+  console.log(`  └${'─'.repeat(width)}┘\n`);
+}
+
+/** Open `url` in the default browser; failure is harmless (the link is printed). */
+function openInBrowser(url: string): void {
+  const [cmd, args] =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['cmd', ['/c', 'start', '', url]]
+        : ['xdg-open', [url]];
+  try {
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    /* no browser available: the printed link is enough */
+  }
 }
 
 /** This machine's IPv4 addresses on the local network (what a phone on the same Wi-Fi can reach). */
@@ -332,9 +368,12 @@ async function main(): Promise<void> {
     // address; only the consent-bearing toggle needs the token.
     const displayHost =
       args.host === '0.0.0.0' || args.host === '::' || args.host === '' ? '127.0.0.1' : args.host;
-    console.log(
-      `\n  Pixel Agents server running at http://${displayHost}:${config.port}/?token=${config.token}\n`,
-    );
+    const officeUrl = `http://${displayHost}:${config.port}/?token=${config.token}`;
+    // Tests and the e2e fixture read this exact line; keep its wording.
+    console.log(`\n  Pixel Agents server running at ${officeUrl}\n`);
+    printOfficeBanner(officeUrl);
+    // Only in an interactive terminal: scripts, tests and CI never get a browser.
+    if (args.open && process.stdout.isTTY && !process.env['CI']) openInBrowser(officeUrl);
     if (displayHost !== args.host) {
       const lan = lanAddresses();
       if (lan.length > 0) {

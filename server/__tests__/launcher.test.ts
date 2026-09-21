@@ -7,7 +7,13 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { ChatSender } from '../src/chatSender.js';
 import { LAUNCHER_LEASE_MS } from '../src/constants.js';
 import { createHttpServer } from '../src/httpServer.js';
-import { planLaunch, readLiveServers } from '../src/launcher.js';
+import {
+  isOnPath,
+  parseAliasOutput,
+  planLaunch,
+  readLiveServers,
+  splitShellWords,
+} from '../src/launcher.js';
 import { LauncherHub } from '../src/launcherHub.js';
 import type { AgentState } from '../src/types.js';
 
@@ -50,6 +56,7 @@ describe('planLaunch', () => {
       args: ['--session-id', 'minted', '--model', 'opus'],
       sessionId: 'minted',
       interactive: true,
+      tracksClaude: true,
     });
   });
 
@@ -68,10 +75,24 @@ describe('planLaunch', () => {
       args: ['--model', 'x'],
       sessionId: null,
       interactive: true,
+      tracksClaude: false,
     });
     expect(planLaunch('/usr/local/bin/claude', [], id).sessionId).toBe('minted');
     expect(planLaunch('claude.cmd', [], id).sessionId).toBe('minted');
     expect(planLaunch('claude-dev', [], id).sessionId).toBeNull();
+  });
+
+  it('finds Claude behind a wrapper and sets up the session there', () => {
+    expect(planLaunch('caffeinate', ['-i', 'claude', '--model', 'opus'], id)).toMatchObject({
+      program: 'caffeinate',
+      args: ['-i', 'claude', '--session-id', 'minted', '--model', 'opus'],
+      sessionId: 'minted',
+      tracksClaude: true,
+    });
+    expect(planLaunch('env', ['FOO=1', 'claude', '-r', 'abc'], id)).toMatchObject({
+      args: ['FOO=1', 'claude', '-r', 'abc'],
+      sessionId: 'abc',
+    });
   });
 
   it('cannot address --continue, the resume picker, or print mode', () => {
@@ -81,6 +102,32 @@ describe('planLaunch', () => {
       sessionId: null,
       interactive: false,
     });
+  });
+});
+
+describe('shell aliases', () => {
+  it('reads zsh and bash alias output', () => {
+    expect(parseAliasOutput('c-caff', "c-caff='caffeinate -i claude'\n")).toEqual([
+      'caffeinate',
+      '-i',
+      'claude',
+    ]);
+    expect(parseAliasOutput('cc', 'alias cc=\'claude --model "opus 5"\'')).toEqual([
+      'claude',
+      '--model',
+      'opus 5',
+    ]);
+    expect(parseAliasOutput('nope', '')).toBeNull();
+  });
+
+  it('splits words like a shell, keeping quoted spaces', () => {
+    expect(splitShellWords(`a 'b c' "d \\"e\\"" f\\ g`)).toEqual(['a', 'b c', 'd "e"', 'f g']);
+  });
+
+  it('knows which programs can be started directly', () => {
+    expect(isOnPath('node')).toBe(true);
+    expect(isOnPath('c-caff-definitely-not-a-program')).toBe(false);
+    expect(isOnPath(process.execPath)).toBe(true);
   });
 });
 

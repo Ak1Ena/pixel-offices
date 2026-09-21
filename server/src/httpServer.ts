@@ -71,7 +71,9 @@ const startTime = Date.now();
  */
 export async function createHttpServer(options: HttpServerOptions): Promise<HttpServerHandle> {
   const app = Fastify({
-    logger: !options.embedded,
+    // Per-request JSON logs bury the office link the CLI prints; opt back in
+    // with PIXEL_OFFICE_VERBOSE=1 when debugging the server.
+    logger: !options.embedded && !!process.env['PIXEL_OFFICE_VERBOSE'],
     bodyLimit: MAX_HOOK_BODY_SIZE,
   });
 
