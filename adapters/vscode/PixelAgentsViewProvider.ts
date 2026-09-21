@@ -53,6 +53,7 @@ import {
   hookProviders,
 } from '../../server/src/providers/index.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
+import { typePrompt } from '../../server/src/terminalTyping.js';
 import {
   getProjectDirPath,
   launchNewTerminal,
@@ -62,7 +63,6 @@ import {
   sendLayout,
 } from './agentManager.js';
 import {
-  CHAT_SUBMIT_DELAY_MS,
   CONFIG_KEY_AUTO_SHOW_PANEL,
   CONFIG_KEY_AUTO_SPAWN_AGENT,
   GLOBAL_KEY_ALWAYS_SHOW_LABELS,
@@ -1094,11 +1094,13 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri): s
 }
 
 /**
- * Type an office chat message into Claude's prompt and submit it. Wrapped in a
- * bracketed paste so newlines stay inside the one message instead of each
- * submitting a line; Enter goes separately, after the paste lands.
+ * Type an office chat message into Claude's prompt and submit it — as
+ * keystrokes, never a paste (see server/src/terminalTyping.ts for why).
  */
 function typeIntoTerminal(terminal: vscode.Terminal, text: string): void {
-  terminal.sendText(`\x1b[200~${text}\x1b[201~`, false);
-  setTimeout(() => terminal.sendText('\r', false), CHAT_SUBMIT_DELAY_MS);
+  void typePrompt(
+    (data) => terminal.sendText(data, false),
+    text,
+    () => terminal.exitStatus !== undefined,
+  );
 }

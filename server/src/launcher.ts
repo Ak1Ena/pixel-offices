@@ -10,12 +10,12 @@ import {
   LAUNCHER_DISCOVERY_INTERVAL_MS,
   LAUNCHER_POLL_TIMEOUT_MS,
   LAUNCHER_RETRY_MS,
-  LAUNCHER_SUBMIT_DELAY_MS,
   SERVER_JSON_DIR,
   SERVERS_DIR,
 } from './constants.js';
 import type { ServerConfig } from './serverConfig.js';
 import { isServerConfig } from './serverConfig.js';
+import { typePrompt } from './terminalTyping.js';
 
 /**
  * `pixel-agents claude [claude args…]` — run Claude so the office can type
@@ -119,9 +119,6 @@ export function readLiveServers(
   }
   return live;
 }
-
-/** Control characters other than tab and newline (the server strips them too). */
-const CONTROL_CHARS_RE = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -265,15 +262,14 @@ export async function runLauncher(argv: string[]): Promise<never> {
   let typing = Promise.resolve();
 
   const typeIn = (text: string): void => {
-    const clean = text.replace(CONTROL_CHARS_RE, '');
-    if (!clean.trim()) return;
-    // Serialize: paste, give the TUI a beat, then Enter — one message at a time.
-    typing = typing.then(async () => {
-      if (exiting) return;
-      term.write(`\x1b[200~${clean}\x1b[201~`);
-      await sleep(LAUNCHER_SUBMIT_DELAY_MS);
-      if (!exiting) term.write('\r');
-    });
+    // Serialize: one message is fully typed and submitted before the next starts.
+    typing = typing.then(() =>
+      typePrompt(
+        (data) => term.write(data),
+        text,
+        () => exiting,
+      ),
+    );
   };
 
   const pollLoop = async (server: ServerConfig, key: string): Promise<void> => {

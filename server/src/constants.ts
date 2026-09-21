@@ -62,12 +62,18 @@ export const LAUNCHER_POLL_TIMEOUT_MS = 25_000;
 export const LAUNCHER_LEASE_MS = 40_000;
 /** Session ids the launcher route accepts (Claude uses UUIDs). */
 export const LAUNCHER_SESSION_ID_PATTERN = '^[A-Za-z0-9_-]{1,64}$';
-/** Pause between pasting an office message into the pty and pressing Enter. */
-export const LAUNCHER_SUBMIT_DELAY_MS = 80;
 /** Launcher retry pause after a failed poll (server gone, restarting). */
 export const LAUNCHER_RETRY_MS = 3_000;
 /** How often the launcher re-reads the server registry for new offices. */
 export const LAUNCHER_DISCOVERY_INTERVAL_MS = 10_000;
+
+// ── Typing office messages into a terminal (terminalTyping.ts) ──
+/** Characters per keystroke chunk. Small, so Claude Code never reads the burst as a paste. */
+export const PROMPT_TYPING_CHUNK_CHARS = 8;
+/** Pause between keystroke chunks. */
+export const PROMPT_TYPING_CHUNK_DELAY_MS = 4;
+/** Pause after the last chunk before pressing Enter, so the TUI has caught up. */
+export const PROMPT_SUBMIT_DELAY_MS = 80;
 
 // ── Whiteboard ──────────────────────────────────────────────
 export const BOARD_FILE_NAME = 'board.json';
