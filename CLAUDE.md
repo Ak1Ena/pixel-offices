@@ -57,6 +57,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     launcher.ts                      `pixel-agents claude`: runs Claude in a node-pty it owns, long-polls every live server for office input
     launcherHub.ts                   Server side of the launcher: per-session inbox, lease, TerminalWriter for ChatSender
     terminalTyping.ts                Types office messages as keystrokes (never a paste) + Enter; shared by VS Code and the launcher
+    tokenUsage.ts                    Session token totals + burn rate from transcript usage (each request counted once by message.id)
     types.ts                         ServerAgentState
     constants.ts                     All timing/scanning constants
   __tests__/                         32 Vitest files
@@ -391,6 +392,13 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Launcher** (`pixel-agents claude [args]`): mints `--session-id` (or uses `--session-id` / `--resume <id>`; `--continue`, the bare resume picker and `-p` are not addressable), runs Claude in a node-pty with the user's terminal passed through, and long-polls `GET /api/launcher/:sessionId/input?cwd=` on every live registry server (Bearer token from the 0600 registry entry; any request carrying `Origin` is refused — browsers never reach a pty). Each poll calls `runtime.adoptLaunchedSession`, which adopts the session immediately, bypassing Watch All Sessions (launching through the office IS the opt-in). `DELETE /api/launcher/:sessionId` on exit; otherwise a 40 s lease lapses. node-pty is an optionalDependency: without it (or without a TTY) Claude runs plainly and stays read-only. node-pty 1.1.0's prebuilt `spawn-helper` can lack its execute bit (`posix_spawnp failed`); `loadPty` repairs it. Queue holds while the agent is mid-turn and **always while `permissionSent`** — the Enter would answer the permission prompt. `sendChatMessage` needs `ctx.privileged`. Office-typed prompts are tagged `source: 'office'` by matching text (`pendingOfficeTexts`).
 - **Whiteboard** (`runtime.board`, created lazily): pins `{id, kind: link|file|snippet|note, title, value, scope: agentIds (empty = all)}`; every change broadcasts `boardLoaded`. Attaching a pin prefixes the message text (`@path`, `title: url`, fenced snippet, note) — agents need nothing new. Permission Allow/Deny from the chat is NOT implemented (the hook is fire-and-forget); the card offers "Terminal".
 - Clicking a character opens its chat (a sub-agent opens its parent's); "Terminal" in the card is what `focusAgent` used to be on click.
+
+## Token Usage, Fire, Names, City Office
+
+- **Token usage** (`server/src/tokenUsage.ts`): sums, unlike the context snapshot, so each request is folded ONCE per `message.id` as a delta (one request spans several records repeating the same usage, output growing while it streams). Totals include cache reads; the **burn rate** counts only NEW tokens (input + cache writes + output) over 5 min and decays on a 5 s tick. Sidechain records count (a sub-agent's spend is its lead's). Seeded once in `startFileWatching` from up to 32 MB before `fileOffset` (`partial` beyond that). Broadcast as `agentTokenUsage`; assistant chat entries carry their request's `usage`.
+- **Fire**: the webview maps burn to `burnLevel` (`BURN_WARM_PER_MIN` smoke, `BURN_FIRE_PER_MIN` flames + glow, `webview-ui/src/constants.ts`); `renderBurnEffects` draws before speech bubbles, and TYPE frames speed up by `BURN_TYPING_SPEED`.
+- **Rename**: `renameAgent` → `runtime.renameAgent` (control chars stripped, 32 chars) → `displayName` persisted on both surfaces' `PersistedAgent` → `agentRenamed` (also in the handshake). Labels prefer it everywhere.
+- **City Office**: furniture `OFFICE_DESK`, `DUAL_MONITOR` (electronics, on/off), `CITY_WINDOW`, `PLANTER`, `CUBICLE_DIVIDER` plus the bundled preset `webview-ui/src/office/layout/presets/cityOffice.json`, applied from Settings → Use City Office Layout as an undoable editor edit (Undo/Reset restore the old layout). Floor pattern 3 (low contrast) — pattern 9 is a checkerboard.
 
 ## Office UI
 

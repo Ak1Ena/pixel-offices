@@ -36,6 +36,8 @@ interface SettingsModalProps {
   onExportLayout: () => void;
   /** Browser-native layout import from a chosen file (standalone only). */
   onImportLayout: (file: File) => void;
+  /** Switch to the bundled City Office layout (an undoable edit). */
+  onUseCityOffice: () => void;
 }
 
 export function SettingsModal({
@@ -57,6 +59,7 @@ export function SettingsModal({
   showAreasAvailable,
   onExportLayout,
   onImportLayout,
+  onUseCityOffice,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +102,14 @@ export function SettingsModal({
         }}
       >
         Import Layout
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          onUseCityOffice();
+          onClose();
+        }}
+      >
+        Use City Office Layout
       </MenuItem>
       {isBrowserRuntime && (
         <input

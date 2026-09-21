@@ -29,6 +29,7 @@ import { OfficeState } from './office/engine/officeState.js';
 import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
+import cityOfficeLayout from './office/layout/presets/cityOffice.json';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout } from './office/types.js';
 import { burnLevelFor, composeMessage, pinsForAgent } from './officeChat.js';
@@ -740,6 +741,9 @@ function App() {
         showAreasAvailable={areasAvailable}
         onExportLayout={handleExportLayout}
         onImportLayout={handleImportLayout}
+        onUseCityOffice={() =>
+          editor.applyPresetLayout(migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout))
+        }
       />
 
       {showMigrationNotice && (

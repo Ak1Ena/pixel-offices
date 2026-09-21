@@ -1,0 +1,34 @@
+{
+  "id": "DUAL_MONITOR",
+  "name": "Dual Monitor",
+  "category": "electronics",
+  "type": "group",
+  "groupType": "state",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 1,
+  "members": [
+    {
+      "type": "asset",
+      "id": "DUAL_MONITOR_ON",
+      "file": "DUAL_MONITOR_ON.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "front",
+      "state": "on"
+    },
+    {
+      "type": "asset",
+      "id": "DUAL_MONITOR_OFF",
+      "file": "DUAL_MONITOR_OFF.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "orientation": "front",
+      "state": "off"
+    }
+  ]
+}

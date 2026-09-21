@@ -74,6 +74,8 @@ interface EditorActions {
   handleRedo: () => void;
   handleReset: () => void;
   handleSave: () => void;
+  /** Swap in a ready-made layout as an undoable edit (Undo / Reset bring the old one back). */
+  applyPresetLayout: (layout: OfficeLayout) => void;
   handleZoomChange: (zoom: number) => void;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
@@ -527,6 +529,14 @@ export function useEditorActions(
     setIsDirty(false);
   }, [editorState, applyEdit]);
 
+  const applyPresetLayout = useCallback(
+    (layout: OfficeLayout) => {
+      if (!editorState.isEditMode) handleToggleEditMode();
+      applyEdit(structuredClone(layout));
+    },
+    [editorState, handleToggleEditMode, applyEdit],
+  );
+
   const handleSave = useCallback(() => {
     // Flush any pending debounced save immediately
     if (saveTimerRef.current) {
@@ -944,6 +954,7 @@ export function useEditorActions(
     handleRedo,
     handleReset,
     handleSave,
+    applyPresetLayout,
     handleZoomChange,
     handleEditorTileAction,
     handleEditorEraseAction,
