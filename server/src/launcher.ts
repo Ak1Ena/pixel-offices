@@ -18,8 +18,8 @@ import { isServerConfig } from './serverConfig.js';
 import { typePrompt } from './terminalTyping.js';
 
 /**
- * `pixel-agents claude [claude args…]` — run Claude so the office can type
- * into it.
+ * `pixel-office <program> [args…]` — run a program (Claude today) so the
+ * office can type into it.
  *
  * Claude runs in a pty this process owns; the user's terminal is passed
  * through untouched (raw keys in, screen out, resizes). Meanwhile the launcher
@@ -51,8 +51,10 @@ interface PtyModule {
 }
 
 export interface LaunchPlan {
-  /** Arguments to pass to `claude`. */
-  claudeArgs: string[];
+  /** The program to run, as the user typed it. */
+  program: string;
+  /** Arguments to pass to it. */
+  args: string[];
   /** The session the office can address, or null when it can't be known up front. */
   sessionId: string | null;
   /** False for print mode: nothing to type into. */
@@ -72,28 +74,45 @@ function flagValue(args: string[], ...names: string[]): string | undefined {
   return undefined;
 }
 
+/** Whether `program` is Claude Code (`claude`, `/usr/local/bin/claude`, `claude.cmd`). */
+export function isClaudeProgram(program: string): boolean {
+  const base = path
+    .basename(program)
+    .toLowerCase()
+    .replace(/\.(cmd|exe|bat|ps1)$/, '');
+  return base === 'claude';
+}
+
 /**
- * Decide the session id the office will know this Claude by. A fresh session
- * gets one minted here and passed as `--session-id`; an explicit
- * `--session-id` or `--resume <id>` is used as given. `--continue` and a bare
- * `--resume` (the picker) pick a session only Claude knows, so those runs are
- * not addressable.
+ * Decide how to run `program` and which session id the office will know it
+ * by. Only Claude sessions are addressable (the office follows their
+ * transcripts); any other program runs as-is with no session id.
+ *
+ * For Claude: a fresh session gets an id minted here and passed as
+ * `--session-id`; an explicit `--session-id` or `--resume <id>` is used as
+ * given. `--continue` and a bare `--resume` (the picker) pick a session only
+ * Claude knows, so those runs are not addressable.
  */
-export function planLaunch(args: string[], newId: () => string = randomUUID): LaunchPlan {
-  if (flagValue(args, '-p', '--print') !== undefined) {
-    return { claudeArgs: args, sessionId: null, interactive: false };
-  }
+export function planLaunch(
+  program: string,
+  args: string[],
+  newId: () => string = randomUUID,
+): LaunchPlan {
+  const plan = (a: string[], sessionId: string | null, interactive = true): LaunchPlan => ({
+    program,
+    args: a,
+    sessionId,
+    interactive,
+  });
+  if (!isClaudeProgram(program)) return plan(args, null);
+  if (flagValue(args, '-p', '--print') !== undefined) return plan(args, null, false);
   const explicit = flagValue(args, '--session-id');
-  if (explicit) return { claudeArgs: args, sessionId: explicit, interactive: true };
+  if (explicit) return plan(args, explicit);
   const resumed = flagValue(args, '-r', '--resume');
-  if (resumed !== undefined) {
-    return { claudeArgs: args, sessionId: resumed || null, interactive: true };
-  }
-  if (flagValue(args, '-c', '--continue') !== undefined) {
-    return { claudeArgs: args, sessionId: null, interactive: true };
-  }
+  if (resumed !== undefined) return plan(args, resumed || null);
+  if (flagValue(args, '-c', '--continue') !== undefined) return plan(args, null);
   const sessionId = newId();
-  return { claudeArgs: ['--session-id', sessionId, ...args], sessionId, interactive: true };
+  return plan(['--session-id', sessionId, ...args], sessionId);
 }
 
 /** Live servers from the multi-server registry (same records the hook script fans out to). */
@@ -199,24 +218,30 @@ function sayGoodbye(server: ServerConfig, sessionId: string): void {
   req.end();
 }
 
-/** Run plain `claude` with the terminal handed straight through. */
-function runPlain(args: string[]): Promise<never> {
+/** Run the program plainly, with the terminal handed straight through. */
+function runPlain(program: string, args: string[]): Promise<never> {
   return new Promise(() => {
-    const isWindows = process.platform === 'win32';
-    const child = spawnChild(isWindows ? 'claude.cmd' : 'claude', args, {
+    // On Windows the shell resolves .cmd/.exe shims (claude.cmd, codex.cmd).
+    const child = spawnChild(program, args, {
       stdio: 'inherit',
-      shell: isWindows,
+      shell: process.platform === 'win32',
     });
     child.on('error', (err) => {
-      console.error(`[Pixel Agents] Could not start claude: ${err.message}`);
+      console.error(`[Pixel Agents] Could not start ${program}: ${err.message}`);
       process.exit(127);
     });
     child.on('exit', (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
   });
 }
 
-export async function runLauncher(argv: string[]): Promise<never> {
-  const plan = planLaunch(argv);
+export async function runLauncher(program: string, argv: string[]): Promise<never> {
+  const plan = planLaunch(program, argv);
+  if (!isClaudeProgram(program)) {
+    console.error(
+      `[Pixel Agents] The office follows Claude sessions only for now, so ${program} runs normally and won't appear in it.`,
+    );
+    return runPlain(plan.program, plan.args);
+  }
   const pty = plan.interactive && process.stdin.isTTY && process.stdout.isTTY ? loadPty() : null;
 
   if (!pty || !plan.sessionId) {
@@ -229,15 +254,15 @@ export async function runLauncher(argv: string[]): Promise<never> {
         '[Pixel Agents] node-pty is not available, so the office can show this session but not send to it.',
       );
     }
-    return runPlain(plan.claudeArgs);
+    return runPlain(plan.program, plan.args);
   }
 
   const sessionId = plan.sessionId;
   const cwd = process.cwd();
   const isWindows = process.platform === 'win32';
   const term = pty.spawn(
-    isWindows ? (process.env.ComSpec ?? 'cmd.exe') : 'claude',
-    isWindows ? ['/c', 'claude', ...plan.claudeArgs] : plan.claudeArgs,
+    isWindows ? (process.env.ComSpec ?? 'cmd.exe') : plan.program,
+    isWindows ? ['/c', plan.program, ...plan.args] : plan.args,
     {
       name: process.env.TERM ?? 'xterm-256color',
       cols: process.stdout.columns || 80,

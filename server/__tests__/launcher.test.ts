@@ -45,26 +45,42 @@ describe('planLaunch', () => {
   const id = () => 'minted';
 
   it('mints a session id for a fresh session so the office can address it', () => {
-    expect(planLaunch(['--model', 'opus'], id)).toEqual({
-      claudeArgs: ['--session-id', 'minted', '--model', 'opus'],
+    expect(planLaunch('claude', ['--model', 'opus'], id)).toEqual({
+      program: 'claude',
+      args: ['--session-id', 'minted', '--model', 'opus'],
       sessionId: 'minted',
       interactive: true,
     });
   });
 
   it('uses an explicit --session-id or --resume <id> as given', () => {
-    expect(planLaunch(['--session-id', 'abc'], id).sessionId).toBe('abc');
-    expect(planLaunch(['--session-id=abc'], id).sessionId).toBe('abc');
-    expect(planLaunch(['-r', 'abc'], id)).toMatchObject({
+    expect(planLaunch('claude', ['--session-id', 'abc'], id).sessionId).toBe('abc');
+    expect(planLaunch('claude', ['--session-id=abc'], id).sessionId).toBe('abc');
+    expect(planLaunch('claude', ['-r', 'abc'], id)).toMatchObject({
       sessionId: 'abc',
-      claudeArgs: ['-r', 'abc'],
+      args: ['-r', 'abc'],
     });
   });
 
+  it('runs any other program as-is, with nothing to address', () => {
+    expect(planLaunch('codex', ['--model', 'x'], id)).toEqual({
+      program: 'codex',
+      args: ['--model', 'x'],
+      sessionId: null,
+      interactive: true,
+    });
+    expect(planLaunch('/usr/local/bin/claude', [], id).sessionId).toBe('minted');
+    expect(planLaunch('claude.cmd', [], id).sessionId).toBe('minted');
+    expect(planLaunch('claude-dev', [], id).sessionId).toBeNull();
+  });
+
   it('cannot address --continue, the resume picker, or print mode', () => {
-    expect(planLaunch(['-c'], id).sessionId).toBeNull();
-    expect(planLaunch(['--resume'], id).sessionId).toBeNull();
-    expect(planLaunch(['-p', 'hi'], id)).toMatchObject({ sessionId: null, interactive: false });
+    expect(planLaunch('claude', ['-c'], id).sessionId).toBeNull();
+    expect(planLaunch('claude', ['--resume'], id).sessionId).toBeNull();
+    expect(planLaunch('claude', ['-p', 'hi'], id)).toMatchObject({
+      sessionId: null,
+      interactive: false,
+    });
   });
 });
 

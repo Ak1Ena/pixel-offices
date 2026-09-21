@@ -70,8 +70,11 @@ export function parseArgs(argv: string[]): CliArgs {
       args.host = argv[i + 1];
       i++;
     } else if (argv[i] === '--help') {
-      console.log(`Usage: pixel-office [options]
-       pixel-office claude [claude args...]   Run Claude so the office chat can send to it
+      console.log(`Usage: pixel-office [options]                 Start the office
+       pixel-office <program> [args...]    Run a program through the office launcher,
+                                           e.g. pixel-office claude --model opus
+                                           (Claude sessions show up in the office and
+                                           can be sent messages; other programs run as usual)
 
 Options:
   --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
@@ -121,9 +124,11 @@ function lanAddresses(): string[] {
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  // `pixel-agents claude …` runs Claude in a pty the office can type into.
-  if (process.argv[2] === 'claude') {
-    await runLauncher(process.argv.slice(3));
+  // `pixel-office <program> …` runs the program (Claude today) in a pty the
+  // office can type into. Anything that isn't a flag is a program name.
+  const first = process.argv[2];
+  if (first !== undefined && !first.startsWith('-')) {
+    await runLauncher(first, process.argv.slice(3));
     return;
   }
 
