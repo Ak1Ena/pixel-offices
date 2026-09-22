@@ -134,18 +134,7 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
       </div>
       {entry.usage && (
         <div className="flex gap-8 text-2xs text-text-muted" data-testid="chat-usage">
-          <span>in {formatTokens(entry.usage.input + entry.usage.cacheCreation)}</span>
-          <span>out {formatTokens(entry.usage.output)}</span>
-          <span>cached {formatTokens(entry.usage.cacheRead)}</span>
-          <span className="text-text">
-            ={' '}
-            {formatTokens(
-              entry.usage.input +
-                entry.usage.cacheCreation +
-                entry.usage.cacheRead +
-                entry.usage.output,
-            )}
-          </span>
+          <span>{formatTokens(entry.usage.output)} tokens out</span>
         </div>
       )}
     </div>
@@ -544,11 +533,11 @@ export function ChatCard({
         <div className="flex flex-col gap-2 min-w-0">
           <span className="text-xs">SESSION</span>
           <span className="text-sm">
-            {usage ? `${formatTokens(usage.totalTokens)} tokens` : '—'}
+            {usage ? `${formatTokens(usage.outputTokens)} tokens out` : '—'}
           </span>
           <span className="text-text-muted">
             {usage
-              ? `${usage.requests} requests · out ${formatTokens(usage.outputTokens)}${usage.partial ? ' · recent only' : ''}`
+              ? `${usage.requests} requests${usage.partial ? ' · recent only' : ''}`
               : 'no usage yet'}
           </span>
         </div>

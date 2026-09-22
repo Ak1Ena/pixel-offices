@@ -5,6 +5,7 @@ import { GROUP_CHAT_WIDTH_PX } from '../constants.js';
 import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatChannel } from '../officeChat.js';
+import type { UsageTotals } from '../officeChat.js';
 import {
   addressedMembers,
   completeMention,
@@ -24,7 +25,7 @@ interface GroupChatPanelProps {
   chats: Record<number, ChatEntry[]>;
   labelOf: (agentId: number) => string;
   /** Per-agent token use, for the channel's total. */
-  usage?: Record<number, { totalTokens: number; burnPerMinute: number } | undefined>;
+  usage?: Record<number, UsageTotals | undefined>;
   sendable: Record<number, boolean>;
   relayEnabled: boolean;
   /** Absent when this connection may not change it. */
@@ -180,12 +181,11 @@ export function GroupChatPanel({
           <span
             className="ml-auto text-text-muted"
             title={channelUse.members
-              .map((m) => `${labelOf(m.id)}: ${formatTokens(m.totalTokens)}`)
+              .map((m) => `${labelOf(m.id)}: ${formatTokens(m.tokens)}`)
               .join('\n')}
             data-testid="group-usage"
           >
-            {formatTokens(channelUse.totalTokens)} tokens · {formatTokens(channelUse.burnPerMinute)}
-            /min
+            {formatTokens(channelUse.tokens)} tokens out
           </span>
         )}
       </div>

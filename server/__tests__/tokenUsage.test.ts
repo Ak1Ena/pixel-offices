@@ -71,6 +71,7 @@ describe('token usage', () => {
     expect(meter.requests).toBe(2);
     expect(meter.outputTokens).toBe(45);
     expect(meter.totalTokens).toBe(10 + 1000 + 50 + 40 + 10);
+    expect(meter.cacheReadTokens).toBe(1000);
   });
 
   it('burns only new tokens inside the window, and decays to zero', () => {

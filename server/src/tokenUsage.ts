@@ -23,6 +23,8 @@ import type { AgentState } from './types.js';
 export interface TokenMeter {
   totalTokens: number;
   outputTokens: number;
+  /** Cache reads alone: every request re-reads the whole cached context, so they dwarf the rest. */
+  cacheReadTokens: number;
   requests: number;
   /** True when the transcript was too big to total from the start. */
   partial: boolean;
@@ -70,6 +72,7 @@ export function newTokenMeter(): TokenMeter {
   return {
     totalTokens: 0,
     outputTokens: 0,
+    cacheReadTokens: 0,
     requests: 0,
     partial: false,
     counted: new Map(),
@@ -111,6 +114,7 @@ export function foldUsage(meter: TokenMeter, record: unknown, now = Date.now()):
   if (!before) meter.requests++;
   meter.totalTokens += added;
   meter.outputTokens += delta.output;
+  meter.cacheReadTokens += delta.cacheRead;
   const at = Date.parse(r.timestamp ?? '');
   const fresh = delta.input + delta.cacheCreation + delta.output;
   if (fresh > 0) meter.recent.push({ at: Number.isFinite(at) ? at : now, fresh });
@@ -137,6 +141,7 @@ function broadcastUsage(
     id: agentId,
     totalTokens: meter.totalTokens,
     outputTokens: meter.outputTokens,
+    cacheReadTokens: meter.cacheReadTokens,
     requests: meter.requests,
     burnPerMinute: meter.lastBurn,
     ...(meter.partial ? { partial: true } : {}),

@@ -320,6 +320,7 @@ export interface AgentTokenUsage {
   id: number;
   totalTokens: number;
   outputTokens: number;
+  cacheReadTokens?: number;
   requests: number;
   burnPerMinute: number;
   partial?: boolean;

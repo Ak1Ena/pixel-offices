@@ -534,7 +534,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
             <span className="flex-1 min-w-0 truncate">{r.name}</span>
             {r.id !== 'everyone' && teamUsage(r.members, usage) && (
               <span className="text-2xs text-text-muted" title="Tokens the team used this session">
-                {formatTokens(teamUsage(r.members, usage)!.totalTokens)}
+                {formatTokens(teamUsage(r.members, usage)!.tokens)}
               </span>
             )}
           </button>
@@ -740,17 +740,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                                 : agent.label}
                             </span>
                             {prefs.timestamps && <span>{timeLabel(e.timestamp)}</span>}
-                            {e.usage && (
-                              <span>
-                                {formatTokens(
-                                  e.usage.input +
-                                    e.usage.cacheCreation +
-                                    e.usage.cacheRead +
-                                    e.usage.output,
-                                )}{' '}
-                                tokens
-                              </span>
-                            )}
+                            {e.usage && <span>{formatTokens(e.usage.output)} tokens out</span>}
                           </div>
                           {isUser ? (
                             <div className="px-10 py-6 bg-chat-office border-2 border-accent whitespace-pre-wrap break-words">
@@ -969,32 +959,26 @@ export function MessengerPanel(props: MessengerPanelProps) {
             {use && (
               <section className="flex flex-col gap-2 text-xs">
                 <span className="text-2xs text-text-muted uppercase">Tokens this session</span>
-                <span>{formatTokens(use.totalTokens)} total</span>
-                <span className="text-text-muted">
-                  {formatTokens(use.burnPerMinute)} / min lately
-                </span>
+                <span>{formatTokens(use.outputTokens)} out</span>
               </section>
             )}
             {team && teamUse && (
               <section className="flex flex-col gap-2 text-xs" data-testid="messenger-team-usage">
                 <span className="text-2xs text-text-muted uppercase">Team # {team.name}</span>
-                <span>{formatTokens(teamUse.totalTokens)} total</span>
-                <span className="text-text-muted">
-                  {formatTokens(teamUse.burnPerMinute)} / min lately
-                </span>
+                <span>{formatTokens(teamUse.tokens)} out</span>
                 {teamUse.members.map((m) => (
                   <div key={m.id} className="flex flex-col gap-2 pt-2">
                     <div className="flex justify-between text-2xs">
                       <span className={m.id === selectedId ? 'text-text' : 'text-text-muted'}>
                         {labelOf(m.id)}
                       </span>
-                      <span className="text-text-muted">{formatTokens(m.totalTokens)}</span>
+                      <span className="text-text-muted">{formatTokens(m.tokens)}</span>
                     </div>
                     <div className="h-6 bg-bg-thumb">
                       <div
                         className="h-full bg-accent"
                         style={{
-                          width: `${Math.round((m.totalTokens / teamUse.totalTokens) * 100)}%`,
+                          width: `${teamUse.tokens > 0 ? Math.round((m.tokens / teamUse.tokens) * 100) : 0}%`,
                         }}
                       />
                     </div>

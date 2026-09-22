@@ -97,13 +97,9 @@ test('a team channel with no @Name talks to its lead; everyone talks to all', ()
   assert.deepEqual(defaultRecipients(everyone, [1, 2, 3]), [1, 2, 3]);
 });
 
-test('team usage sums members, biggest spender first', () => {
-  const use = teamUsage([1, 2, 3], {
-    1: { totalTokens: 100, burnPerMinute: 5 },
-    2: { totalTokens: 300, burnPerMinute: 0 },
-  });
-  assert.equal(use?.totalTokens, 400);
-  assert.equal(use?.burnPerMinute, 5);
+test('team usage sums output tokens', () => {
+  const use = teamUsage([1, 2, 3], { 1: { outputTokens: 100 }, 2: { outputTokens: 300 } });
+  assert.equal(use?.tokens, 400);
   assert.deepEqual(
     use?.members.map((m) => m.id),
     [2, 1],

@@ -604,6 +604,12 @@ components:
           description: Sum over requests of input + cache writes + cache reads + output.
         outputTokens:
           type: integer
+        cacheReadTokens:
+          type: integer
+          description: |
+            The cache-read part of totalTokens. Every request re-reads the whole
+            cached context, so this dwarfs the rest; the office shows
+            totalTokens minus this as the session's tokens (what burnPerMinute counts).
         requests:
           type: integer
         burnPerMinute:
