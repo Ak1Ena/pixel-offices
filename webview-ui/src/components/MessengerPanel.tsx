@@ -137,7 +137,7 @@ function Markdown({ blocks }: { blocks: MdBlock[] }) {
         if (b.kind === 'code') return <CodeBlock key={i} text={b.text} />;
         if (b.kind === 'heading') {
           return (
-            <div key={i} className="font-pixel text-base text-white mt-4">
+            <div key={i} className="font-bold text-md-heading mt-4">
               <Inline parts={b.inline} />
             </div>
           );

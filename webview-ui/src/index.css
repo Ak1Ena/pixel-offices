@@ -56,6 +56,8 @@
   --color-pin-file: #c6efc6;
   --color-pin-snippet: #cfe3ff;
   --color-pin-note: #ffd966;
+  /* Headings inside agent replies: marked by colour, not size */
+  --color-md-heading: #87ceeb;
 
   /* Shadow */
   --shadow-pixel: 2px 2px 0px #0a0a14;
@@ -120,6 +122,7 @@
   --color-pin-file: var(--color-pin-file);
   --color-pin-snippet: var(--color-pin-snippet);
   --color-pin-note: var(--color-pin-note);
+  --color-md-heading: var(--color-md-heading);
 
   /* Shadow */
   --shadow-pixel: var(--shadow-pixel);
