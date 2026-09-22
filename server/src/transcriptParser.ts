@@ -415,12 +415,14 @@ export function processTranscriptLine(
           cancelWaitingTimer(agentId, waitingTimers);
           clearAgentActivity(agent, agentId, agents, permissionTimers);
           agent.hadToolsInTurn = false;
+          if (isInterruptRecord(content)) endInterruptedTurn(agentId, agent, agents);
         }
       } else if (typeof content === 'string' && content.trim()) {
         // New user text prompt — new turn starting
         cancelWaitingTimer(agentId, waitingTimers);
         clearAgentActivity(agent, agentId, agents, permissionTimers);
         agent.hadToolsInTurn = false;
+        if (isInterruptRecord(content)) endInterruptedTurn(agentId, agent, agents);
       }
     } else if (record.type === 'queue-operation' && record.operation === 'enqueue') {
       // Background agent completed — parse tool-use-id from XML content
@@ -753,4 +755,30 @@ function isAsyncAgentResult(block: Record<string, unknown>): boolean {
     return content.startsWith('Async agent launched successfully.');
   }
   return false;
+}
+
+/** What Claude writes when the user presses Esc mid-turn (plain, or "… for tool use"). */
+const INTERRUPT_MARKER = '[Request interrupted by user';
+
+/** A user record that is Claude's interrupt note rather than a new prompt. */
+export function isInterruptRecord(content: unknown): boolean {
+  if (typeof content === 'string') return content.trimStart().startsWith(INTERRUPT_MARKER);
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (b: { type?: unknown; text?: unknown }) =>
+      b?.type === 'text' &&
+      typeof b.text === 'string' &&
+      b.text.trimStart().startsWith(INTERRUPT_MARKER),
+  );
+}
+
+/**
+ * An interrupted turn ends with no turn_duration record and no Stop hook, so
+ * without this the character keeps working (and the chat queue stays held)
+ * until something else happens. Claude is back at its prompt: waiting.
+ */
+function endInterruptedTurn(agentId: number, agent: AgentState, agents: AgentStateStore): void {
+  agent.isWaiting = true;
+  agent.permissionSent = false;
+  agents.broadcast({ type: 'agentStatus', id: agentId, status: 'waiting', awaitingInput: false });
 }

@@ -746,6 +746,7 @@ function App() {
                   onRename={(name) => chat.renameAgent(id, name)}
                   screen={chat.screens[id]}
                   onKeys={(keys) => chat.sendKeys(id, keys)}
+                  onStop={() => chat.interruptAgent(id)}
                   onRemove={() => {
                     handleCloseAgent(id);
                     closeChat();

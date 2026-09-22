@@ -206,6 +206,7 @@ components:
         - $ref: '#/components/schemas/RenameAgent'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
+        - $ref: '#/components/schemas/InterruptAgent'
         - $ref: '#/components/schemas/AnswerScreenQuestion'
         - $ref: '#/components/schemas/SetAgentRelay'
         - $ref: '#/components/schemas/AnswerPermission'
@@ -2387,6 +2388,21 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentKey'
+
+    InterruptAgent:
+      description: |
+        Stop what an agent is doing: press Esc in its terminal, Claude's own
+        interrupt. Only while the agent is mid-turn or showing a permission
+        prompt (an Esc at an idle prompt opens Claude's rewind menu). Reaches
+        the same terminals office chat does (agentChatSendable). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: interruptAgent
+        id:
+          type: integer
 
     AnswerScreenQuestion:
       description: |

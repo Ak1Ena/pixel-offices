@@ -1,5 +1,5 @@
 import type { TerminalWriter } from './chatSender.js';
-import { LAUNCHER_LEASE_MS } from './constants.js';
+import { LAUNCHER_INTERRUPT, LAUNCHER_LEASE_MS } from './constants.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -99,6 +99,11 @@ export class LauncherHub {
       canWrite: (agent: AgentState) => this.isConnected(agent.sessionId),
       write: (agent: AgentState, text: string) => {
         if (!this.write(agent.sessionId, text)) {
+          throw new Error(`launcher for session ${agent.sessionId} is gone`);
+        }
+      },
+      interrupt: (agent: AgentState) => {
+        if (!this.write(agent.sessionId, LAUNCHER_INTERRUPT)) {
           throw new Error(`launcher for session ${agent.sessionId} is gone`);
         }
       },

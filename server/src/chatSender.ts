@@ -16,6 +16,8 @@ export interface TerminalWriter {
   /** Whether the terminal can take typed input right now (absent = always).
    *  False holds the queue; the writer calls ChatSender.retry when it clears. */
   ready?(agent: AgentState): boolean;
+  /** Press Esc in the terminal: Claude's interrupt (absent = can't). */
+  interrupt?(agent: AgentState): void;
 }
 
 const QUEUE_TICK_MS = 2_000;
@@ -113,6 +115,26 @@ export class ChatSender {
     queue.push({ queueId: randomUUID(), text });
     this.queues.set(agentId, queue);
     if (!this.flush(agentId)) this.report(agentId);
+  }
+
+  /**
+   * Stop the agent's current turn: Esc in its terminal. Refused while it is
+   * idle, where Esc does something else (clears the prompt, a second one opens
+   * Claude's rewind menu). Queued messages stay queued and go out once the
+   * interrupted turn has ended.
+   */
+  interrupt(agentId: number): boolean {
+    const agent = this.store.get(agentId);
+    if (!agent || (agent.isWaiting && !agent.permissionSent)) return false;
+    const writer = this.writerFor(agent);
+    if (!writer?.interrupt) return false;
+    try {
+      writer.interrupt(agent);
+      return true;
+    } catch (err) {
+      console.warn(`[Pixel Agents] Agent ${agentId}: interrupt failed:`, err);
+      return false;
+    }
   }
 
   cancel(agentId: number, queueId: unknown): void {

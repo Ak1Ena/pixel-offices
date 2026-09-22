@@ -349,3 +349,48 @@ describe('transcriptParser: teammate spawn results (new-harness implicit teams)'
     expect(agent.isTeamLead).toBeUndefined();
   });
 });
+
+describe('transcriptParser: interrupted turns', () => {
+  let agents: AgentStateStore;
+  let agent: AgentState;
+  let messages: Array<Record<string, unknown>>;
+  const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  beforeEach(() => {
+    setHookProvider(claudeProvider);
+    agents = new AgentStateStore();
+    // Hooks flowing: an interrupt fires no Stop hook, so the transcript is the only signal.
+    agent = createTestAgent({ hookDelivered: true, permissionSent: true });
+    agents.set(1, agent);
+    messages = [];
+    agents.on('broadcast', (msg) => messages.push(msg as Record<string, unknown>));
+  });
+
+  const line = (content: unknown) => JSON.stringify({ type: 'user', message: { content } });
+
+  it.each([
+    ['a plain string', '[Request interrupted by user]'],
+    [
+      'a text block after a tool',
+      [{ type: 'text', text: '[Request interrupted by user for tool use]' }],
+    ],
+  ])('ends the turn on the interrupt note as %s', (_label, content) => {
+    processTranscriptLine(1, line(content), agents, waitingTimers, permissionTimers);
+    expect(agent.isWaiting).toBe(true);
+    expect(agent.permissionSent).toBe(false);
+    expect(messages).toContainEqual({
+      type: 'agentStatus',
+      id: 1,
+      status: 'waiting',
+      awaitingInput: false,
+    });
+  });
+
+  it('treats an ordinary prompt as a new turn, not an end', () => {
+    agent.permissionSent = false;
+    processTranscriptLine(1, line('please fix the bug'), agents, waitingTimers, permissionTimers);
+    expect(agent.isWaiting).toBe(false);
+    expect(messages.some((m) => m.type === 'agentStatus' && m.status === 'waiting')).toBe(false);
+  });
+});

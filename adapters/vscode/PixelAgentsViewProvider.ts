@@ -197,6 +197,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
     this.runtime.chatSender.addWriter({
       canWrite: (agent) => !!agent.terminalRef && !agent.isExternal,
       write: (agent, text) => typeIntoTerminal(agent.terminalRef!, text),
+      // Stop: Esc, Claude's own interrupt.
+      interrupt: (agent) => agent.terminalRef!.sendText('\x1b', false),
     });
 
     this.initServer();
@@ -501,6 +503,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       } else if (message.type === 'sendChatMessage') {
         // The VS Code webview is privileged by construction (our own iframe).
         this.runtime.chatSender.send(message.id, message.text);
+      } else if (message.type === 'interruptAgent') {
+        if (typeof message.id === 'number') this.runtime.chatSender.interrupt(message.id);
       } else if (message.type === 'cancelChatMessage') {
         this.runtime.chatSender.cancel(message.id, message.queueId);
       } else if (message.type === 'setAgentRelay') {

@@ -60,6 +60,10 @@ export const LAUNCHER_API_PREFIX = '/api/launcher';
 export const LAUNCHER_POLL_TIMEOUT_MS = 25_000;
 /** A launched session stays "connected" this long after its last poll. */
 export const LAUNCHER_LEASE_MS = 40_000;
+/** Launcher inbox entry meaning "press Esc" (the office's Stop). Office chat
+ *  text never equals it: ChatSender strips control characters, and a launcher
+ *  too old to know it types nothing for it (typePrompt strips them too). */
+export const LAUNCHER_INTERRUPT = '\x1b';
 /** Session ids the launcher route accepts (Claude uses UUIDs). */
 export const LAUNCHER_SESSION_ID_PATTERN = '^[A-Za-z0-9_-]{1,64}$';
 /** Launcher retry pause after a failed poll (server gone, restarting). */

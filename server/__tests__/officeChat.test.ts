@@ -289,3 +289,47 @@ describe('BoardStore', () => {
     ).toEqual(['p1']);
   });
 });
+
+describe('ChatSender.interrupt (Stop)', () => {
+  let store: AgentStateStore;
+  let sender: ChatSender;
+  let pressed: number[];
+
+  beforeEach(() => {
+    store = new AgentStateStore();
+    sender = new ChatSender(store);
+    pressed = [];
+    sender.addWriter({
+      canWrite: (a) => !a.isExternal,
+      write: () => {},
+      interrupt: (a) => pressed.push(a.id),
+    });
+  });
+
+  afterEach(() => sender.dispose());
+
+  it('presses Esc while the agent is mid-turn', () => {
+    store.set(1, createTestAgent({ isWaiting: false }));
+    expect(sender.interrupt(1)).toBe(true);
+    expect(pressed).toEqual([1]);
+  });
+
+  it('presses Esc on a permission prompt even though the agent reads as waiting', () => {
+    store.set(1, createTestAgent({ isWaiting: true, permissionSent: true }));
+    expect(sender.interrupt(1)).toBe(true);
+    expect(pressed).toEqual([1]);
+  });
+
+  it('refuses at an idle prompt, where Esc would open the rewind menu', () => {
+    store.set(1, createTestAgent({ isWaiting: true }));
+    expect(sender.interrupt(1)).toBe(false);
+    expect(pressed).toEqual([]);
+  });
+
+  it('refuses sessions no writer reaches, and unknown agents', () => {
+    store.set(1, createTestAgent({ isExternal: true }));
+    expect(sender.interrupt(1)).toBe(false);
+    expect(sender.interrupt(99)).toBe(false);
+    expect(pressed).toEqual([]);
+  });
+});

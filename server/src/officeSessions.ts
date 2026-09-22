@@ -447,6 +447,11 @@ export class OfficeSessions {
           () => !this.sessions.has(session.sessionId),
         );
       },
+      interrupt: (agent) => {
+        const session = this.sessionOf(agent);
+        if (!session) throw new Error('session ended');
+        session.pty.write(KEY_BYTES.escape);
+      },
     };
   }
 

@@ -67,6 +67,8 @@ interface ChatCardProps {
   /** Terminal screen of an agent the office runs itself; undefined for every other agent. */
   screen?: string[];
   onKeys?: (keys: AgentKey[]) => void;
+  /** Interrupt the agent's current turn (Esc in its terminal). Shown while it works. */
+  onStop?: () => void;
   /** Take this agent out of the office. An agent the office runs is stopped too. */
   onRemove?: () => void;
 }
@@ -192,6 +194,7 @@ export function ChatCard({
   onRename,
   screen,
   onKeys,
+  onStop,
   onRemove,
 }: ChatCardProps) {
   const [showWorkflows, setShowWorkflows] = useState(false);
@@ -424,6 +427,17 @@ export function ChatCard({
           </span>
         )}
         <span className="flex-1" />
+        {onStop && !readOnlyReason && (ch.isActive || needsApproval) && (
+          <Button
+            size="sm"
+            onClick={onStop}
+            className="text-danger"
+            title="Stop what this agent is doing (presses Esc in its terminal)"
+            data-testid="chat-stop"
+          >
+            ■ Stop
+          </Button>
+        )}
         {screen && (
           <Button
             size="sm"

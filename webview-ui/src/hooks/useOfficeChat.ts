@@ -44,6 +44,7 @@ export interface OfficeChatState {
   relayEnabled: boolean;
   setRelay: (enabled: boolean) => void;
   sendKeys: (agentId: number, keys: AgentKey[]) => void;
+  interruptAgent: (agentId: number) => void;
   renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
   sendMessage: (agentId: number, text: string) => void;
@@ -171,6 +172,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'sendAgentKeys', id: agentId, keys });
   }, []);
 
+  const interruptAgent = useCallback((agentId: number) => {
+    transport.send({ type: 'interruptAgent', id: agentId });
+  }, []);
+
   const answerQuestion = useCallback((agentId: number, key: string, option: number) => {
     transport.send({ type: 'answerScreenQuestion', id: agentId, key, option });
   }, []);
@@ -196,6 +201,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     relayEnabled,
     setRelay,
     sendKeys,
+    interruptAgent,
     renameAgent,
     pins,
     sendMessage,

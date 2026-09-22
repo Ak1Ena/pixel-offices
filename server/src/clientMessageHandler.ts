@@ -334,6 +334,10 @@ export function handleClientMessage(
       if (ctx.privileged) runtime?.permissions.answer(msg.id, msg.requestId, msg.decision);
       break;
 
+    case 'interruptAgent':
+      if (ctx.privileged && typeof msg.id === 'number') runtime?.chatSender.interrupt(msg.id);
+      break;
+
     case 'sendAgentKeys':
       if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;

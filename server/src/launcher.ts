@@ -8,6 +8,7 @@ import * as path from 'path';
 import {
   LAUNCHER_API_PREFIX,
   LAUNCHER_DISCOVERY_INTERVAL_MS,
+  LAUNCHER_INTERRUPT,
   LAUNCHER_POLL_TIMEOUT_MS,
   LAUNCHER_RETRY_MS,
   SERVER_JSON_DIR,
@@ -412,7 +413,11 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
   const pollLoop = async (server: ServerConfig, key: string): Promise<void> => {
     while (!exiting) {
       try {
-        for (const text of await pollOnce(server, sessionId, cwd)) typeIn(text);
+        for (const text of await pollOnce(server, sessionId, cwd)) {
+          // Stop from the office: press Esc now, not behind a message being typed.
+          if (text === LAUNCHER_INTERRUPT) term.write(LAUNCHER_INTERRUPT);
+          else typeIn(text);
+        }
       } catch (err) {
         const status = (err as { status?: number }).status;
         // 401/403: wrong token; 404: a server without the launcher route.

@@ -119,6 +119,7 @@ export type ClientMessage =
   | RenameAgent
   | StartAgent
   | SendAgentKeys
+  | InterruptAgent
   | AnswerScreenQuestion
   | SetAgentRelay
   | AnswerPermission
@@ -1124,6 +1125,11 @@ export interface SendAgentKeys {
 }
 
 export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | '3' | 'y' | 'n';
+
+export interface InterruptAgent {
+  type: 'interruptAgent';
+  id: number;
+}
 
 export interface AnswerScreenQuestion {
   type: 'answerScreenQuestion';

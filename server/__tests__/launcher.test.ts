@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { ChatSender } from '../src/chatSender.js';
-import { LAUNCHER_LEASE_MS } from '../src/constants.js';
+import { LAUNCHER_INTERRUPT, LAUNCHER_LEASE_MS } from '../src/constants.js';
 import { createHttpServer } from '../src/httpServer.js';
 import {
   isOnPath,
@@ -266,5 +266,17 @@ describe('launcher HTTP route', () => {
     const badId = await fetch(url('..%2Fetc'), { headers: { Authorization: 'Bearer secret' } });
     expect(badId.status).toBe(400);
     expect(hub.isConnected('abc')).toBe(false);
+  });
+});
+
+describe('LauncherHub interrupt', () => {
+  it('queues Esc for the launcher, and refuses when no launcher is connected', async () => {
+    const hub = new LauncherHub();
+    const agent = { sessionId: 's1' } as AgentState;
+    expect(() => hub.writer.interrupt!(agent)).toThrow();
+    const poll = hub.poll('s1', 10_000, () => true);
+    hub.writer.interrupt!(agent);
+    expect(await poll).toEqual([LAUNCHER_INTERRUPT]);
+    hub.dispose();
   });
 });
