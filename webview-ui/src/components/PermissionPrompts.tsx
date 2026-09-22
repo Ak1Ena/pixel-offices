@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 
-import type { AgentPermissionAsk, PermissionDecision } from '../../../core/src/messages.js';
+import type {
+  AgentPermissionAsk,
+  PermissionDecision,
+  ScreenQuestion,
+} from '../../../core/src/messages.js';
 import {
   PERMISSION_PROMPTS_MAX_SHOWN,
   PERMISSION_PROMPTS_WIDTH_PX,
   PERMISSION_PROMPTS_Z_INDEX,
 } from '../constants.js';
+import { ScreenQuestionCard } from './ScreenQuestionCard.js';
 import { Button } from './ui/Button.js';
 
 interface PermissionPromptsProps {
@@ -13,6 +18,9 @@ interface PermissionPromptsProps {
   labelOf: (agentId: number) => string;
   onAnswer: (ask: AgentPermissionAsk, decision: PermissionDecision) => void;
   onOpenAgent: (agentId: number) => void;
+  /** Questions on office-run agents' screens, shown as dialogs (privileged clients only). */
+  questions?: Array<{ agentId: number; question: ScreenQuestion }>;
+  onChooseQuestion?: (agentId: number, key: string, option: number, followUp?: string) => void;
 }
 
 function secondsLeft(ask: AgentPermissionAsk, now: number): number | null {
@@ -31,6 +39,8 @@ export function PermissionPrompts({
   labelOf,
   onAnswer,
   onOpenAgent,
+  questions = [],
+  onChooseQuestion,
 }: PermissionPromptsProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -39,8 +49,10 @@ export function PermissionPrompts({
     return () => clearInterval(timer);
   }, [asks.length]);
 
-  if (asks.length === 0) return null;
-  const shown = asks.slice(0, PERMISSION_PROMPTS_MAX_SHOWN);
+  const shownQuestions = onChooseQuestion ? questions.slice(0, PERMISSION_PROMPTS_MAX_SHOWN) : [];
+  if (asks.length === 0 && shownQuestions.length === 0) return null;
+  const shown = asks.slice(0, Math.max(0, PERMISSION_PROMPTS_MAX_SHOWN - shownQuestions.length));
+  const waiting = asks.length + (onChooseQuestion ? questions.length : 0);
 
   return (
     <div
@@ -51,6 +63,17 @@ export function PermissionPrompts({
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
+      {shownQuestions.map(({ agentId, question }) => (
+        <ScreenQuestionCard
+          key={`${agentId}:${question.key}`}
+          agentLabel={labelOf(agentId)}
+          question={question}
+          onChoose={(option, followUp) =>
+            onChooseQuestion?.(agentId, question.key, option, followUp)
+          }
+          onOpenAgent={() => onOpenAgent(agentId)}
+        />
+      ))}
       {shown.map((ask) => {
         const left = secondsLeft(ask, now);
         return (
@@ -110,9 +133,9 @@ export function PermissionPrompts({
           </div>
         );
       })}
-      {asks.length > shown.length && (
+      {waiting > shown.length + shownQuestions.length && (
         <div className="pixel-panel px-8 py-2 text-2xs text-text-muted text-center">
-          +{asks.length - shown.length} more waiting
+          +{waiting - shown.length - shownQuestions.length} more waiting
         </div>
       )}
     </div>

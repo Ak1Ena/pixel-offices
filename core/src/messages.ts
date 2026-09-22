@@ -91,6 +91,7 @@ export type ClientMessage =
   | RenameAgent
   | StartAgent
   | SendAgentKeys
+  | AnswerScreenQuestion
   | SetAgentRelay
   | AnswerPermission
   | ListFolder;
@@ -297,6 +298,18 @@ export interface AgentScreen {
   type: 'agentScreen';
   id: number;
   lines: string[];
+  question?: ScreenQuestion;
+}
+
+export interface ScreenQuestion {
+  key: string;
+  prompt: string[];
+  options: ScreenQuestionOption[];
+}
+
+export interface ScreenQuestionOption {
+  number: number;
+  label: string;
 }
 
 export interface StartAgentResult {
@@ -784,6 +797,13 @@ export interface SendAgentKeys {
 }
 
 export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | '3' | 'y' | 'n';
+
+export interface AnswerScreenQuestion {
+  type: 'answerScreenQuestion';
+  id: number;
+  key: string;
+  option: number;
+}
 
 export interface SetAgentRelay {
   type: 'setAgentRelay';

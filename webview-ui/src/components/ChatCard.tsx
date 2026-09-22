@@ -547,7 +547,7 @@ export function ChatCard({
             <span className="text-xs text-status-permission">Permission needed</span>
             <span className="text-sm">
               {screen
-                ? 'Claude is asking something on its screen. Open Screen to answer.'
+                ? 'Claude is asking something on its screen. Answer it in the dialog at the top, or open Screen.'
                 : 'Claude is waiting for your answer in the terminal.'}
             </span>
             {screen && !showScreen && (

@@ -6,6 +6,7 @@ import type {
   BoardPin,
   ChatEntry,
   QueuedChatMessage,
+  ScreenQuestion,
 } from '../../../core/src/messages.js';
 import { mergeChatEntries } from '../officeChat.js';
 import { transport } from '../transport/index.js';
@@ -31,6 +32,9 @@ export interface OfficeChatState {
   asking: Record<number, boolean>;
   /** Terminal screens of agents the office runs itself (plain text lines). */
   screens: Record<number, string[]>;
+  /** The numbered choice each office-run agent is showing on its screen, if any. */
+  questions: Record<number, ScreenQuestion>;
+  answerQuestion: (agentId: number, key: string, option: number) => void;
   /** True when this office can start agents (+ Agent in the browser). */
   canStartAgents: boolean;
   /** This connection may do privileged things (server-decided, officeCapabilities). */
@@ -62,6 +66,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [usage, setUsage] = useState<Record<number, AgentTokenUsage>>({});
   const [names, setNames] = useState<Record<number, string>>({});
   const [screens, setScreens] = useState<Record<number, string[]>>({});
+  const [questions, setQuestions] = useState<Record<number, ScreenQuestion>>({});
   const [asking, setAsking] = useState<Record<number, boolean>>({});
   const [canStartAgents, setCanStartAgents] = useState(false);
   const [privileged, setPrivileged] = useState(false);
@@ -89,6 +94,15 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setAsking((prev) => (prev[msg.id] ? { ...prev, [msg.id]: false } : prev));
       } else if (msg.type === 'agentScreen') {
         setScreens((prev) => ({ ...prev, [msg.id]: msg.lines }));
+        const question = msg.question;
+        setQuestions((prev) => {
+          if (question)
+            return prev[msg.id]?.key === question.key ? prev : { ...prev, [msg.id]: question };
+          if (!(msg.id in prev)) return prev;
+          const next = { ...prev };
+          delete next[msg.id];
+          return next;
+        });
       } else if (msg.type === 'agentRelayState') {
         setRelayEnabled(msg.enabled);
       } else if (msg.type === 'officeCapabilities') {
@@ -113,6 +127,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setUsage(drop);
         setNames(drop);
         setScreens(drop);
+        setQuestions(drop);
         setAsking(drop);
       }
     });
@@ -156,6 +171,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'sendAgentKeys', id: agentId, keys });
   }, []);
 
+  const answerQuestion = useCallback((agentId: number, key: string, option: number) => {
+    transport.send({ type: 'answerScreenQuestion', id: agentId, key, option });
+  }, []);
+
   const removePin = useCallback((pinId: string) => {
     transport.send({ type: 'removeBoardPin', pinId });
   }, []);
@@ -168,6 +187,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     usage,
     names,
     screens,
+    questions,
+    answerQuestion,
     asking,
     canStartAgents,
     privileged,

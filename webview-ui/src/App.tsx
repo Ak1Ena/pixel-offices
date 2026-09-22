@@ -639,6 +639,19 @@ function App() {
               labelOf={agentLabel}
               onAnswer={permissionAsks.answer}
               onOpenAgent={openChat}
+              questions={Object.entries(chat.questions).map(([id, question]) => ({
+                agentId: Number(id),
+                question,
+              }))}
+              onChooseQuestion={
+                chat.privileged
+                  ? (agentId, key, option, followUp) => {
+                      chat.answerQuestion(agentId, key, option);
+                      // Typed once the question is gone: the queue holds during it.
+                      if (followUp) chat.sendMessage(agentId, followUp);
+                    }
+                  : undefined
+              }
             />
           )}
 

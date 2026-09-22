@@ -332,6 +332,10 @@ export function handleClientMessage(
       if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;
 
+    case 'answerScreenQuestion':
+      if (ctx.privileged) ctx.officeSessions?.answerQuestion(msg.id, msg.key, msg.option);
+      break;
+
     case 'listFolder': {
       // Reveals this machine's folder tree: same proof as starting an agent.
       // Point-to-point reply to the requesting socket (NOT a broadcast).

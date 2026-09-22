@@ -178,6 +178,7 @@ components:
         - $ref: '#/components/schemas/RenameAgent'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
+        - $ref: '#/components/schemas/AnswerScreenQuestion'
         - $ref: '#/components/schemas/SetAgentRelay'
         - $ref: '#/components/schemas/AnswerPermission'
         - $ref: '#/components/schemas/ListFolder'
@@ -626,7 +627,9 @@ components:
         plain text lines (no colors). Such an agent has no terminal window, so
         this is how its on-screen questions (trust this folder, permission
         prompts) are seen and answered (sendAgentKeys). Sent when it changes,
-        at most about once a second.
+        at most about once a second. `question` is set while the screen shows
+        a numbered choice, so the office can show it as a dialog and answer
+        it with answerScreenQuestion.
       type: object
       additionalProperties: false
       required: [type, id, lines]
@@ -639,6 +642,38 @@ components:
           type: array
           items:
             type: string
+        question:
+          $ref: '#/components/schemas/ScreenQuestion'
+
+    ScreenQuestion:
+      description: |
+        A numbered choice read off an office-run agent's screen. `key` names
+        this exact question; an answer carrying a different key is refused, so
+        a click can never land on a question that replaced it.
+      type: object
+      additionalProperties: false
+      required: [key, prompt, options]
+      properties:
+        key:
+          type: string
+        prompt:
+          type: array
+          items:
+            type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreenQuestionOption'
+
+    ScreenQuestionOption:
+      type: object
+      additionalProperties: false
+      required: [number, label]
+      properties:
+        number:
+          type: integer
+        label:
+          type: string
 
     StartAgentResult:
       description: Reply to startAgent, sent only to the requesting client.
@@ -1627,6 +1662,24 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentKey'
+
+    AnswerScreenQuestion:
+      description: |
+        Pick an option of the question on an office-run agent's screen. The
+        server moves the cursor to it and presses Enter, only if the screen
+        still shows the question named by `key`. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, key, option]
+      properties:
+        type:
+          const: answerScreenQuestion
+        id:
+          type: integer
+        key:
+          type: string
+        option:
+          type: integer
 
     AnswerPermission:
       description: |

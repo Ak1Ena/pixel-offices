@@ -98,6 +98,12 @@ export const OFFICE_SESSION_SCREEN_ROWS = 30;
 export const OFFICE_SESSION_SETTLE_MS = 1_500;
 /** Screen updates are sent at most this often. */
 export const OFFICE_SESSION_SCREEN_MS = 700;
+/** Pause between keys when answering an on-screen question for the user. */
+export const OFFICE_SESSION_KEY_GAP_MS = 40;
+/** Bounds on a question read off an office-run agent's screen. */
+export const SCREEN_QUESTION_MAX_OPTIONS = 9;
+export const SCREEN_QUESTION_PROMPT_LINES = 12;
+export const SCREEN_QUESTION_PROMPT_CHARS = 240;
 /** Seconds to keep trying to adopt a just-started agent's session. */
 export const OFFICE_SESSION_ADOPT_TRIES = 600;
 /** Recent project folders remembered for the + Agent dialog. */

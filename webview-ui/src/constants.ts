@@ -400,6 +400,8 @@ export const PERMISSION_PROMPTS_WIDTH_PX = 420;
 export const PERMISSION_PROMPTS_MAX_SHOWN = 3;
 /** Above every modal (they top out at 54 + 1): an agent is blocked until it's answered. */
 export const PERMISSION_PROMPTS_Z_INDEX = 60;
+/** A screen-question click that didn't move the screen on can be retried after this. */
+export const SCREEN_QUESTION_RETRY_MS = 4_000;
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;

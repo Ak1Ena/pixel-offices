@@ -1,19 +1,24 @@
 import { Terminal } from '@xterm/headless';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { AgentKey } from '../../core/src/messages.js';
+import type { AgentKey, ScreenQuestion } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { TerminalWriter } from './chatSender.js';
 import {
   OFFICE_RECENT_FOLDERS,
   OFFICE_SESSION_ADOPT_TRIES,
+  OFFICE_SESSION_KEY_GAP_MS,
   OFFICE_SESSION_LIMIT,
   OFFICE_SESSION_SCREEN_COLS,
   OFFICE_SESSION_SCREEN_MS,
   OFFICE_SESSION_SCREEN_ROWS,
   OFFICE_SESSION_SETTLE_MS,
+  SCREEN_QUESTION_MAX_OPTIONS,
+  SCREEN_QUESTION_PROMPT_CHARS,
+  SCREEN_QUESTION_PROMPT_LINES,
 } from './constants.js';
 import type { Pty } from './launcher.js';
 import { expandAlias, loadPty, planLaunch, splitShellWords } from './launcher.js';
@@ -82,19 +87,160 @@ const KEY_BYTES: Record<AgentKey, string> = {
 
 /** Box-drawing borders and padding Claude draws around dialogs. */
 const BORDER_RE = /^[\s│┃║|]+|[\s│┃║|]+$/g;
+/** Just the border (and one space of padding), keeping the text's own indent. */
+const BORDER_ONLY_RE = /^\s*[│┃║|] ?|\s*[│┃║|]\s*$/g;
+
+const OPTION_RE = /^(?:([❯>›])\s*)?(\d)[.)]\s+(\S.*)$/;
+/** An unnumbered menu line under the cursor: "❯ Yes, I trust this folder". */
+const CURSOR_RE = /^(\s*)[❯›]\s+(\S.*)$/;
+/** A dialog's own edge: a box corner or a horizontal rule. */
+const EDGE_RE = /^\s*(?:[╭┌╰└]|[─━═]{3,})/;
+/** How-to-answer hints under the options ("Enter to confirm · Esc to exit"). */
+const HINT_RE = /\b(?:enter|esc|tab|ctrl|shift)\b.*\bto\b/i;
+/** The hint that marks a live menu — the thing a cursor list must sit on. */
+const MENU_HINT_RE = /enter to (?:confirm|select|continue)|esc to (?:cancel|exit|go back)/i;
+
+/** A screen question plus which option the on-screen cursor is on (index). */
+export interface ParsedScreenQuestion extends ScreenQuestion {
+  selected: number;
+}
+
+interface FoundOptions {
+  /** Screen row of the first option. */
+  first: number;
+  options: ScreenQuestion['options'];
+  selected: number;
+}
+
+/**
+ * A numbered choice ("❯ 1. Yes / 2. No"). The LAST "1." on screen starts it —
+ * dialogs sit at the bottom, and a numbered list earlier in the conversation
+ * must not be mistaken for one. Wrapped labels are joined back together.
+ */
+function findNumbered(lines: string[], bare: string[]): FoundOptions | null {
+  let first = -1;
+  for (let i = bare.length - 1; i >= 0; i--) {
+    const m = OPTION_RE.exec(bare[i]);
+    if (m && m[2] === '1') {
+      first = i;
+      break;
+    }
+  }
+  if (first < 0) return null;
+
+  const options: ScreenQuestion['options'] = [];
+  let selected = 0;
+  let hinted = false;
+  for (let i = first; i < bare.length; i++) {
+    const line = bare[i];
+    const m = OPTION_RE.exec(line);
+    if (m && Number(m[2]) === options.length + 1) {
+      if (options.length >= SCREEN_QUESTION_MAX_OPTIONS) break;
+      if (m[1]) selected = options.length;
+      options.push({ number: Number(m[2]), label: m[3].trim() });
+      continue;
+    }
+    if (HINT_RE.test(line)) {
+      hinted = true;
+      break;
+    }
+    if (!line || EDGE_RE.test(lines[i])) break;
+    const last = options[options.length - 1];
+    last.label = `${last.label} ${line.trim()}`;
+  }
+  if (!hinted) hinted = bare.slice(first).some((l) => MENU_HINT_RE.test(l));
+  // Two options make a choice; a lone one must still say how to answer it.
+  if (options.length < 2 && !hinted) return null;
+  return { first, options, selected };
+}
+
+/**
+ * A menu with no numbers: one line under the cursor ("❯ No, exit") and its
+ * siblings indented to the same text column, right above a how-to-answer
+ * hint. Claude's folder-trust dialog looks like this.
+ */
+function findCursorMenu(lines: string[]): FoundOptions | null {
+  const kept = lines.map((l) => l.replace(BORDER_ONLY_RE, ''));
+  let hint = -1;
+  for (let i = kept.length - 1; i >= 0; i--) {
+    if (MENU_HINT_RE.test(kept[i])) {
+      hint = i;
+      break;
+    }
+  }
+  if (hint < 0) return null;
+  let last = hint - 1;
+  while (last >= 0 && !kept[last].trim()) last--;
+  let first = last;
+  while (first > 0 && kept[first - 1].trim() && !EDGE_RE.test(lines[first - 1])) first--;
+  if (first < 0) return null;
+
+  const block = kept.slice(first, last + 1);
+  const cursorAt = block.findIndex((l) => CURSOR_RE.test(l));
+  if (cursorAt < 0) return null;
+  const m = CURSOR_RE.exec(block[cursorAt])!;
+  const column = m[1].length + 2;
+  // The menu is the run of lines at the cursor's text column; anything above
+  // it that isn't indented like an option is the question, not a choice.
+  let top = cursorAt;
+  while (top > 0 && indentOf(block[top - 1]) >= column) top--;
+  const options: ScreenQuestion['options'] = [];
+  let selected = 0;
+  for (let i = top; i < block.length; i++) {
+    const line = block[i];
+    const cursor = CURSOR_RE.exec(line);
+    const indent = indentOf(line);
+    if (cursor || indent === column) {
+      if (options.length >= SCREEN_QUESTION_MAX_OPTIONS) break;
+      if (cursor) selected = options.length;
+      options.push({ number: options.length + 1, label: (cursor ? cursor[2] : line).trim() });
+    } else if (indent > column && options.length > 0) {
+      const prev = options[options.length - 1];
+      prev.label = `${prev.label} ${line.trim()}`;
+    } else {
+      return null;
+    }
+  }
+  if (options.length < 2) return null;
+  return { first: first + top, options, selected };
+}
+
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+function findOptions(lines: string[]): FoundOptions | null {
+  const bare = lines.map((l) => l.replace(BORDER_RE, ''));
+  return findNumbered(lines, bare) ?? findCursorMenu(lines);
+}
 
 /**
  * Claude is waiting for an answer on screen: a numbered choice ("1. Yes /
- * 2. No"), usually inside a bordered box — so borders are stripped before
- * matching, since every line of a real dialog starts with "│".
+ * 2. No") or a cursor menu over an "Enter to confirm" hint, usually inside a
+ * bordered box — so borders are stripped before matching.
  */
 export function looksLikeQuestion(lines: string[]): boolean {
+  return findOptions(lines) !== null;
+}
+
+/** Read the question Claude is showing: the prompt above the options and each option's label. */
+export function parseScreenQuestion(lines: string[]): ParsedScreenQuestion | null {
+  const found = findOptions(lines);
+  if (!found) return null;
   const bare = lines.map((l) => l.replace(BORDER_RE, ''));
-  const option = (n: number) => new RegExp(`^(?:[❯>›]\\s*)?${n}[.)]\\s+\\S`);
-  const hasOption = (n: number) => bare.some((l) => option(n).test(l));
-  if (hasOption(1) && hasOption(2)) return true;
-  // A one-option dialog still says how to answer it.
-  return hasOption(1) && bare.some((l) => /enter to confirm|esc to (?:cancel|exit)/i.test(l));
+  const prompt: string[] = [];
+  for (let i = found.first - 1; i >= 0 && prompt.length < SCREEN_QUESTION_PROMPT_LINES; i--) {
+    if (EDGE_RE.test(lines[i])) break;
+    const text = bare[i].trim();
+    if (text) prompt.unshift(text.slice(0, SCREEN_QUESTION_PROMPT_CHARS));
+  }
+  const { options, selected } = found;
+  const key = crypto
+    .createHash('sha1')
+    .update(JSON.stringify([prompt, options]))
+    .digest('hex')
+    .slice(0, 16);
+  return { key, prompt, options, selected };
 }
 
 /**
@@ -234,6 +380,33 @@ export class OfficeSessions {
       const bytes = KEY_BYTES[key as AgentKey];
       if (bytes) session.pty.write(bytes);
     }
+  }
+
+  /**
+   * Answer the question on an owned agent's screen with one of its options:
+   * move the cursor there and press Enter. Refused unless the screen still
+   * shows the very question the client saw (`key`) — it may have been
+   * answered in the meantime, or replaced by a different one.
+   */
+  answerQuestion(agentId: unknown, key: unknown, option: unknown): boolean {
+    const session = this.sessionForAgent(agentId);
+    if (!session || typeof key !== 'string' || !Number.isInteger(option)) return false;
+    const question = parseScreenQuestion(this.readScreen(session));
+    if (!question || question.key !== key) return false;
+    const target = question.options.findIndex((o) => o.number === option);
+    if (target < 0) return false;
+    const move = target > question.selected ? KEY_BYTES.down : KEY_BYTES.up;
+    const presses = [
+      ...Array<string>(Math.abs(target - question.selected)).fill(move),
+      KEY_BYTES.enter,
+    ];
+    // One key at a time: a burst of escape sequences can be read as one.
+    presses.forEach((bytes, i) => {
+      setTimeout(() => {
+        if (this.sessions.get(session.sessionId) === session) session.pty.write(bytes);
+      }, i * OFFICE_SESSION_KEY_GAP_MS);
+    });
+    return true;
   }
 
   owns(agentId: number): boolean {
@@ -382,7 +555,16 @@ export class OfficeSessions {
     const joined = lines.join('\n');
     if (joined === session.lastScreen) return;
     session.lastScreen = joined;
-    this.store.broadcast({ type: 'agentScreen', id: agent.id, lines });
+    const parsed = parseScreenQuestion(lines);
+    const question: ScreenQuestion | undefined = parsed
+      ? { key: parsed.key, prompt: parsed.prompt, options: parsed.options }
+      : undefined;
+    this.store.broadcast({
+      type: 'agentScreen',
+      id: agent.id,
+      lines,
+      ...(question ? { question } : {}),
+    });
 
     // A question on screen works like a permission prompt: the chat queue holds
     // (ChatSender never types while permissionSent — its Enter would answer the
