@@ -43,6 +43,7 @@ import {
 import { PixelAgentsServer } from './server.js';
 import { runShowCommand } from './showCli.js';
 import { runTaskCommand } from './taskCli.js';
+import { runWorkflowCommand } from './workflowCli.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
@@ -247,6 +248,10 @@ async function main(): Promise<void> {
   // `pixel-office show …`: agents point the user at part of a file.
   if (first === 'show') {
     process.exit(await runShowCommand(process.argv.slice(3)));
+  }
+  // `pixel-office workflow …`: agents report workflow steps and wait at gates.
+  if (first === 'workflow') {
+    process.exit(await runWorkflowCommand(process.argv.slice(3)));
   }
   if (first !== undefined && !first.startsWith('-')) {
     await runLauncher(first, process.argv.slice(3));

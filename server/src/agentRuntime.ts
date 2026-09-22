@@ -61,6 +61,8 @@ import {
   setTeamSwitchCallback,
 } from './transcriptParser.js';
 import type { AgentState } from './types.js';
+import { attachMessage, WorkflowRuns } from './workflowRuns.js';
+import { WorkflowStore } from './workflowStore.js';
 
 /** Callbacks that adapters register for platform-specific behavior. */
 export interface RuntimeLifecycleCallbacks {
@@ -105,6 +107,8 @@ export class AgentRuntime {
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
   private focusRequests: FocusRequests | null = null;
+  private workflowStore: WorkflowStore | null = null;
+  private workflowRuns: WorkflowRuns | null = null;
   private taskDesk: TaskDesk | null = null;
   /** Which agents pick up task desk cards without being asked to (the host knows which it started). */
   deskDefaultPickup: (agentId: number) => boolean = () => false;
@@ -738,6 +742,45 @@ export class AgentRuntime {
     return this.focusRequests;
   }
 
+  /** Saved workflows (~/.pixel-agents/workflows/*.md); read and watched on first use. */
+  get workflows(): WorkflowStore {
+    this.workflowStore ??= new WorkflowStore((workflows) =>
+      this.store.broadcast({ type: 'workflowsLoaded', workflows }),
+    );
+    return this.workflowStore;
+  }
+
+  /** Workflows handed to agents in this office (in memory). */
+  get runs(): WorkflowRuns {
+    this.workflowRuns ??= new WorkflowRuns(this.store);
+    return this.workflowRuns;
+  }
+
+  /**
+   * Give a workflow to an agent: start a run and type a short message naming
+   * the workflow FILE — the agent reads the steps itself.
+   */
+  attachWorkflow(
+    agentId: unknown,
+    workflowId: unknown,
+  ): { ok: true } | { ok: false; error: string } {
+    if (typeof agentId !== 'number' || !this.store.get(agentId)) {
+      return { ok: false, error: 'No such agent.' };
+    }
+    const workflow = this.workflows.get(workflowId);
+    if (!workflow?.path) return { ok: false, error: 'No such workflow.' };
+    if (!this.chatSender.canSend(agentId)) {
+      return {
+        ok: false,
+        error:
+          'The office cannot type to this agent. Start it from + Agent (or with pixel-office claude) to give it workflows.',
+      };
+    }
+    const run = this.runs.start(agentId, workflow);
+    this.chatSender.send(agentId, attachMessage(run, workflow.path));
+    return { ok: true };
+  }
+
   // ── Task desk ──
 
   /** The task desk. Like the whiteboard, created on first use: a runtime that
@@ -763,6 +806,8 @@ export class AgentRuntime {
     this.launchers.dispose();
     this.boardStore?.dispose();
     this.focusRequests?.dispose();
+    this.workflowStore?.dispose();
+    this.workflowRuns?.dispose();
     this.taskDesk?.dispose();
 
     if (this.projectScanTimer.current) {

@@ -149,6 +149,23 @@ export const FOCUS_CELL_MAX_CHARS = 64;
 /** `--find` reads at most this much of a text file to turn a phrase into a line. */
 export const FOCUS_FIND_MAX_BYTES = 8 * 1024 * 1024;
 
+// ── Workflows (workflowStore.ts, workflowRuns.ts, workflowCli.ts) ──
+/** Saved workflows live here, one markdown file each. */
+export const WORKFLOW_DIR_NAME = 'workflows';
+/** How agents are told to report workflow steps (the message typed on attach). */
+export const WORKFLOW_CLI_COMMAND = 'npx @ak1ena/pixel-office workflow';
+/** Agents report steps and wait at gates here. */
+export const WORKFLOWS_API_PATH = '/api/workflows';
+/** One long-poll at a gate; `workflow gate` polls again until it is answered. */
+export const WORKFLOW_GATE_POLL_MS = 25_000;
+/** Bounds on a workflow and on the office's run history. */
+export const WORKFLOW_MAX_WORKFLOWS = 100;
+export const WORKFLOW_MAX_STEPS = 40;
+export const WORKFLOW_TITLE_MAX_CHARS = 80;
+export const WORKFLOW_STEP_MAX_CHARS = 400;
+export const WORKFLOW_REF_MAX_CHARS = 300;
+export const WORKFLOW_MAX_RUNS = 50;
+
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before
  *  letting it show in the agent's own terminal. */

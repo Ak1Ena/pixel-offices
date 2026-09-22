@@ -350,6 +350,8 @@ export const CHAT_PEEK_MAX_CHARS = 80;
 export const CHAT_CLIENT_HISTORY_LIMIT = 200;
 /** DataTransfer type carrying a whiteboard pin id while it is dragged. */
 export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';
+/** A workflow card dragged from the Workflows rail onto a character. */
+export const WORKFLOW_DRAG_MIME = 'application/x-pixel-agents-workflow';
 /** Longest character name the rename box accepts (the server caps it too). */
 export const AGENT_NAME_INPUT_MAX_CHARS = 32;
 
@@ -409,6 +411,8 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
+/** How far above a character's feet its workflow progress pips sit (sprite px). */
+export const WORKFLOW_BADGE_VERTICAL_OFFSET = 30;
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;

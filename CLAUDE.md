@@ -208,8 +208,8 @@ Adding a new CLI integration is one subdirectory under `server/src/providers/hoo
 
 `core/asyncapi.yaml` is the contract. Pinned to **3.0.0** because `@asyncapi/modelina@5.10.1` declares `supportedVersions: ['3.0.0']` only; bumping to 3.1.0 produces `export type Root = any`. Revisit when Modelina ships 3.1.0 support.
 
-- **48 ServerMessage variants** (server → client): agent lifecycle, permission asks (`agentPermissionAsk`, `agentPermissionAnswered`), folder picker (`folderListing`), agent activity, sub-agent activity, team + context usage, session chat (`agentChatEntry`, `agentChatHistory`, `agentChatQueue`, `agentChatSendable`), whiteboard (`boardLoaded`), "show me" (`focusRequests`), assets, settings + workspace, diagnostics.
-- **39 ClientMessage variants** (client → server): permission answers (`answerPermission`, `answerScreenQuestion` — privileged), folder picker (`listFolder` — privileged), lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), chat (`sendChatMessage` — privileged, `cancelChatMessage`), whiteboard (`saveBoardPin`, `removeBoardPin`, `answerFocus` — privileged), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
+- **51 ServerMessage variants** (server → client): agent lifecycle, permission asks (`agentPermissionAsk`, `agentPermissionAnswered`), folder picker (`folderListing`), agent activity, sub-agent activity, team + context usage, session chat (`agentChatEntry`, `agentChatHistory`, `agentChatQueue`, `agentChatSendable`), whiteboard (`boardLoaded`), "show me" (`focusRequests`), workflows (`workflowsLoaded`, `workflowRuns`, `workflowNotice`), assets, settings + workspace, diagnostics.
+- **44 ClientMessage variants** (client → server): permission answers (`answerPermission`, `answerScreenQuestion` — privileged), folder picker (`listFolder` — privileged), lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), chat (`sendChatMessage` — privileged, `cancelChatMessage`), whiteboard (`saveBoardPin`, `removeBoardPin`, `answerFocus` — privileged), workflows (`saveWorkflow`, `deleteWorkflow`, `attachWorkflow`, `answerGate`, `stopWorkflowRun` — all privileged), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`), discovery + assets, diagnostics.
 
 Both unions use `oneOf` with `discriminator: type`. Every concrete message sets `additionalProperties: false`.
 
@@ -396,6 +396,13 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **Chat files**: `POST /api/files?name=` stores under `~/.pixel-agents/files/chat_<hex>-<name>` and returns `{path}`; the message goes out as `@<path>`. `GET /api/files/:name` serves uploaded IMAGES only (inline previews). Standalone + `?token=` only.
 - **+ Agent folder picker** (`FolderPicker.tsx`, `folderBrowser.ts`): browses sub-folders over `listFolder`/`folderListing` (privileged; dot-folders and node_modules hidden, project folders tagged).
 - Clicking a character opens its chat (a sub-agent opens its parent's); "Terminal" in the card is what `focusAgent` used to be on click.
+
+## Workflows
+
+- A **workflow** is a markdown file, `~/.pixel-agents/workflows/<id>.md` (`workflowFile.ts` parses/serializes: front-matter `title`, numbered steps `N. [do|show|gate] text`, indented `ref:` / `show:` lines; lenient, so hand edits load). The FILE is the record: `WorkflowStore` polls the folder (name:mtime:size signature) and broadcasts `workflowsLoaded`.
+- **Attach** (`attachWorkflow`, drag a card onto a character, chat card "Workflow", or "Give to…"): `runtime.attachWorkflow` needs `chatSender.canSend`, starts a **run** (`WorkflowRuns`, in memory — agent ids die with the process) and types `attachMessage`: the file's PATH and how to report, never the steps. A new run for the same agent stops the old one.
+- Agents report with `pixel-office workflow step|gate|show <run> [n]` → Bearer `/api/workflows/runs/:runId/…` (Origin refused; 404 = not this office's run). Steps may arrive out of order: gaps become `skipped`, never refused. A gate marks the step `waiting` and long-polls; the office shows it in the prompt stack (Continue / Stop workflow). Removed agents' runs become `abandoned`.
+- Webview: `WorkflowRail.tsx` (left rail + editor; shares the left edge with the task desk, one at a time), `WorkflowBadges.tsx` (progress pips under characters), run steps in the chat card, pure helpers in `webview-ui/src/workflows.ts`. Client messages go through `workflowMessages.ts` on both surfaces.
 
 ## Messenger
 

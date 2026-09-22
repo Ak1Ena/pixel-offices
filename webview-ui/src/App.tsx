@@ -23,6 +23,8 @@ import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { WhiteboardRail } from './components/WhiteboardRail.js';
+import { WorkflowBadges } from './components/WorkflowBadges.js';
+import { WorkflowRail } from './components/WorkflowRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES } from './constants.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -33,6 +35,7 @@ import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
 import { useTaskDesk } from './hooks/useTaskDesk.js';
+import { useWorkflows } from './hooks/useWorkflows.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -55,6 +58,7 @@ import { isBrowserRuntime, isE2E } from './runtime.js';
 import { needsYou } from './taskDesk.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
+import { activeRun, openGates } from './workflows.js';
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null };
@@ -146,6 +150,8 @@ function App() {
   const chat = useOfficeChat(chatAgentId);
   const desk = useTaskDesk();
   const [isDeskOpen, setIsDeskOpen] = useState(false);
+  const workflows = useWorkflows();
+  const [isWorkflowsOpen, setIsWorkflowsOpen] = useState(false);
   const permissionAsks = usePermissionAsks();
   const focus = useFocusRequests();
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
@@ -521,6 +527,11 @@ function App() {
         showAreas={effectiveShowAreas}
         activeAreaLabel={activeAreaLabel}
         onPinDrop={handlePinDrop}
+        onWorkflowDrop={
+          chat.privileged || !isBrowserRuntime
+            ? (agentId, workflowId) => workflows.attach(agentId, workflowId)
+            : undefined
+        }
       />
 
       {!isDebugMode ? (
@@ -623,6 +634,17 @@ function App() {
             />
           )}
 
+          {!editor.isEditMode && (
+            <WorkflowBadges
+              officeState={officeState}
+              agents={agents}
+              runs={workflows.runs}
+              containerRef={containerRef}
+              zoom={editor.zoom}
+              panRef={editor.panRef}
+            />
+          )}
+
           {chatAgentId !== null &&
             !editor.isEditMode &&
             (() => {
@@ -674,6 +696,25 @@ function App() {
                     openMessenger(id);
                     closeChat();
                   }}
+                  workflows={
+                    (chat.privileged || !isBrowserRuntime) && chat.sendable[id] === true
+                      ? workflows.workflows.map((w) => ({
+                          id: w.id,
+                          title: w.title,
+                          steps: w.steps.length,
+                        }))
+                      : undefined
+                  }
+                  onAttachWorkflow={(workflowId) => workflows.attach(id, workflowId)}
+                  run={activeRun(workflows.runs, id)}
+                  onStopRun={
+                    chat.privileged || !isBrowserRuntime
+                      ? () => {
+                          const run = activeRun(workflows.runs, id);
+                          if (run) workflows.stopRun(run.runId);
+                        }
+                      : undefined
+                  }
                 />
               );
             })()}
@@ -706,6 +747,8 @@ function App() {
                 agentId: Number(id),
                 question,
               }))}
+              gates={openGates(workflows.runs)}
+              onAnswerGate={chat.privileged || !isBrowserRuntime ? workflows.answerGate : undefined}
               onChooseQuestion={
                 chat.privileged
                   ? (agentId, key, option, followUp) => {
@@ -838,10 +881,31 @@ function App() {
             />
           )}
 
-          {!editor.isEditMode && (
+          {isWorkflowsOpen && !editor.isEditMode && (
+            <WorkflowRail
+              workflows={workflows.workflows}
+              runs={workflows.runs}
+              agents={agents
+                .filter((id) => chat.sendable[id] === true)
+                .map((id) => ({ id, label: agentLabel(id) }))}
+              labelOf={agentLabel}
+              onSave={chat.privileged || !isBrowserRuntime ? workflows.save : undefined}
+              onDelete={chat.privileged || !isBrowserRuntime ? workflows.remove : undefined}
+              onAttach={chat.privileged || !isBrowserRuntime ? workflows.attach : undefined}
+              onStopRun={chat.privileged || !isBrowserRuntime ? workflows.stopRun : undefined}
+              notice={workflows.notice}
+              onClearNotice={workflows.clearNotice}
+              onClose={() => setIsWorkflowsOpen(false)}
+            />
+          )}
+
+          {!editor.isEditMode && !isWorkflowsOpen && (
             <TaskDesk
               isOpen={isDeskOpen}
-              onToggle={() => setIsDeskOpen((v) => !v)}
+              onToggle={() => {
+                setIsDeskOpen((v) => !v);
+                setIsWorkflowsOpen(false);
+              }}
               desk={desk}
               labelOf={agentLabel}
               // Folders are browsed on the server's machine, which only the
@@ -972,6 +1036,11 @@ function App() {
           setGroupChannelId(undefined);
           setIsGroupChatOpen((v) => !v);
           setIsBoardOpen(false);
+        }}
+        isWorkflowsOpen={isWorkflowsOpen}
+        onToggleWorkflows={() => {
+          setIsWorkflowsOpen((v) => !v);
+          setIsDeskOpen(false);
         }}
         isMessengerOpen={isMessengerOpen}
         onToggleMessenger={() =>
@@ -1113,7 +1182,7 @@ function App() {
             focus={viewedFocus}
             focusAgent={labelOfRequest(viewedFocus?.agentId)}
             onAnswerFocus={
-              viewedFocus && chat.privileged
+              viewedFocus && (chat.privileged || !isBrowserRuntime)
                 ? (reply) => focus.answer(viewedFocus.requestId, reply)
                 : undefined
             }

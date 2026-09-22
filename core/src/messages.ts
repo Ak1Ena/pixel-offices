@@ -40,6 +40,9 @@ export type ServerMessage =
   | FolderListing
   | BoardLoaded
   | FocusRequests
+  | WorkflowsLoaded
+  | WorkflowRuns
+  | WorkflowNotice
   | TaskDeskLoaded
   | TaskDeskNotice
   | LayoutLoaded
@@ -85,6 +88,11 @@ export type ClientMessage =
   | SaveBoardPin
   | RemoveBoardPin
   | AnswerFocus
+  | SaveWorkflow
+  | DeleteWorkflow
+  | AttachWorkflow
+  | AnswerGate
+  | StopWorkflowRun
   | SaveDeskTask
   | RemoveDeskTask
   | DeskTaskAction
@@ -397,6 +405,59 @@ export interface FocusRequest {
 }
 
 export type FocusState = 'waiting' | 'seen';
+
+export interface WorkflowsLoaded {
+  type: 'workflowsLoaded';
+  workflows: Workflow[];
+}
+
+export interface Workflow {
+  id: string;
+  title: string;
+  path?: string;
+  steps: WorkflowStep[];
+}
+
+export interface WorkflowStep {
+  kind: WorkflowStepKind;
+  text: string;
+  refs?: string[];
+  show?: string;
+}
+
+export type WorkflowStepKind = 'do' | 'show' | 'gate';
+
+export interface WorkflowRuns {
+  type: 'workflowRuns';
+  runs: WorkflowRun[];
+}
+
+export interface WorkflowRun {
+  runId: string;
+  workflowId: string;
+  title: string;
+  agentId: number;
+  steps: WorkflowRunStep[];
+  state: WorkflowRunState;
+  startedAt: string;
+  endedAt?: string;
+}
+
+export interface WorkflowRunStep {
+  kind: WorkflowStepKind;
+  text: string;
+  refs?: string[];
+  state: WorkflowRunStepState;
+}
+
+export type WorkflowRunStepState = 'pending' | 'done' | 'waiting' | 'skipped';
+
+export type WorkflowRunState = 'running' | 'done' | 'stopped' | 'abandoned';
+
+export interface WorkflowNotice {
+  type: 'workflowNotice';
+  error: string;
+}
 
 export interface TaskDeskLoaded {
   type: 'taskDeskLoaded';
@@ -764,6 +825,36 @@ export interface AnswerFocus {
   type: 'answerFocus';
   requestId: string;
   reply?: string;
+}
+
+export interface SaveWorkflow {
+  type: 'saveWorkflow';
+  workflow: Workflow;
+}
+
+export interface DeleteWorkflow {
+  type: 'deleteWorkflow';
+  workflowId: string;
+}
+
+export interface AttachWorkflow {
+  type: 'attachWorkflow';
+  id: number;
+  workflowId: string;
+}
+
+export interface AnswerGate {
+  type: 'answerGate';
+  runId: string;
+  step: number;
+  decision: GateDecision;
+}
+
+export type GateDecision = 'continue' | 'stop';
+
+export interface StopWorkflowRun {
+  type: 'stopWorkflowRun';
+  runId: string;
 }
 
 export interface SaveDeskTask {

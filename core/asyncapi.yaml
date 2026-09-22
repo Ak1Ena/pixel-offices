@@ -119,6 +119,9 @@ components:
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         - $ref: '#/components/schemas/FocusRequests'
+        - $ref: '#/components/schemas/WorkflowsLoaded'
+        - $ref: '#/components/schemas/WorkflowRuns'
+        - $ref: '#/components/schemas/WorkflowNotice'
         # Task desk
         - $ref: '#/components/schemas/TaskDeskLoaded'
         - $ref: '#/components/schemas/TaskDeskNotice'
@@ -171,6 +174,11 @@ components:
         - $ref: '#/components/schemas/SaveBoardPin'
         - $ref: '#/components/schemas/RemoveBoardPin'
         - $ref: '#/components/schemas/AnswerFocus'
+        - $ref: '#/components/schemas/SaveWorkflow'
+        - $ref: '#/components/schemas/DeleteWorkflow'
+        - $ref: '#/components/schemas/AttachWorkflow'
+        - $ref: '#/components/schemas/AnswerGate'
+        - $ref: '#/components/schemas/StopWorkflowRun'
         # Task desk
         - $ref: '#/components/schemas/SaveDeskTask'
         - $ref: '#/components/schemas/RemoveDeskTask'
@@ -1542,6 +1550,198 @@ components:
         requestId:
           type: string
         reply:
+          type: string
+
+    WorkflowsLoaded:
+      description: |
+        Every saved workflow (~/.pixel-agents/workflows/*.md). Sent on each
+        change, including edits made to the files outside the office.
+      type: object
+      additionalProperties: false
+      required: [type, workflows]
+      properties:
+        type:
+          const: workflowsLoaded
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workflow'
+
+    Workflow:
+      type: object
+      additionalProperties: false
+      required: [id, title, steps]
+      properties:
+        id:
+          type: string
+          description: The file's name without .md; "" for a new workflow.
+        title:
+          type: string
+        path:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+
+    WorkflowStep:
+      type: object
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind:
+          $ref: '#/components/schemas/WorkflowStepKind'
+        text:
+          type: string
+        refs:
+          type: array
+          items:
+            type: string
+        show:
+          type: string
+          description: For a show step, the file (and spot flags) to show, e.g. "~/app/CHANGELOG.md --lines 1-40".
+
+    WorkflowStepKind:
+      type: string
+      enum: [do, show, gate]
+
+    WorkflowRuns:
+      description: Every workflow run in this office, newest last. Sent on each change and in the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, runs]
+      properties:
+        type:
+          const: workflowRuns
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRun'
+
+    WorkflowRun:
+      type: object
+      additionalProperties: false
+      required: [runId, workflowId, title, agentId, steps, state, startedAt]
+      properties:
+        runId:
+          type: string
+        workflowId:
+          type: string
+        title:
+          type: string
+        agentId:
+          type: integer
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRunStep'
+        state:
+          $ref: '#/components/schemas/WorkflowRunState'
+        startedAt:
+          type: string
+        endedAt:
+          type: string
+
+    WorkflowRunStep:
+      type: object
+      additionalProperties: false
+      required: [kind, text, state]
+      properties:
+        kind:
+          $ref: '#/components/schemas/WorkflowStepKind'
+        text:
+          type: string
+        refs:
+          type: array
+          items:
+            type: string
+        state:
+          $ref: '#/components/schemas/WorkflowRunStepState'
+
+    WorkflowRunStepState:
+      type: string
+      enum: [pending, done, waiting, skipped]
+
+    WorkflowRunState:
+      type: string
+      enum: [running, done, stopped, abandoned]
+
+    WorkflowNotice:
+      description: Why a workflow action was refused. Sent only to the client that asked.
+      type: object
+      additionalProperties: false
+      required: [type, error]
+      properties:
+        type:
+          const: workflowNotice
+        error:
+          type: string
+
+    SaveWorkflow:
+      description: Create a workflow (empty id) or replace the one with that id. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, workflow]
+      properties:
+        type:
+          const: saveWorkflow
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+
+    DeleteWorkflow:
+      description: Delete a workflow file. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, workflowId]
+      properties:
+        type:
+          const: deleteWorkflow
+        workflowId:
+          type: string
+
+    AttachWorkflow:
+      description: |
+        Give a workflow to an agent: a run starts and a short message naming the
+        workflow's PATH is typed to the agent (never its steps). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, workflowId]
+      properties:
+        type:
+          const: attachWorkflow
+        id:
+          type: integer
+        workflowId:
+          type: string
+
+    AnswerGate:
+      description: Continue or stop a run waiting at a gate step. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, runId, step, decision]
+      properties:
+        type:
+          const: answerGate
+        runId:
+          type: string
+        step:
+          type: integer
+        decision:
+          $ref: '#/components/schemas/GateDecision'
+
+    GateDecision:
+      type: string
+      enum: [continue, stop]
+
+    StopWorkflowRun:
+      description: Stop a run. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, runId]
+      properties:
+        type:
+          const: stopWorkflowRun
+        runId:
           type: string
 
     SaveBoardPin:

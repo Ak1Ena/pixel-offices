@@ -6,6 +6,7 @@ import {
   PAN_MARGIN_FRACTION,
   PIN_DRAG_MIME,
   TOUCH_TAP_SLOP_PX,
+  WORKFLOW_DRAG_MIME,
   ZOOM_MAX,
   ZOOM_MIN,
   ZOOM_SCROLL_THRESHOLD,
@@ -49,6 +50,8 @@ interface OfficeCanvasProps {
   activeAreaLabel: string | null;
   /** A whiteboard pin was dropped on a character. */
   onPinDrop?: (agentId: number, pinId: string) => void;
+  /** A workflow card dropped on a character. */
+  onWorkflowDrop?: (agentId: number, workflowId: string) => void;
 }
 
 export function OfficeCanvas({
@@ -69,6 +72,7 @@ export function OfficeCanvas({
   showAreas,
   activeAreaLabel,
   onPinDrop,
+  onWorkflowDrop,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -796,42 +800,55 @@ export function OfficeCanvas({
     [officeState, onClick, screenToWorld, screenToTile, isEditMode],
   );
 
-  // Whiteboard pins dragged over the office: the character under the pointer
-  // lights up (hover outline + its status panel) and takes the pin on drop.
+  // Whiteboard pins (and workflow cards) dragged over the office: the
+  // character under the pointer lights up and takes the drop.
+  const dragKind = useCallback(
+    (e: React.DragEvent): 'pin' | 'workflow' | null => {
+      if (isEditMode) return null;
+      if (onPinDrop && e.dataTransfer.types.includes(PIN_DRAG_MIME)) return 'pin';
+      if (onWorkflowDrop && e.dataTransfer.types.includes(WORKFLOW_DRAG_MIME)) return 'workflow';
+      return null;
+    },
+    [isEditMode, onPinDrop, onWorkflowDrop],
+  );
+
   const pinTargetAt = useCallback(
     (e: React.DragEvent): number | null => {
-      if (isEditMode || !onPinDrop || !e.dataTransfer.types.includes(PIN_DRAG_MIME)) return null;
+      if (!dragKind(e)) return null;
       const pos = screenToWorld(e.clientX, e.clientY);
       if (!pos) return null;
       const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
       if (hitId === null) return null;
-      // A sub-agent shares its parent's session: the pin goes to the parent.
+      // A sub-agent shares its parent's session: the drop goes to the parent.
       return officeState.subagentMeta.get(hitId)?.parentAgentId ?? hitId;
     },
-    [isEditMode, onPinDrop, screenToWorld, officeState],
+    [dragKind, screenToWorld, officeState],
   );
 
   const handleDragOver = useCallback(
     (e: React.DragEvent) => {
-      if (isEditMode || !onPinDrop || !e.dataTransfer.types.includes(PIN_DRAG_MIME)) return;
+      if (!dragKind(e)) return;
       e.preventDefault();
       const target = pinTargetAt(e);
       officeState.hoveredAgentId = target;
       e.dataTransfer.dropEffect = target === null ? 'none' : 'copy';
     },
-    [isEditMode, onPinDrop, pinTargetAt, officeState],
+    [dragKind, pinTargetAt, officeState],
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
+      const kind = dragKind(e);
       const target = pinTargetAt(e);
       officeState.hoveredAgentId = null;
-      const pinId = e.dataTransfer.getData(PIN_DRAG_MIME);
-      if (target === null || !pinId) return;
+      if (target === null || !kind) return;
+      const id = e.dataTransfer.getData(kind === 'pin' ? PIN_DRAG_MIME : WORKFLOW_DRAG_MIME);
+      if (!id) return;
       e.preventDefault();
-      onPinDrop?.(target, pinId);
+      if (kind === 'pin') onPinDrop?.(target, id);
+      else onWorkflowDrop?.(target, id);
     },
-    [pinTargetAt, officeState, onPinDrop],
+    [dragKind, pinTargetAt, officeState, onPinDrop, onWorkflowDrop],
   );
 
   const handleDragLeave = useCallback(() => {

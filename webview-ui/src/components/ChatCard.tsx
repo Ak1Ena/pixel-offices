@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-import type { AgentKey, AgentTokenUsage, BoardPin, ChatEntry } from '../../../core/src/messages.js';
+import type {
+  AgentKey,
+  AgentTokenUsage,
+  BoardPin,
+  ChatEntry,
+  WorkflowRun,
+} from '../../../core/src/messages.js';
 import {
   AGENT_NAME_INPUT_MAX_CHARS,
   CHAT_CARD_EDGE_MARGIN_PX,
@@ -43,6 +49,12 @@ interface ChatCardProps {
   onOpenTerminal?: () => void;
   /** Open this chat in the Messenger, for reading long replies. */
   onExpand?: () => void;
+  /** Saved workflows this agent can be given; absent when it can't be. */
+  workflows?: Array<{ id: string; title: string; steps: number }>;
+  onAttachWorkflow?: (workflowId: string) => void;
+  /** The workflow this agent is working through, if any. */
+  run?: WorkflowRun;
+  onStopRun?: () => void;
   usage: AgentTokenUsage | undefined;
   /** The user-given name, '' when none (then `title` is the default label). */
   customName: string;
@@ -164,6 +176,10 @@ export function ChatCard({
   onClose,
   onOpenTerminal,
   onExpand,
+  workflows,
+  onAttachWorkflow,
+  run,
+  onStopRun,
   usage,
   customName,
   onRename,
@@ -171,6 +187,7 @@ export function ChatCard({
   onKeys,
   onRemove,
 }: ChatCardProps) {
+  const [showWorkflows, setShowWorkflows] = useState(false);
   const [showScreen, setShowScreen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState('');
@@ -597,6 +614,50 @@ export function ChatCard({
         ))}
       </div>
 
+      {run && (
+        <div
+          className="flex flex-col gap-2 px-8 py-6 border-t-2 border-border bg-bg"
+          data-testid="chat-run"
+        >
+          <div className="flex items-center gap-6 text-xs">
+            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+              Workflow: {run.title}
+            </span>
+            <span className="text-2xs text-text-muted">
+              {run.steps.filter((st) => st.state === 'done' || st.state === 'skipped').length}/
+              {run.steps.length}
+            </span>
+            {onStopRun && (
+              <Button size="sm" variant="ghost" onClick={onStopRun}>
+                Stop
+              </Button>
+            )}
+          </div>
+          {run.steps.map((st, i) => (
+            <div
+              key={i}
+              className={`flex gap-6 text-2xs ${
+                st.state === 'waiting'
+                  ? 'text-status-permission'
+                  : st.state === 'done'
+                    ? 'text-text-muted'
+                    : st.state === 'skipped'
+                      ? 'text-text-muted line-through'
+                      : 'text-text'
+              }`}
+            >
+              <span className="w-12">
+                {st.state === 'done' ? '✓' : st.state === 'waiting' ? '?' : i + 1}
+              </span>
+              <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                {st.text}
+              </span>
+              <span className="opacity-70">{st.kind}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {canSend ? (
         <div
           className="flex flex-col gap-4 p-8 border-t-2 border-border bg-bg-dark"
@@ -662,6 +723,39 @@ export function ChatCard({
               data-testid="chat-input"
             />
             {filesEnabled && <AttachFileButton attachments={attachments} />}
+            {workflows && onAttachWorkflow && (
+              <span className="relative">
+                <Button
+                  size="md"
+                  onClick={() => setShowWorkflows((v) => !v)}
+                  title="Give this agent a workflow"
+                >
+                  Workflow
+                </Button>
+                {showWorkflows && (
+                  <span className="absolute bottom-full right-0 mb-4 z-10 w-220 pixel-panel p-4 flex flex-col">
+                    {workflows.length === 0 && (
+                      <span className="text-2xs text-text-muted p-4">
+                        No workflows yet. Make one in Workflows.
+                      </span>
+                    )}
+                    {workflows.map((w) => (
+                      <button
+                        key={w.id}
+                        className="flex gap-6 text-left px-6 py-2 bg-transparent border-0 text-xs text-text cursor-pointer hover:bg-bg-thumb"
+                        onClick={() => {
+                          onAttachWorkflow(w.id);
+                          setShowWorkflows(false);
+                        }}
+                      >
+                        <span className="flex-1">{w.title}</span>
+                        <span className="text-2xs text-text-muted">{w.steps} steps</span>
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
             <Button
               variant={hasContent && !attachments.uploading ? 'accent' : 'disabled'}
               size="md"

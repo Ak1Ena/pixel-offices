@@ -41,6 +41,8 @@ import {
   PERMISSION_POLL_SEGMENT,
   TASK_NO_SUCH_CARD_ERROR,
   TASKS_API_PATH,
+  WORKFLOW_GATE_POLL_MS,
+  WORKFLOWS_API_PATH,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
@@ -142,6 +144,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerBoardUploadRoute(app, options);
   registerBoardPinRoutes(app, options);
   registerFocusRoutes(app, options);
+  registerWorkflowRoutes(app, options);
   registerTaskRoutes(app, options);
   registerChatFileRoute(app, options);
   registerWebSocketRoute(app, options);
@@ -564,6 +567,52 @@ function registerFocusRoutes(app: FastifyInstance, options: HttpServerOptions): 
     },
     async (request) => runtime.focus.wait(request.params.requestId, FOCUS_POLL_MS),
   );
+}
+
+/**
+ * Workflow runs for AGENTS (`pixel-office workflow step|gate|show`). Same gate
+ * as the board routes. 404 means "not a run of this office" — the CLI tries
+ * the next live one.
+ */
+function registerWorkflowRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const runtime = options.runtime;
+  if (!runtime) return;
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  const route = {
+    preHandler: [noBrowsers, bearerAuth(options.token)],
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string', pattern: '^w[a-f0-9]{6}$' },
+          step: { type: 'string', pattern: '^[0-9]{1,3}$' },
+        },
+        required: ['runId'],
+      },
+    },
+  };
+  type Run = { Params: { runId: string; step?: string } };
+  const answer = (reply: FastifyReply, result: ReturnType<typeof runtime.runs.markStep>) =>
+    result.ok ? { run: result.run } : reply.code(result.status).send({ error: result.error });
+
+  app.get<Run>(`${WORKFLOWS_API_PATH}/runs/:runId`, route, async (request, reply) =>
+    answer(reply, runtime.runs.describe(request.params.runId)),
+  );
+  app.post<Run>(`${WORKFLOWS_API_PATH}/runs/:runId/step/:step`, route, async (request, reply) =>
+    answer(reply, runtime.runs.markStep(request.params.runId, request.params.step)),
+  );
+  app.post<Run>(`${WORKFLOWS_API_PATH}/runs/:runId/gate/:step`, route, async (request, reply) =>
+    answer(reply, runtime.runs.openGate(request.params.runId, request.params.step)),
+  );
+  app.get<Run>(`${WORKFLOWS_API_PATH}/runs/:runId/gate/:step`, route, async (request) => ({
+    decision: await runtime.runs.waitGate(
+      request.params.runId,
+      Number(request.params.step),
+      WORKFLOW_GATE_POLL_MS,
+    ),
+  }));
 }
 
 // ── WebSocket ──────────────────────────────────────────────────
