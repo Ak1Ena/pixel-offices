@@ -411,6 +411,14 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
+/** Docked Messenger: width the user dragged it to (per viewer), and its bounds. */
+export const MESSENGER_DOCK_WIDTH_KEY = 'pixel-office:messenger-dock-width';
+export const MESSENGER_DOCK_DEFAULT_PX = 440;
+export const MESSENGER_DOCK_MIN_PX = 320;
+/** Office left visible beside the widest dock. */
+export const MESSENGER_DOCK_OFFICE_MIN_PX = 160;
+/** Arrow-key step on the dock's resize handle. */
+export const MESSENGER_DOCK_KEY_STEP_PX = 32;
 /** How far above a character's feet its workflow progress pips sit (sprite px). */
 export const WORKFLOW_BADGE_VERTICAL_OFFSET = 30;
 /** How long the flash lasts when a character steps through a portal. */

@@ -6,7 +6,14 @@ import type {
   ChatEntry,
   FocusRequest,
 } from '../../../core/src/messages.js';
-import { MESSENGER_PREFS_KEY } from '../constants.js';
+import {
+  MESSENGER_DOCK_DEFAULT_PX,
+  MESSENGER_DOCK_KEY_STEP_PX,
+  MESSENGER_DOCK_MIN_PX,
+  MESSENGER_DOCK_OFFICE_MIN_PX,
+  MESSENGER_DOCK_WIDTH_KEY,
+  MESSENGER_PREFS_KEY,
+} from '../constants.js';
 import { fileBaseName, spotLabel } from '../docViewer.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { MdBlock, MdInline, ReadingPrefs } from '../messenger.js';
@@ -90,6 +97,29 @@ function savePrefs(prefs: ReadingPrefs): void {
   } catch {
     /* private window or blocked storage: the prefs just don't stick */
   }
+}
+
+function loadDockWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(MESSENGER_DOCK_WIDTH_KEY));
+    return Number.isFinite(n) && n >= MESSENGER_DOCK_MIN_PX ? n : MESSENGER_DOCK_DEFAULT_PX;
+  } catch {
+    return MESSENGER_DOCK_DEFAULT_PX;
+  }
+}
+
+function saveDockWidth(width: number): void {
+  try {
+    localStorage.setItem(MESSENGER_DOCK_WIDTH_KEY, String(Math.round(width)));
+  } catch {
+    /* private window or blocked storage: the width just doesn't stick */
+  }
+}
+
+/** Keep the dock between its minimum and "leave some office showing". */
+function clampDockWidth(width: number, parentWidth: number): number {
+  const max = Math.max(MESSENGER_DOCK_MIN_PX, parentWidth - MESSENGER_DOCK_OFFICE_MIN_PX);
+  return Math.min(max, Math.max(MESSENGER_DOCK_MIN_PX, width));
 }
 
 function Inline({ parts }: { parts: MdInline[] }) {
@@ -227,6 +257,36 @@ export function MessengerPanel(props: MessengerPanelProps) {
   const [listOnPhone, setListOnPhone] = useState(selectedId === null);
   const readRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [dockWidth, setDockWidth] = useState(loadDockWidth);
+
+  const parentWidth = () => panelRef.current?.parentElement?.clientWidth ?? window.innerWidth;
+  const resizeDock = (width: number) => {
+    const next = clampDockWidth(width, parentWidth());
+    setDockWidth(next);
+    saveDockWidth(next);
+  };
+
+  const startDockDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidth = panelRef.current?.offsetWidth ?? dockWidth;
+    const onMove = (ev: PointerEvent) => {
+      // The dock hangs off the right edge: dragging left widens it.
+      setDockWidth(clampDockWidth(startWidth + startX - ev.clientX, parentWidth()));
+    };
+    const onUp = (ev: PointerEvent) => {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      resizeDock(startWidth + startX - ev.clientX);
+    };
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+    handle.addEventListener('pointercancel', onUp);
+  };
 
   const update = (next: Partial<ReadingPrefs>) => {
     const merged = { ...prefs, ...next };
@@ -359,9 +419,11 @@ export function MessengerPanel(props: MessengerPanelProps) {
     <div
       role="dialog"
       aria-label="Messages"
+      ref={panelRef}
       className={`absolute z-58 flex bg-bg border-border ${
-        docked ? 'top-0 right-0 bottom-0 w-440 max-w-full border-l-2' : 'inset-0'
+        docked ? 'top-0 right-0 bottom-0 max-w-full border-l-2' : 'inset-0'
       }`}
+      style={docked ? { width: dockWidth } : undefined}
       data-testid="messenger"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
@@ -370,6 +432,28 @@ export function MessengerPanel(props: MessengerPanelProps) {
         if (e.key === 'Escape') props.onClose();
       }}
     >
+      {docked && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize Messages"
+          aria-valuenow={Math.round(dockWidth)}
+          aria-valuemin={MESSENGER_DOCK_MIN_PX}
+          tabIndex={0}
+          title="Drag to resize · double-click to reset"
+          className="absolute -left-4 top-0 bottom-0 w-8 z-10 cursor-col-resize touch-none hover:bg-accent focus-visible:bg-accent outline-none max-sm:hidden"
+          onPointerDown={startDockDrag}
+          onDoubleClick={() => resizeDock(MESSENGER_DOCK_DEFAULT_PX)}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') resizeDock(dockWidth + MESSENGER_DOCK_KEY_STEP_PX);
+            else if (e.key === 'ArrowRight') resizeDock(dockWidth - MESSENGER_DOCK_KEY_STEP_PX);
+            else return;
+            e.preventDefault();
+          }}
+          data-testid="messenger-dock-resize"
+        />
+      )}
+
       {list}
 
       <div
