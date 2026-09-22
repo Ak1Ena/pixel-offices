@@ -115,7 +115,9 @@ interface FoundOptions {
 /**
  * A numbered choice ("❯ 1. Yes / 2. No"). The LAST "1." on screen starts it —
  * dialogs sit at the bottom, and a numbered list earlier in the conversation
- * must not be mistaken for one. Wrapped labels are joined back together.
+ * must not be mistaken for one. It needs a cursor mark or an answer hint, so a
+ * numbered list the agent just wrote is never read as a dialog. Wrapped labels
+ * are joined back together.
  */
 function findNumbered(lines: string[], bare: string[]): FoundOptions | null {
   let first = -1;
@@ -130,13 +132,17 @@ function findNumbered(lines: string[], bare: string[]): FoundOptions | null {
 
   const options: ScreenQuestion['options'] = [];
   let selected = 0;
+  let cursor = false;
   let hinted = false;
   for (let i = first; i < bare.length; i++) {
     const line = bare[i];
     const m = OPTION_RE.exec(line);
     if (m && Number(m[2]) === options.length + 1) {
       if (options.length >= SCREEN_QUESTION_MAX_OPTIONS) break;
-      if (m[1]) selected = options.length;
+      if (m[1]) {
+        selected = options.length;
+        cursor = true;
+      }
       options.push({ number: Number(m[2]), label: m[3].trim() });
       continue;
     }
@@ -149,6 +155,9 @@ function findNumbered(lines: string[], bare: string[]): FoundOptions | null {
     last.label = `${last.label} ${line.trim()}`;
   }
   if (!hinted) hinted = bare.slice(first).some((l) => MENU_HINT_RE.test(l));
+  // A live dialog puts its cursor on an option or says how to answer; a
+  // numbered list in the agent's reply does neither and is not a question.
+  if (!cursor && !hinted) return null;
   // Two options make a choice; a lone one must still say how to answer it.
   if (options.length < 2 && !hinted) return null;
   return { first, options, selected };

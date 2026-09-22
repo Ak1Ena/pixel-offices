@@ -29,6 +29,8 @@ export function ScreenQuestionCard({
   const [sent, setSent] = useState<number | null>(null);
   const [telling, setTelling] = useState<number | null>(null);
   const [text, setText] = useState('');
+  // Hidden to a one-line bar, not dismissed: the agent still waits on it.
+  const [collapsed, setCollapsed] = useState(false);
 
   // A click that didn't take (the screen never moved on) can be tried again.
   useEffect(() => {
@@ -52,6 +54,28 @@ export function ScreenQuestionCard({
 
   const [heading, ...details] = question.prompt;
 
+  if (collapsed) {
+    return (
+      <div
+        role="alert"
+        aria-label={`${agentLabel} is asking: ${heading ?? 'a question'}`}
+        className="pixel-panel flex items-center gap-6 px-8 py-4 border-status-permission text-sm"
+        data-testid="screen-question-collapsed"
+      >
+        <span className="text-text shrink-0">{agentLabel}</span>
+        <span className="text-text-muted truncate">is asking{heading ? `: ${heading}` : ''}</span>
+        <Button
+          size="sm"
+          className="ml-auto shrink-0"
+          onClick={() => setCollapsed(false)}
+          data-testid="screen-question-show"
+        >
+          Show
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div
       role="alertdialog"
@@ -59,6 +83,11 @@ export function ScreenQuestionCard({
       className="pixel-panel flex flex-col gap-6 p-8 border-status-permission"
       data-testid="screen-question"
       onKeyDown={(e) => {
+        if (e.key === 'Escape' && telling === null) {
+          e.preventDefault();
+          setCollapsed(true);
+          return;
+        }
         if (telling !== null || e.altKey || e.ctrlKey || e.metaKey) return;
         const option = question.options.find((o) => String(o.number) === e.key);
         if (option) {
@@ -76,6 +105,15 @@ export function ScreenQuestionCard({
           {agentLabel}
         </button>
         <span className="text-text-muted">is asking</span>
+        <button
+          onClick={() => setCollapsed(true)}
+          className="ml-auto bg-transparent border-0 p-0 text-text-muted cursor-pointer text-sm"
+          title="Hide (the agent still waits for an answer)"
+          aria-label="Hide question"
+          data-testid="screen-question-hide"
+        >
+          ×
+        </button>
       </div>
       {heading && <div className="text-lg leading-tight">{heading}</div>}
       {details.length > 0 && (

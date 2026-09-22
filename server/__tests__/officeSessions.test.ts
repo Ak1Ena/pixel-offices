@@ -11,7 +11,8 @@ describe('questions on an office-run agent screen', () => {
         '  2. No, exit',
       ]),
     ).toBe(true);
-    expect(looksLikeQuestion(['Allow Bash?', ' 1) Yes', ' 2) No'])).toBe(true);
+    expect(looksLikeQuestion(['Allow Bash?', '❯ 1) Yes', ' 2) No'])).toBe(true);
+    expect(looksLikeQuestion(['Allow Bash?', ' 1) Yes', ' 2) No', ' Esc to cancel'])).toBe(true);
   });
 
   it('sees through the box Claude draws around its dialogs', () => {
@@ -41,6 +42,25 @@ describe('questions on an office-run agent screen', () => {
     expect(looksLikeQuestion(['Welcome to Claude Code', '> '])).toBe(false);
     expect(looksLikeQuestion(['Steps:', '1. read the file'])).toBe(false);
     expect(looksLikeQuestion([])).toBe(false);
+  });
+
+  it('does not take a numbered list in the agent reply for a question', () => {
+    const reply = [
+      '⏺ There are three changes, all by author "Claude", in chapter 1:',
+      '',
+      '  1. Added text in the paragraph: now ends with a new sentence.',
+      '  2. Deleted text in section 1.1: a word is removed.',
+      '  3. Added text in the same spot: replaces the deleted word.',
+      '',
+      '  When you open the file in Word, the Review tab shows the changes.',
+      '',
+      '╭──────────────────────────────────────────────╮',
+      '│ >                                            │',
+      '╰──────────────────────────────────────────────╯',
+      '  ? for shortcuts',
+    ];
+    expect(looksLikeQuestion(reply)).toBe(false);
+    expect(parseScreenQuestion(reply)).toBeNull();
   });
 });
 
