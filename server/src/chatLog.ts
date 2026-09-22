@@ -32,6 +32,8 @@ interface ChatRecord {
   isMeta?: boolean;
   message?: { content?: unknown };
   content?: unknown;
+  /** Claude Code's structured tool result; `bashEditDiff` lists files a Bash command changed. */
+  toolUseResult?: unknown;
 }
 
 interface ContentBlock {
@@ -134,6 +136,7 @@ export function extractChatDelta(
         parts.push('[image]');
       }
     }
+    delta.entries.push(...bashEditEntries(record, base, delta.doneToolIds[0]));
     if (parts.length > 0 && record.uuid && delta.doneToolIds.length === 0) {
       delta.entries.push({
         ...base,
@@ -187,6 +190,71 @@ export function extractChatDelta(
     }
   }
   return delta;
+}
+
+interface UnifiedHunk {
+  oldLines?: number;
+  lines?: unknown;
+}
+
+/**
+ * Files a Bash command changed (`sed -i`, a heredoc, a script), which Claude
+ * Code diffs and records as `toolUseResult.bashEditDiff` — the terminal shows
+ * them as "Created x (+37 -0)". Each file becomes its own tool row carrying an
+ * edit, right after the command's row, so Messages draws the same diff card
+ * as for Edit/Write. Each run of changed lines is one hunk, with the context
+ * line on either side.
+ */
+function bashEditEntries(
+  record: ChatRecord,
+  base: { timestamp?: string },
+  toolId: string | undefined,
+): ChatEntry[] {
+  const result = record.toolUseResult as { bashEditDiff?: { files?: unknown } } | undefined;
+  const files = result?.bashEditDiff?.files;
+  if (!toolId || !Array.isArray(files)) return [];
+  const entries: ChatEntry[] = [];
+  files.forEach((raw, index) => {
+    const file = raw as { filePath?: unknown; hunks?: unknown };
+    if (typeof file.filePath !== 'string' || !Array.isArray(file.hunks)) return;
+    const hunks: ChatEdit['hunks'] = [];
+    let created = file.hunks.length > 0;
+    for (const h of file.hunks as UnifiedHunk[]) {
+      if (h.oldLines !== 0) created = false;
+      const lines = Array.isArray(h.lines) ? h.lines.filter((l) => typeof l === 'string') : [];
+      let i = 0;
+      while (i < lines.length) {
+        if (!/^[-+]/.test(lines[i])) {
+          i++;
+          continue;
+        }
+        const before = i > 0 && lines[i - 1].startsWith(' ') ? [lines[i - 1].slice(1)] : [];
+        const removed: string[] = [];
+        const added: string[] = [];
+        while (i < lines.length && /^[-+]/.test(lines[i])) {
+          (lines[i][0] === '-' ? removed : added).push(lines[i].slice(1));
+          i++;
+        }
+        const after = i < lines.length && lines[i].startsWith(' ') ? [lines[i].slice(1)] : [];
+        hunks.push({
+          removed: [...before, ...removed, ...after].join('\n'),
+          added: [...before, ...added, ...after].join('\n'),
+        });
+      }
+    }
+    const edit = clipEdit({ path: file.filePath, kind: created ? 'write' : 'edit', hunks });
+    if (!edit) return;
+    const name = file.filePath.split(/[\\/]/).pop() ?? file.filePath;
+    entries.push({
+      ...base,
+      entryId: `${toolId}:file:${index}`,
+      role: 'tool',
+      text: `${created ? 'Created' : 'Changed'} ${name}`,
+      toolDone: true,
+      edit,
+    });
+  });
+  return entries;
 }
 
 /**

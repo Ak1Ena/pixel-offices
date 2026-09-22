@@ -390,6 +390,68 @@ describe('chat edits (Messenger diff cards)', () => {
     });
   });
 
+  it('shows files a Bash command changed as their own diff rows', () => {
+    const delta = extractChatDelta(
+      {
+        type: 'user',
+        timestamp: '2026-09-22T06:26:00Z',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_b' }] },
+        toolUseResult: {
+          stdout: '',
+          bashEditDiff: {
+            files: [
+              {
+                filePath: '/r/new.test.ts',
+                hunks: [
+                  { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+a', '+b'] },
+                ],
+              },
+              {
+                filePath: '/r/old.ts',
+                hunks: [
+                  {
+                    oldStart: 4,
+                    oldLines: 5,
+                    newStart: 4,
+                    newLines: 5,
+                    lines: [' one', '-two', '+TWO', ' three', ' four', '-five', '+FIVE'],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      fmt,
+    );
+    expect(delta.doneToolIds).toEqual(['toolu_b']);
+    expect(delta.entries).toEqual([
+      {
+        timestamp: '2026-09-22T06:26:00Z',
+        entryId: 'toolu_b:file:0',
+        role: 'tool',
+        text: 'Created new.test.ts',
+        toolDone: true,
+        edit: { path: '/r/new.test.ts', kind: 'write', hunks: [{ removed: '', added: 'a\nb' }] },
+      },
+      {
+        timestamp: '2026-09-22T06:26:00Z',
+        entryId: 'toolu_b:file:1',
+        role: 'tool',
+        text: 'Changed old.ts',
+        toolDone: true,
+        edit: {
+          path: '/r/old.ts',
+          kind: 'edit',
+          hunks: [
+            { removed: 'one\ntwo\nthree', added: 'one\nTWO\nthree' },
+            { removed: 'four\nfive', added: 'four\nFIVE' },
+          ],
+        },
+      },
+    ]);
+  });
+
   it('bounds an edit across all its hunks and says it was cut', () => {
     const big = 'x'.repeat(CHAT_EDIT_MAX_CHARS);
     const clipped = clipEdit({
