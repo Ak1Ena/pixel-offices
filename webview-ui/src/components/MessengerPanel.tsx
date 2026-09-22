@@ -260,10 +260,7 @@ function EditCard({ entry }: { entry: ChatEntry }) {
           {entry.toolDone ? '✓' : '▶'}
         </span>
         <span className="text-text-muted">{edit.kind === 'write' ? 'Wrote' : 'Edited'}</span>
-        <span
-          className="font-mono overflow-hidden text-ellipsis whitespace-nowrap"
-          title={edit.path}
-        >
+        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" title={edit.path}>
           <FileLink path={edit.path} text={fileBaseName(edit.path)} />
         </span>
         <span className="ml-auto flex gap-6 font-mono text-2xs shrink-0">
@@ -282,10 +279,11 @@ function EditCard({ entry }: { entry: ChatEntry }) {
               key={i}
               className={`flex whitespace-pre ${r.kind === 'del' ? 'bg-diff-del' : r.kind === 'add' ? 'bg-diff-add' : 'text-text-muted'}`}
             >
-              <span className="w-16 shrink-0 text-center select-none">
+              {/* font-mono on each span: the global `* { font-pixel }` rule beats inheritance. */}
+              <span className="w-16 shrink-0 text-center select-none font-mono">
                 {r.kind === 'del' ? '−' : r.kind === 'add' ? '+' : ' '}
               </span>
-              <span>{r.text || ' '}</span>
+              <span className="font-mono pr-8">{r.text || ' '}</span>
             </div>
           ),
         )}
@@ -293,7 +291,7 @@ function EditCard({ entry }: { entry: ChatEntry }) {
           <div className="flex gap-8 px-8 py-2 text-2xs text-text-muted border-t border-bg-thumb font-reading">
             {rows.length > shown.length && (
               <button
-                className="bg-transparent border-0 p-0 underline text-text-muted cursor-pointer"
+                className="bg-transparent border-0 p-0 underline text-2xs text-text-muted cursor-pointer"
                 onClick={() => setShowAll(true)}
               >
                 Show all {rows.length} lines
