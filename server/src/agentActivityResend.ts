@@ -116,6 +116,7 @@ export function sendOfficeChatState(
 ): void {
   send({ type: 'boardLoaded', pins: runtime.board.getPins() });
   send({ ...runtime.focus.snapshot() });
+  send({ ...runtime.proposals.snapshot() });
   send({ type: 'workflowsLoaded', workflows: runtime.workflows.list() });
   send({ ...runtime.runs.snapshot() });
   send({ type: 'teamsLoaded', teams: runtime.teams.list() });

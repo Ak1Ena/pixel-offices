@@ -48,6 +48,7 @@ export type ServerMessage =
   | TeamNotice
   | TeamDraft
   | WorkflowDraft
+  | Proposals
   | TaskDeskLoaded
   | TaskDeskNotice
   | LayoutLoaded
@@ -106,6 +107,10 @@ export type ClientMessage =
   | ImportTeam
   | DraftTeam
   | DraftWorkflow
+  | DecideHunk
+  | ApplyProposal
+  | DiscardProposal
+  | UndoProposal
   | SaveDeskTask
   | RemoveDeskTask
   | DeskTaskAction
@@ -546,6 +551,43 @@ export interface WorkflowDraft {
   note?: string;
   error?: string;
 }
+
+export interface Proposals {
+  type: 'proposals';
+  proposals: Proposal[];
+}
+
+export interface Proposal {
+  proposalId: string;
+  path: string;
+  agentId?: number;
+  why?: string;
+  state: ProposalState;
+  hunks: ProposalHunk[];
+  createdAt: string;
+  note?: string;
+  canUndo?: boolean;
+}
+
+export type ProposalState = 'open' | 'applied' | 'discarded';
+
+export interface ProposalHunk {
+  hunkId: string;
+  oldStart: number;
+  newStart: number;
+  lines: ProposalLine[];
+  decision: HunkDecision;
+  reason?: string;
+}
+
+export interface ProposalLine {
+  kind: ProposalLineKind;
+  text: string;
+}
+
+export type ProposalLineKind = 'context' | 'del' | 'add';
+
+export type HunkDecision = 'pending' | 'accepted' | 'rejected';
 
 export interface TaskDeskLoaded {
   type: 'taskDeskLoaded';
@@ -996,6 +1038,29 @@ export interface DraftWorkflow {
   readProject?: boolean;
   previous?: Workflow;
   change?: string;
+}
+
+export interface DecideHunk {
+  type: 'decideHunk';
+  proposalId: string;
+  hunkId: string;
+  decision: HunkDecision;
+  reason?: string;
+}
+
+export interface ApplyProposal {
+  type: 'applyProposal';
+  proposalId: string;
+}
+
+export interface DiscardProposal {
+  type: 'discardProposal';
+  proposalId: string;
+}
+
+export interface UndoProposal {
+  type: 'undoProposal';
+  proposalId: string;
 }
 
 export interface SaveDeskTask {

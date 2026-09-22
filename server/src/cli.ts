@@ -33,6 +33,7 @@ import { MAX_PORT, MIN_PORT } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { runLauncher } from './launcher.js';
 import { OfficeSessions } from './officeSessions.js';
+import { runProposeCommand } from './proposeCli.js';
 import {
   activeHookProviders,
   claudeProvider,
@@ -248,6 +249,10 @@ async function main(): Promise<void> {
   // `pixel-office show …`: agents point the user at part of a file.
   if (first === 'show') {
     process.exit(await runShowCommand(process.argv.slice(3)));
+  }
+  // `pixel-office propose …`: agents suggest changes for the user to review.
+  if (first === 'propose') {
+    process.exit(await runProposeCommand(process.argv.slice(3)));
   }
   // `pixel-office workflow …`: agents report workflow steps and wait at gates.
   if (first === 'workflow') {

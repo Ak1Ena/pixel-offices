@@ -16,6 +16,7 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
+import { ReviewPanel } from './components/ReviewPanel.js';
 import { RoomToolOverlay } from './components/RoomToolOverlay.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TaskDesk } from './components/TaskDesk.js';
@@ -38,6 +39,7 @@ import { useFocusRequests } from './hooks/useFocusRequests.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
+import { useProposals } from './hooks/useProposals.js';
 import { useTaskDesk } from './hooks/useTaskDesk.js';
 import { useTeams } from './hooks/useTeams.js';
 import { useWorkflows } from './hooks/useWorkflows.js';
@@ -161,6 +163,9 @@ function App() {
   const [isTeamsOpen, setIsTeamsOpen] = useState(false);
   const permissionAsks = usePermissionAsks();
   const focus = useFocusRequests();
+  const proposals = useProposals();
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
   /** Places picked in the viewer, waiting to be sent (the tray), and those attached per agent. */
   const [docTray, setDocTray] = useState<DocRef[]>([]);
@@ -392,11 +397,12 @@ function App() {
   // An agent's open "show me" request puts a file bubble over its head.
   useEffect(() => {
     const os = getOfficeState();
-    const asking = new Set(
-      focus.requests.filter((r) => r.state === 'waiting').map((r) => r.agentId),
-    );
+    const asking = new Set([
+      ...focus.requests.filter((r) => r.state === 'waiting').map((r) => r.agentId),
+      ...proposals.proposals.filter((p) => p.state === 'open').map((p) => p.agentId),
+    ]);
     for (const id of agents) os.setDocBubble(id, asking.has(id));
-  }, [agents, focus.requests]);
+  }, [agents, focus.requests, proposals.proposals]);
 
   // Teams started from presets: members are linked to their lead (team room,
   // group-chat channel), named, and given the look the preset chose.
@@ -790,6 +796,13 @@ function App() {
                   : undefined
               }
               onLater={(r) => setFocusLater((prev) => new Set(prev).add(r.requestId))}
+              suggestions={proposals.proposals.filter(
+                (p) => p.state === 'open' && !proposalsLater.has(p.proposalId),
+              )}
+              onReview={(p) => setReviewingId(p.proposalId)}
+              onLaterSuggestion={(p) =>
+                setProposalsLater((prev) => new Set(prev).add(p.proposalId))
+              }
             />
           )}
 
@@ -1329,6 +1342,26 @@ function App() {
                   }
                 : undefined
             }
+          />
+        );
+      })()}
+
+      {(() => {
+        const reviewing = reviewingId
+          ? proposals.proposals.find((p) => p.proposalId === reviewingId)
+          : undefined;
+        if (!reviewing) return null;
+        return (
+          <ReviewPanel
+            proposal={reviewing}
+            agentLabel={
+              reviewing.agentId !== undefined ? agentLabel(reviewing.agentId) : 'the agent'
+            }
+            proposals={proposals}
+            canDecide={chat.privileged || !isBrowserRuntime}
+            onClose={() => setReviewingId(null)}
+            notice={teams.notice?.error ? teams.notice.message : null}
+            onClearNotice={teams.clearNotice}
           />
         );
       })()}

@@ -15,6 +15,7 @@ import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
 import { listFolder } from './folderBrowser.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { OfficeSessions } from './officeSessions.js';
+import { handleProposalMessage } from './proposalMessages.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
@@ -101,6 +102,7 @@ export function handleClientMessage(
   if (handleTaskDeskMessage(msg, send, runtime?.desk, ctx.privileged === true)) return;
   if (handleWorkflowMessage(msg, send, runtime, ctx.privileged === true)) return;
   if (handleTeamMessage(msg, send, runtime, ctx.privileged === true)) return;
+  if (handleProposalMessage(msg, send, runtime, ctx.privileged === true)) return;
 
   switch (msg.type) {
     case 'webviewReady':

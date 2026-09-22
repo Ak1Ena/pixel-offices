@@ -14,6 +14,7 @@ import {
   BOARD_PIN_VALUE_MAX_CHARS,
   LAYOUT_FILE_DIR,
   LAYOUT_FILE_POLL_INTERVAL_MS,
+  PROPOSE_CLI_COMMAND,
   SHOW_CLI_COMMAND,
 } from './constants.js';
 
@@ -270,6 +271,9 @@ export class BoardStore {
       'To make the user look at part of a file (the office opens it at that spot;',
       'only the path is sent):',
       `- ${SHOW_CLI_COMMAND} PATH [--lines 40-58 | --page 3 | --cell "Q3!B4" | --find "text"] --why "why" [--wait]`,
+      '',
+      'To suggest changes to a document instead of writing it (the user reviews and accepts them):',
+      `- write your new version elsewhere, then: ${PROPOSE_CLI_COMMAND} FILE --from NEWFILE --why "what" [--wait]`,
       '',
     ];
     for (const pin of this.pins) {

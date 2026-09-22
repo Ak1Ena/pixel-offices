@@ -39,6 +39,8 @@ import {
   MAX_HOOK_BODY_SIZE,
   PERMISSION_POLL_MS,
   PERMISSION_POLL_SEGMENT,
+  PROPOSAL_POLL_MS,
+  PROPOSALS_API_PATH,
   TASK_NO_SUCH_CARD_ERROR,
   TASKS_API_PATH,
   WORKFLOW_GATE_POLL_MS,
@@ -144,6 +146,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerBoardUploadRoute(app, options);
   registerBoardPinRoutes(app, options);
   registerFocusRoutes(app, options);
+  registerProposalRoutes(app, options);
   registerWorkflowRoutes(app, options);
   registerTaskRoutes(app, options);
   registerChatFileRoute(app, options);
@@ -613,6 +616,39 @@ function registerWorkflowRoutes(app: FastifyInstance, options: HttpServerOptions
       WORKFLOW_GATE_POLL_MS,
     ),
   }));
+}
+
+/**
+ * "Review changes" for AGENTS (`pixel-office propose`): suggest a new version
+ * of a file (both as paths), then long-poll for what the user decided. Same
+ * gate as the board routes.
+ */
+function registerProposalRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const runtime = options.runtime;
+  if (!runtime) return;
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  const preHandler = [noBrowsers, bearerAuth(options.token)];
+  app.post<{ Body: unknown }>(PROPOSALS_API_PATH, { preHandler }, async (request, reply) => {
+    const result = runtime.proposals.open(request.body);
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    return { proposal: result.proposal };
+  });
+  app.get<{ Params: { proposalId: string } }>(
+    `${PROPOSALS_API_PATH}/:proposalId`,
+    {
+      preHandler,
+      schema: {
+        params: {
+          type: 'object',
+          properties: { proposalId: { type: 'string', pattern: '^p[a-f0-9]{8}$' } },
+          required: ['proposalId'],
+        },
+      },
+    },
+    async (request) => runtime.proposals.wait(request.params.proposalId, PROPOSAL_POLL_MS),
+  );
 }
 
 // ── WebSocket ──────────────────────────────────────────────────

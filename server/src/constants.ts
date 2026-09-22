@@ -183,6 +183,20 @@ export const AI_DRAFT_MODEL = 'claude-sonnet-5';
 export const AI_DRAFT_TIMEOUT_MS = 4 * 60_000;
 export const AI_DRAFT_MAX_OUTPUT_BYTES = 1024 * 1024;
 
+// ── Review changes (proposals.ts, proposeCli.ts) ──
+export const PROPOSALS_API_PATH = '/api/proposals';
+/** How agents are told to suggest a change instead of writing it. */
+export const PROPOSE_CLI_COMMAND = 'npx @ak1ena/pixel-office propose';
+/** Text files up to this size can be reviewed line by line. */
+export const PROPOSAL_MAX_BYTES = 1024 * 1024;
+export const PROPOSAL_MAX_OPEN = 30;
+export const PROPOSAL_REASON_MAX_CHARS = 300;
+/** One long-poll for the user's decision; `propose --wait` polls again until PROPOSAL_WAIT_MS. */
+export const PROPOSAL_POLL_MS = 25_000;
+export const PROPOSAL_WAIT_MS = 15 * 60_000;
+/** Copies of files as they were before an Apply, for Undo. */
+export const PROPOSAL_BACKUP_DIR = 'backups';
+
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before
  *  letting it show in the agent's own terminal. */

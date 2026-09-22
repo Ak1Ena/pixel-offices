@@ -49,6 +49,9 @@
   --color-doc-mark: rgba(96, 48, 255, 0.16);
   /* Lines/cells the user picked to ask about */
   --color-doc-pick: rgba(55, 148, 255, 0.22);
+  /* Review changes: removed and added lines */
+  --color-diff-del: rgba(209, 66, 73, 0.18);
+  --color-diff-add: rgba(137, 209, 133, 0.16);
   --color-pin-link: #d8d4ff;
   --color-pin-file: #c6efc6;
   --color-pin-snippet: #cfe3ff;
@@ -111,6 +114,8 @@
   --color-board-ink-muted: var(--color-board-ink-muted);
   --color-doc-mark: var(--color-doc-mark);
   --color-doc-pick: var(--color-doc-pick);
+  --color-diff-del: var(--color-diff-del);
+  --color-diff-add: var(--color-diff-add);
   --color-pin-link: var(--color-pin-link);
   --color-pin-file: var(--color-pin-file);
   --color-pin-snippet: var(--color-pin-snippet);

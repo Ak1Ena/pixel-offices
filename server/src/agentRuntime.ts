@@ -49,6 +49,7 @@ import { MentionRelay } from './mentionRelay.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { PermissionBroker } from './permissionBroker.js';
+import { Proposals } from './proposals.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { TaskDesk } from './taskDesk.js';
@@ -110,6 +111,7 @@ export class AgentRuntime {
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
   private focusRequests: FocusRequests | null = null;
+  private proposalStore: Proposals | null = null;
   private workflowStore: WorkflowStore | null = null;
   private workflowRuns: WorkflowRuns | null = null;
   private teamStore: TeamStore | null = null;
@@ -749,6 +751,12 @@ export class AgentRuntime {
     return this.focusRequests;
   }
 
+  /** Changes agents suggested to files, waiting for review (`pixel-office propose`). */
+  get proposals(): Proposals {
+    this.proposalStore ??= new Proposals(this.store, (id, text) => this.chatSender.send(id, text));
+    return this.proposalStore;
+  }
+
   /** Saved workflows (~/.pixel-agents/workflows/*.md); read and watched on first use. */
   get workflows(): WorkflowStore {
     this.workflowStore ??= new WorkflowStore((workflows) =>
@@ -833,6 +841,7 @@ export class AgentRuntime {
     this.launchers.dispose();
     this.boardStore?.dispose();
     this.focusRequests?.dispose();
+    this.proposalStore?.dispose();
     this.workflowStore?.dispose();
     this.workflowRuns?.dispose();
     this.teamStore?.dispose();

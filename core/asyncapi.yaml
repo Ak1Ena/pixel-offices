@@ -127,6 +127,7 @@ components:
         - $ref: '#/components/schemas/TeamNotice'
         - $ref: '#/components/schemas/TeamDraft'
         - $ref: '#/components/schemas/WorkflowDraft'
+        - $ref: '#/components/schemas/Proposals'
         # Task desk
         - $ref: '#/components/schemas/TaskDeskLoaded'
         - $ref: '#/components/schemas/TaskDeskNotice'
@@ -192,6 +193,10 @@ components:
         - $ref: '#/components/schemas/ImportTeam'
         - $ref: '#/components/schemas/DraftTeam'
         - $ref: '#/components/schemas/DraftWorkflow'
+        - $ref: '#/components/schemas/DecideHunk'
+        - $ref: '#/components/schemas/ApplyProposal'
+        - $ref: '#/components/schemas/DiscardProposal'
+        - $ref: '#/components/schemas/UndoProposal'
         # Task desk
         - $ref: '#/components/schemas/SaveDeskTask'
         - $ref: '#/components/schemas/RemoveDeskTask'
@@ -2054,6 +2059,142 @@ components:
         previous:
           $ref: '#/components/schemas/Workflow'
         change:
+          type: string
+
+    Proposals:
+      description: |
+        Changes agents suggested to files (`pixel-office propose`), for the
+        user to review before anything is written. Sent on each change and in
+        the handshake. Hunk lines are shown in the office; the agent itself
+        only ever sent paths.
+      type: object
+      additionalProperties: false
+      required: [type, proposals]
+      properties:
+        type:
+          const: proposals
+        proposals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Proposal'
+
+    Proposal:
+      type: object
+      additionalProperties: false
+      required: [proposalId, path, state, hunks, createdAt]
+      properties:
+        proposalId:
+          type: string
+        path:
+          type: string
+        agentId:
+          type: integer
+        why:
+          type: string
+        state:
+          $ref: '#/components/schemas/ProposalState'
+        hunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProposalHunk'
+        createdAt:
+          type: string
+        note:
+          type: string
+          description: Why the last Apply did not go through, or what it did.
+        canUndo:
+          type: boolean
+
+    ProposalState:
+      type: string
+      enum: [open, applied, discarded]
+
+    ProposalHunk:
+      type: object
+      additionalProperties: false
+      required: [hunkId, oldStart, newStart, lines, decision]
+      properties:
+        hunkId:
+          type: string
+        oldStart:
+          type: integer
+        newStart:
+          type: integer
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProposalLine'
+        decision:
+          $ref: '#/components/schemas/HunkDecision'
+        reason:
+          type: string
+
+    ProposalLine:
+      type: object
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind:
+          $ref: '#/components/schemas/ProposalLineKind'
+        text:
+          type: string
+
+    ProposalLineKind:
+      type: string
+      enum: [context, del, add]
+
+    HunkDecision:
+      type: string
+      enum: [pending, accepted, rejected]
+
+    DecideHunk:
+      description: Accept, reject or un-decide one change (hunkId "*" = all of them). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, proposalId, hunkId, decision]
+      properties:
+        type:
+          const: decideHunk
+        proposalId:
+          type: string
+        hunkId:
+          type: string
+        decision:
+          $ref: '#/components/schemas/HunkDecision'
+        reason:
+          type: string
+
+    ApplyProposal:
+      description: Write the accepted changes to the real file and tell the agent what landed. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, proposalId]
+      properties:
+        type:
+          const: applyProposal
+        proposalId:
+          type: string
+
+    DiscardProposal:
+      description: Drop a suggestion without writing anything; the agent is told. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, proposalId]
+      properties:
+        type:
+          const: discardProposal
+        proposalId:
+          type: string
+
+    UndoProposal:
+      description: Put back the file as it was before the last Apply of this suggestion. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, proposalId]
+      properties:
+        type:
+          const: undoProposal
+        proposalId:
           type: string
 
     SaveBoardPin:

@@ -43,6 +43,7 @@ import {
   writeLayoutToFile,
 } from '../../server/src/layoutPersistence.js';
 import { PathSet } from '../../server/src/pathKey.js';
+import { handleProposalMessage } from '../../server/src/proposalMessages.js';
 import type { ConsentEffects } from '../../server/src/providers/hook/consentExecutor.js';
 import { applyConsentChoice } from '../../server/src/providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from '../../server/src/providers/hook/consentGate.js';
@@ -515,7 +516,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // handled
       } else if (
         handleWorkflowMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
-        handleTeamMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true)
+        handleTeamMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
+        handleProposalMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true)
       ) {
         // handled
       } else if (message.type === 'answerFocus') {
