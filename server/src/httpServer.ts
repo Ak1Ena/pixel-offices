@@ -92,8 +92,9 @@ export interface HttpServerOptions {
   resolveBoardAgent?: (name: string) => number | undefined;
   /** The task desk, for agents reporting back (`pixel-office task …`). Lazy: created on first use. */
   taskDesk?: () => TaskDesk;
-  /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession). */
-  onLauncherPoll?: (sessionId: string, cwd: string) => void;
+  /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession).
+   *  `pid` = a run followed by process id (agy), linked when its hooks arrive. */
+  onLauncherPoll?: (sessionId: string, cwd: string, pid?: number) => void;
 }
 
 /** Result of createHttpServer(). */
@@ -251,7 +252,7 @@ function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions
     if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
   };
 
-  app.get<{ Params: { sessionId: string }; Querystring: { cwd?: string } }>(
+  app.get<{ Params: { sessionId: string }; Querystring: { cwd?: string; pid?: number } }>(
     `${LAUNCHER_API_PREFIX}/:sessionId/input`,
     {
       preHandler: [noBrowsers, bearerAuth(options.token)],
@@ -259,14 +260,17 @@ function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions
         params,
         querystring: {
           type: 'object',
-          properties: { cwd: { type: 'string', maxLength: 4096 } },
+          properties: {
+            cwd: { type: 'string', maxLength: 4096 },
+            pid: { type: 'integer', minimum: 1 },
+          },
         },
       },
     },
     async (request) => {
       const { sessionId } = request.params;
       const cwd = request.query.cwd;
-      if (cwd) options.onLauncherPoll?.(sessionId, cwd);
+      if (cwd) options.onLauncherPoll?.(sessionId, cwd, request.query.pid);
       const texts = await launchers.poll(
         sessionId,
         LAUNCHER_POLL_TIMEOUT_MS,

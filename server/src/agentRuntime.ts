@@ -116,6 +116,12 @@ export class AgentRuntime {
   private workflowRuns: WorkflowRuns | null = null;
   private teamStore: TeamStore | null = null;
   private teamRuns: TeamRuns | null = null;
+  /** Runs followed by process id (agy): terminal pid → its key and folder. */
+  private readonly launchedPids = new Map<number, { key: string; cwd: string }>();
+  /** Sessions whose hooks came from a followed pid: session id → key. */
+  private readonly launchedSessions = new Map<string, string>();
+  /** …and the folder their run was started in. */
+  private readonly launchedCwds = new Map<string, string>();
   /** Starts agents the office runs itself (standalone only; set by the CLI). */
   agentStarter: AgentStarter | undefined;
   private taskDesk: TaskDesk | null = null;
@@ -260,7 +266,9 @@ export class AgentRuntime {
         // A hooks-only session (no transcript) reports its working directory;
         // it is tracked when that is a workspace whose primary-provider project
         // dir is being watched.
+        const launchKey = this.launchedSessions.get(sessionId);
         const tracked =
+          launchKey !== undefined ||
           isTrackedProjectDir(projectDir) ||
           (!transcriptPath &&
             !!cwd &&
@@ -287,9 +295,11 @@ export class AgentRuntime {
           (agent) => {
             if (providerId && providerId !== this.provider.id) agent.providerId = providerId;
             if (cwd) agent.cwd = cwd;
+            if (launchKey) agent.launchKey = launchKey;
             this.registerAgent(agent.sessionId, agent.id);
           },
         );
+        if (launchKey) this.chatSender.refreshSendable();
       },
       onSessionClear: (agentId, newSessionId, newTranscriptPath) => {
         if (newTranscriptPath) {
@@ -366,6 +376,14 @@ export class AgentRuntime {
 
   /** Route an incoming hook event to the appropriate agent. */
   handleHookEvent(providerId: string, event: Record<string, unknown>): void {
+    const sessionId = typeof event.session_id === 'string' ? event.session_id : '';
+    const pids = Array.isArray(event.cli_pids) ? event.cli_pids : [];
+    const launch = pids
+      .map((pid) => (typeof pid === 'number' ? this.launchedPids.get(pid) : undefined))
+      .find((l) => l !== undefined);
+    if (launch && sessionId) this.linkLaunched(sessionId, launch.key, launch.cwd);
+    const cwd = sessionId ? this.launchedCwds.get(sessionId) : undefined;
+    if (cwd && typeof event.cwd !== 'string') event = { ...event, cwd };
     this.hookEventHandler.handleEvent(providerId, event as HookEvent);
     const provider = this.providersById.get(providerId);
     if (!provider) return; // unknown provider: the handler dropped it too
@@ -697,6 +715,46 @@ export class AgentRuntime {
    * sessions. Called on every launcher poll; a no-op once the agent exists or
    * while the provider can't place the transcript yet.
    */
+  /**
+   * Follow a run by process id (agy takes no session id up front): hook events
+   * whose `cli_pids` (the hook's ancestors) include `pid` belong to the
+   * terminal known as `key`, started in `cwd` (filled in when the event has
+   * none — Windows can't read agy's working directory). Their
+   * session is adopted whatever Watch All Sessions says — starting it through
+   * the office is the opt-in — and the agent gets `launchKey` so the writers
+   * find its terminal.
+   */
+  followLaunchedPid(pid: number, key: string, cwd: string): void {
+    if (this.launchedPids.get(pid)?.key === key) return;
+    this.launchedPids.set(pid, { key, cwd });
+    for (const [sessionId, k] of this.launchedSessions) {
+      if (k === key) this.linkLaunched(sessionId, key);
+    }
+  }
+
+  /** Stop following a pid (its run ended). */
+  forgetLaunchedPid(pid: number): void {
+    const key = this.launchedPids.get(pid)?.key;
+    this.launchedPids.delete(pid);
+    if (!key) return;
+    for (const [sessionId, k] of this.launchedSessions) {
+      if (k !== key) continue;
+      this.launchedSessions.delete(sessionId);
+      this.launchedCwds.delete(sessionId);
+    }
+  }
+
+  private linkLaunched(sessionId: string, key: string, cwd?: string): void {
+    this.launchedSessions.set(sessionId, key);
+    if (cwd) this.launchedCwds.set(sessionId, cwd);
+    for (const agent of this.store.values()) {
+      if (agent.sessionId === sessionId && agent.launchKey !== key) {
+        agent.launchKey = key;
+        this.chatSender.refreshSendable();
+      }
+    }
+  }
+
   adoptLaunchedSession(sessionId: string, cwd: string): void {
     for (const agent of this.store.values()) {
       if (agent.sessionId === sessionId) return;

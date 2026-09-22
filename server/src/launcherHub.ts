@@ -96,14 +96,14 @@ export class LauncherHub {
   /** A TerminalWriter for ChatSender: agents whose session a launcher owns. */
   get writer(): TerminalWriter {
     return {
-      canWrite: (agent: AgentState) => this.isConnected(agent.sessionId),
+      canWrite: (agent: AgentState) => this.isConnected(agent.launchKey ?? agent.sessionId),
       write: (agent: AgentState, text: string) => {
-        if (!this.write(agent.sessionId, text)) {
+        if (!this.write(agent.launchKey ?? agent.sessionId, text)) {
           throw new Error(`launcher for session ${agent.sessionId} is gone`);
         }
       },
       interrupt: (agent: AgentState) => {
-        if (!this.write(agent.sessionId, LAUNCHER_INTERRUPT)) {
+        if (!this.write(agent.launchKey ?? agent.sessionId, LAUNCHER_INTERRUPT)) {
           throw new Error(`launcher for session ${agent.sessionId} is gone`);
         }
       },

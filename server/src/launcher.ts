@@ -19,7 +19,7 @@ import { isServerConfig } from './serverConfig.js';
 import { typePrompt } from './terminalTyping.js';
 
 /**
- * `pixel-office <program> [args…]` — run a program (Claude today) so the
+ * `pixel-office <program> [args…]` — run a program (Claude or agy) so the
  * office can type into it.
  *
  * Claude runs in a pty this process owns; the user's terminal is passed
@@ -32,6 +32,8 @@ import { typePrompt } from './terminalTyping.js';
 
 /** The slice of node-pty the launcher uses. */
 export interface Pty {
+  /** The spawned program's process id (node-pty spawns it directly on macOS/Linux). */
+  readonly pid: number;
   kill(signal?: string): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
@@ -78,13 +80,38 @@ function flagValue(args: string[], ...names: string[]): string | undefined {
   return undefined;
 }
 
+/** A program's bare name: `/usr/local/bin/claude`, `claude.cmd` → `claude`. */
+function programBase(program: string): string {
+  // Either separator: a Windows path must name its program on any host.
+  return (program.split(/[\\/]/).pop() ?? '').toLowerCase().replace(/\.(cmd|exe|bat|ps1)$/, '');
+}
+
 /** Whether `program` is Claude Code (`claude`, `/usr/local/bin/claude`, `claude.cmd`). */
 export function isClaudeProgram(program: string): boolean {
-  const base = path
-    .basename(program)
-    .toLowerCase()
-    .replace(/\.(cmd|exe|bat|ps1)$/, '');
-  return base === 'claude';
+  return programBase(program) === 'claude';
+}
+
+export function isAgyProgram(program: string): boolean {
+  return programBase(program) === 'agy';
+}
+
+/**
+ * An interactive Antigravity CLI run the office can follow: `agy …` or a
+ * wrapper around it. agy takes no session id up front, so the office names
+ * the run itself (`key`) and links agy's conversation to it by process id —
+ * agy's hooks report their parent pid (see antigravity-hook.ts). Null for a
+ * command without agy, or a print-mode run (`-p`), which is not interactive.
+ */
+export function planAgyLaunch(
+  program: string,
+  args: string[],
+  newId: () => string = randomUUID,
+): { program: string; args: string[]; key: string } | null {
+  const at = isAgyProgram(program) ? -1 : args.findIndex(isAgyProgram);
+  if (at === -1 && !isAgyProgram(program)) return null;
+  const agyArgs = args.slice(at + 1);
+  if (flagValue(agyArgs, '-p', '--print', '--prompt') !== undefined) return null;
+  return { program, args, key: `agy-${newId()}` };
 }
 
 /**
@@ -275,14 +302,19 @@ export function loadPty(): PtyModule | null {
 }
 
 /** One long-poll: resolves with texts, or throws with `status` for HTTP errors. */
-function pollOnce(server: ServerConfig, sessionId: string, cwd: string): Promise<string[]> {
+function pollOnce(
+  server: ServerConfig,
+  sessionId: string,
+  cwd: string,
+  pid?: number,
+): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
         host: '127.0.0.1',
         port: server.port,
         method: 'GET',
-        path: `${LAUNCHER_API_PREFIX}/${encodeURIComponent(sessionId)}/input?cwd=${encodeURIComponent(cwd)}`,
+        path: `${LAUNCHER_API_PREFIX}/${encodeURIComponent(sessionId)}/input?cwd=${encodeURIComponent(cwd)}${pid ? `&pid=${pid}` : ''}`,
         headers: { Authorization: `Bearer ${server.token}` },
         timeout: LAUNCHER_POLL_TIMEOUT_MS + 10_000,
       },
@@ -348,8 +380,11 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
     );
   }
   const { program, args: argv } = alias ?? { program: typed, args: typedArgs };
-  const plan = planLaunch(program, argv);
-  if (!plan.tracksClaude) {
+  const agy = planAgyLaunch(program, argv);
+  const plan = agy
+    ? { program, args: argv, sessionId: agy.key, interactive: true, tracksClaude: false }
+    : planLaunch(program, argv);
+  if (!plan.tracksClaude && !agy) {
     console.error(
       `[Pixel Agents] The office follows Claude sessions only for now, so ${program} runs normally and won't appear in it.`,
     );
@@ -413,7 +448,7 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
   const pollLoop = async (server: ServerConfig, key: string): Promise<void> => {
     while (!exiting) {
       try {
-        for (const text of await pollOnce(server, sessionId, cwd)) {
+        for (const text of await pollOnce(server, sessionId, cwd, agy ? term.pid : undefined)) {
           // Stop from the office: press Esc now, not behind a message being typed.
           if (text === LAUNCHER_INTERRUPT) term.write(LAUNCHER_INTERRUPT);
           else typeIn(text);

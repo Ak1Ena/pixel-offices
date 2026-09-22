@@ -43,6 +43,7 @@
     "dist/hooks/claude-hook.js",
     "dist/hooks/codex-hook.js",
     "dist/hooks/gemini-hook.js",
+    "dist/hooks/antigravity-hook.js",
     "dist/uninstall.js",
     "dist/assets/",
     "dist/webview/",

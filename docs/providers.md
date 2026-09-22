@@ -1,15 +1,16 @@
-# Providers: Claude Code, Codex, Gemini CLI, and Generic HTTP
+# Providers: Claude Code, Codex, Gemini CLI, Antigravity CLI, and Generic HTTP
 
 Pixel Agents shows an agent as a character whenever a tool reports what it is doing. Claude Code is the
-primary provider (hooks plus its JSONL transcripts). Three more providers are hook-only: their characters
+primary provider (hooks plus its JSONL transcripts). Four more providers are hook-only: their characters
 are driven entirely by hook events.
 
-| Provider id | Tool               | Where hooks are installed                | Office can answer permission prompts |
-| ----------- | ------------------ | ---------------------------------------- | ------------------------------------ |
-| `claude`    | Claude Code        | `~/.claude/settings.json`                | Yes                                  |
-| `codex`     | OpenAI Codex CLI   | `~/.codex/hooks.json` (or `$CODEX_HOME`) | Yes                                  |
-| `gemini`    | Google Gemini CLI  | `~/.gemini/settings.json` (`hooks` key)  | No, answer in the terminal           |
-| `generic`   | Any script or tool | Nothing. Your tool POSTs its own events. | No, shows a bubble only              |
+| Provider id   | Tool                    | Where hooks are installed                           | Office can answer permission prompts |
+| ------------- | ----------------------- | --------------------------------------------------- | ------------------------------------ |
+| `claude`      | Claude Code             | `~/.claude/settings.json`                           | Yes                                  |
+| `codex`       | OpenAI Codex CLI        | `~/.codex/hooks.json` (or `$CODEX_HOME`)            | Yes                                  |
+| `gemini`      | Google Gemini CLI       | `~/.gemini/settings.json` (`hooks` key)             | No, answer in the terminal           |
+| `antigravity` | Antigravity CLI (`agy`) | `~/.gemini/config/hooks.json` (`pixel-agents` spec) | No, answer in the terminal           |
+| `generic`     | Any script or tool      | Nothing. Your tool POSTs its own events.            | No, shows a bubble only              |
 
 Every provider POSTs to the same server route, `POST /api/hooks/<provider id>`. Events for an unknown id
 are dropped.
@@ -60,11 +61,39 @@ Installed events: `SessionStart`, `SessionEnd`, `BeforeTool`, `AfterTool`, `Afte
 `~/.gemini/settings.json` may contain comments, which Gemini accepts. The installer refuses to rewrite a
 file with comments ("Couldn't parse …"). Remove the comments, or add the entries by hand.
 
+### Antigravity CLI (`agy`)
+
+Asked about when `~/.gemini/antigravity-cli` exists. agy's `hooks.json` is a map of named hook specs, so
+the office owns one key, `pixel-agents`, and leaves every other key alone (same safety rules: it never
+rewrites a file it can't parse, refuses a `pixel-agents` key it didn't write, and backs the file up once).
+
+Installed events: `PreInvocation`, `PostToolUse`, `Stop`. **`PreToolUse` is not installed**: agy reads a
+hook's reply there as a permission decision. `{}` denies the tool and `"allow"` would skip your own
+prompts, so no reply is safe. Because of that, a tool shows in the office when it finishes
+(`PostToolUse`) and stays until the next model call or `Stop`. Permission prompts are answered in the
+terminal.
+
+agy's payload has no event name, session id or (in `-p` mode) workspace, so the hook script fills them
+in: the event from its command line, the session from `conversationId`, and the folder from the first
+workspace path, else agy's own working directory, else the tool call's `Cwd`. agy has no session start
+event; every model call re-announces the session, so an office opened mid-conversation still finds it.
+Each hook prints `{}`, since agy requires a JSON reply.
+
+**Starting agy from the office.** `pixel-office agy …` and **+ Agent** with `agy` as the start command
+both work (with the agy hooks on). + Agent needs a first message: agy appears once it starts working,
+and the message rides the command line as `agy -i "<message>"`. agy takes no session id up front, so the
+office links its conversation to the terminal it started by process id: on a conversation's first event
+the hook reports its ancestor pids (`ps` on macOS/Linux, one PowerShell `Get-CimInstance` call on
+Windows, where hooks run through `cmd /c`), and the office matches the terminal's pid among them. That
+run is shown whatever **Watch All Sessions** says, the office can type into it and stop it, and on
+Windows (which can't read another process's working folder) the office fills in the folder it started
+agy in. agy's replies are not read into the chat card; watch its screen instead.
+
 ### Undo
 
 Settings → Instant Detection (Hooks) controls Claude only. To remove Codex or Gemini hooks, delete the
 entries that run `codex-hook.js` or `gemini-hook.js` from the CLI's file, or disable them in the CLI's
-`/hooks`. Uninstalling the VS Code extension removes the Pixel Agents entries from all three files.
+`/hooks`. For agy, delete the `pixel-agents` key from `~/.gemini/config/hooks.json`. Uninstalling the VS Code extension removes the Pixel Agents entries from all three files.
 
 ### Which sessions appear
 

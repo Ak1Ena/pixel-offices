@@ -21,7 +21,8 @@ import {
   SCREEN_QUESTION_PROMPT_LINES,
 } from './constants.js';
 import type { Pty } from './launcher.js';
-import { expandAlias, loadPty, planLaunch, splitShellWords } from './launcher.js';
+import { expandAlias, loadPty, planAgyLaunch, planLaunch, splitShellWords } from './launcher.js';
+import { areHooksInstalled as antigravityHooksInstalled } from './providers/hook/antigravity/antigravityHookInstaller.js';
 import { typePrompt } from './terminalTyping.js';
 import type { AgentState } from './types.js';
 
@@ -46,6 +47,9 @@ export interface StartAgentRequest {
 /** What OfficeSessions needs from the runtime. */
 export interface OfficeSessionHost {
   adoptLaunchedSession(sessionId: string, cwd: string): void;
+  /** Link hook events from this pid to the session known as `key` (agy). */
+  followPid?(pid: number, key: string, cwd: string): void;
+  forgetPid?(pid: number): void;
   renameAgent(agentId: number, name: string): void;
   removeAgent(agentId: number): void;
   refreshSendable(): void;
@@ -55,6 +59,8 @@ export interface OfficeSessionHost {
 
 interface OwnedSession {
   sessionId: string;
+  /** agy: followed by process id; its agent appears through hooks, not a transcript. */
+  followedPid?: number;
   cwd: string;
   pty: Pty;
   screen: Terminal;
@@ -259,7 +265,10 @@ export function parseScreenQuestion(lines: string[]): ParsedScreenQuestion | nul
  */
 function sessionKeys(agent: AgentState): string[] {
   const fromFile = agent.jsonlFile ? path.basename(agent.jsonlFile, '.jsonl') : '';
-  return fromFile && fromFile !== agent.sessionId ? [agent.sessionId, fromFile] : [agent.sessionId];
+  const keys =
+    fromFile && fromFile !== agent.sessionId ? [agent.sessionId, fromFile] : [agent.sessionId];
+  // A run followed by pid (agy) is known by the key the office gave its terminal.
+  return agent.launchKey ? [...keys, agent.launchKey] : keys;
 }
 
 function expandHome(p: string): string {
@@ -302,19 +311,42 @@ export class OfficeSessions {
     const words = splitShellWords((req.command ?? '').trim() || 'claude');
     const alias = expandAlias(words[0], words.slice(1));
     const command = alias ?? { program: words[0], args: words.slice(1) };
+    const isAgy = planAgyLaunch(command.program, command.args) !== null;
     if (req.skipPermissions) command.args.push('--dangerously-skip-permissions');
-    // The first message rides the command line (`claude "<prompt>"`), never the
-    // keyboard: typed input would land in — and its Enter would answer —
-    // whatever Claude asks first (trust this folder?).
+    // The first message rides the command line (`claude "<prompt>"`, `agy -i
+    // "<prompt>"`), never the keyboard: typed input would land in — and its
+    // Enter would answer — whatever the CLI asks first (trust this folder?).
     const firstMessage = req.firstMessage?.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-    if (firstMessage) command.args.push(firstMessage);
-    const plan = planLaunch(command.program, command.args);
-    if (!plan.tracksClaude || !plan.sessionId || !plan.interactive) {
-      return {
-        ok: false,
-        error:
-          'The start command must run Claude as a new interactive session (for example: claude, or an alias of it).',
-      };
+    let plan: { program: string; args: string[]; sessionId: string };
+    if (isAgy) {
+      // agy shows up through its hooks only, from its first model call on.
+      if (!antigravityHooksInstalled()) {
+        return {
+          ok: false,
+          error:
+            'Turn on the Antigravity (agy) hooks first: the office sees agy only through them (Settings → Show Welcome Tour).',
+        };
+      }
+      if (!firstMessage) {
+        return {
+          ok: false,
+          error: 'Give agy a first message: it appears in the office once it starts working.',
+        };
+      }
+      command.args.push('-i', firstMessage);
+      const agy = planAgyLaunch(command.program, command.args)!;
+      plan = { program: agy.program, args: agy.args, sessionId: agy.key };
+    } else {
+      if (firstMessage) command.args.push(firstMessage);
+      const claude = planLaunch(command.program, command.args);
+      if (!claude.tracksClaude || !claude.sessionId || !claude.interactive) {
+        return {
+          ok: false,
+          error:
+            'The start command must run Claude or agy as a new interactive session (for example: claude, agy, or an alias of either).',
+        };
+      }
+      plan = { program: claude.program, args: claude.args, sessionId: claude.sessionId };
     }
 
     let pty: Pty;
@@ -352,6 +384,10 @@ export class OfficeSessions {
       settleTimer: null,
       inputReady: false,
     };
+    if (isAgy) {
+      session.followedPid = pty.pid;
+      this.host.followPid?.(pty.pid, sessionId, cwd);
+    }
     this.sessions.set(sessionId, session);
     this.recent.splice(0, this.recent.length, cwd, ...this.recent.filter((f) => f !== cwd));
     this.recent.length = Math.min(this.recent.length, OFFICE_RECENT_FOLDERS);
@@ -366,13 +402,14 @@ export class OfficeSessions {
     let tries = 0;
     session.adoptTimer = setInterval(() => {
       const agent = this.agentFor(sessionId);
-      if (agent || ++tries > OFFICE_SESSION_ADOPT_TRIES) {
+      // agy appears through hooks whenever its first model call lands: keep waiting.
+      if (agent || (!isAgy && ++tries > OFFICE_SESSION_ADOPT_TRIES)) {
         if (session.adoptTimer) clearInterval(session.adoptTimer);
         session.adoptTimer = null;
         if (agent) this.adopted(session, agent);
         return;
       }
-      this.host.adoptLaunchedSession(sessionId, cwd);
+      if (!isAgy) this.host.adoptLaunchedSession(sessionId, cwd);
     }, 1_000);
     return { ok: true, sessionId };
   }
@@ -532,6 +569,7 @@ export class OfficeSessions {
     if (session.screenTimer) clearTimeout(session.screenTimer);
     if (session.settleTimer) clearTimeout(session.settleTimer);
     session.screen.dispose();
+    if (session.followedPid) this.host.forgetPid?.(session.followedPid);
     const agent = this.agentFor(sessionId);
     this.sessions.delete(sessionId);
     if (agent) this.host.removeAgent(agent.id);

@@ -74,7 +74,7 @@ export class PixelAgentsServer {
     onSetHooksEnabled?: SetHooksEnabledSideEffect;
     onReloadAssets?: ReloadAssetsSideEffect;
     launchers?: LauncherHub;
-    onLauncherPoll?: (sessionId: string, cwd: string) => void;
+    onLauncherPoll?: (sessionId: string, cwd: string, pid?: number) => void;
     officeSessions?: OfficeSessions;
     getBoardPins?: () => BoardPin[];
     saveBoardPin?: (pin: BoardPin) => boolean;

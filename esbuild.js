@@ -37,7 +37,7 @@ function copyAssets() {
 /**
  * Bundle hook scripts (TypeScript) to dist/hooks via esbuild.
  * Produces one self-contained CJS file with shebang per provider
- * (claude-hook.js, codex-hook.js, gemini-hook.js) for the CLI to execute.
+ * (claude-hook.js, codex-hook.js, gemini-hook.js, antigravity-hook.js) for the CLI to execute.
  */
 function buildHooks() {
   const hookDir = path.join(__dirname, 'server', 'src', 'providers', 'hook');
@@ -45,7 +45,7 @@ function buildHooks() {
   // their source dirs under outdir, and dist/hooks/claude-hook.js must stay
   // exactly there (the installer's hook identity is that path).
   const entries = {};
-  for (const id of ['claude', 'codex', 'gemini']) {
+  for (const id of ['claude', 'codex', 'gemini', 'antigravity']) {
     const entry = path.join(hookDir, id, 'hooks', `${id}-hook.ts`);
     if (fs.existsSync(entry)) entries[`${id}-hook`] = entry;
   }

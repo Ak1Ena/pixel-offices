@@ -389,6 +389,8 @@ async function main(): Promise<void> {
     // Agents the office runs itself (+ Agent in the browser).
     const officeSessions = new OfficeSessions(store, {
       adoptLaunchedSession: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
+      followPid: (pid, key, cwd) => runtime.followLaunchedPid(pid, key, cwd),
+      forgetPid: (pid) => runtime.forgetLaunchedPid(pid),
       renameAgent: (id, name) => runtime.renameAgent(id, name),
       removeAgent: (id) => runtime.removeAgent(id),
       refreshSendable: () => runtime.chatSender.refreshSendable(),
@@ -411,7 +413,10 @@ async function main(): Promise<void> {
       onSetHooksEnabled,
       onReloadAssets,
       launchers: runtime.launchers,
-      onLauncherPoll: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
+      onLauncherPoll: (sessionId, cwd, pid) =>
+        pid
+          ? runtime.followLaunchedPid(pid, sessionId, cwd)
+          : runtime.adoptLaunchedSession(sessionId, cwd),
       officeSessions,
       taskDesk: () => runtime.desk,
       getBoardPins: () => runtime.board.getPins(),

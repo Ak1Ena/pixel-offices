@@ -11,6 +11,8 @@
  */
 
 import type { HookProvider } from '../../../core/src/provider.js';
+import { antigravityProvider, isAntigravityPresent } from './hook/antigravity/antigravity.js';
+import { copyHookScript as copyAntigravityHookScript } from './hook/antigravity/antigravityHookInstaller.js';
 import { claudeProvider } from './hook/claude/claude.js';
 import { copyHookScript as copyClaudeHookScript } from './hook/claude/claudeHookInstaller.js';
 import { codexProvider, isCodexPresent } from './hook/codex/codex.js';
@@ -19,7 +21,7 @@ import { geminiProvider, isGeminiPresent } from './hook/gemini/gemini.js';
 import { copyHookScript as copyGeminiHookScript } from './hook/gemini/geminiHookInstaller.js';
 import { genericProvider } from './hook/generic/generic.js';
 
-export { claudeProvider, codexProvider, geminiProvider, genericProvider };
+export { antigravityProvider, claudeProvider, codexProvider, geminiProvider, genericProvider };
 /** Claude's hook script copy (kept for existing callers; see copyProviderHookScript). */
 export { copyClaudeHookScript as copyHookScript };
 
@@ -30,6 +32,7 @@ export const hookProviders: readonly HookProvider[] = [
   claudeProvider,
   codexProvider,
   geminiProvider,
+  antigravityProvider,
 ];
 
 /** Providers whose events the runtime routes but which install nothing
@@ -41,6 +44,7 @@ const routeOnlyProviders: readonly HookProvider[] = [genericProvider];
 const presence: Record<string, () => boolean> = {
   [codexProvider.id]: isCodexPresent,
   [geminiProvider.id]: isGeminiPresent,
+  [antigravityProvider.id]: isAntigravityPresent,
 };
 
 /**
@@ -65,6 +69,7 @@ export function hookProviderById(id: unknown): HookProvider | undefined {
 export const secondaryHookProviders: readonly HookProvider[] = [
   codexProvider,
   geminiProvider,
+  antigravityProvider,
   ...routeOnlyProviders,
 ];
 
@@ -72,6 +77,7 @@ const scriptCopiers: Record<string, (packageRoot: string) => boolean> = {
   [claudeProvider.id]: copyClaudeHookScript,
   [codexProvider.id]: copyCodexHookScript,
   [geminiProvider.id]: copyGeminiHookScript,
+  [antigravityProvider.id]: copyAntigravityHookScript,
 };
 
 /**

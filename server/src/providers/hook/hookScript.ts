@@ -35,6 +35,12 @@ export interface HookScriptOptions {
    *  `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":…}}`
    *  (Claude Code and Codex share the shape). Undefined = fire-and-forget only. */
   permissionEvent?: 'PermissionRequest';
+  /** Written to stdout before anything else, for a CLI that requires a reply
+   *  from every hook (Antigravity reads `{}` as "no opinion"). */
+  stdoutReply?: string;
+  /** Turns the CLI's payload into the events to POST, in order, each carrying
+   *  `hook_event_name` and `session_id` (for a CLI whose payload lacks them). */
+  expand?: (data: Record<string, unknown>) => Array<Record<string, unknown>>;
 }
 
 /**
@@ -262,6 +268,7 @@ async function awaitDecision(
 
 async function main(options: HookScriptOptions): Promise<void> {
   const { providerId } = options;
+  if (options.stdoutReply !== undefined) process.stdout.write(options.stdoutReply);
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
 
@@ -273,6 +280,9 @@ async function main(options: HookScriptOptions): Promise<void> {
     process.exit(0);
   }
 
+  const events = options.expand ? options.expand(data) : [data];
+  if (events.length === 0) process.exit(0);
+  data = events[events.length - 1];
   const eventName = (data.hook_event_name as string | undefined) ?? '?';
   const sid = (data.session_id as string | undefined)?.slice(0, 8) ?? '?';
 
@@ -310,6 +320,15 @@ async function main(options: HookScriptOptions): Promise<void> {
   const requestId = holdsPrompt ? crypto.randomUUID() : '';
   if (holdsPrompt) data.pixel_request_id = requestId;
 
+  // Extra events first, in order (e.g. a synthesized SessionStart), then this one.
+  for (const extra of events.slice(0, -1)) {
+    const extraBody = JSON.stringify(extra);
+    await Promise.all(
+      servers.map((server) =>
+        postToServer(providerId, server, extraBody, String(extra.hook_event_name ?? '?'), sid),
+      ),
+    );
+  }
   const body = JSON.stringify(data);
   const replies = await Promise.all(
     servers.map((server) => postToServer(providerId, server, body, eventName, sid)),
