@@ -16,6 +16,8 @@ import {
   MESSENGER_PREFS_KEY,
 } from '../constants.js';
 import { fileBaseName, spotLabel } from '../docViewer.js';
+import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
+import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { MdBlock, MdInline, ReadingPrefs } from '../messenger.js';
 import {
@@ -28,7 +30,7 @@ import {
   stepCounts,
 } from '../messenger.js';
 import { formatTokens } from '../officeChat.js';
-import { MessageText } from './FileAttachments.js';
+import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
 
@@ -331,6 +333,12 @@ export function MessengerPanel(props: MessengerPanelProps) {
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<Record<number, string>>({});
   const [showPins, setShowPins] = useState(false);
+  const attachments = useFileAttachments();
+  const [isFileDropTarget, setIsFileDropTarget] = useState(false);
+  const filesEnabled = canSendChatFiles();
+  const { clear: clearFiles } = attachments;
+  // Pending files belong to the chat they were added in.
+  useEffect(() => clearFiles(), [selectedId, clearFiles]);
   const [listOnPhone, setListOnPhone] = useState(selectedId === null);
   const readRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -403,12 +411,15 @@ export function MessengerPanel(props: MessengerPanelProps) {
     return '';
   };
 
-  const send = () => {
-    if (selectedId === null) return;
-    const text = (draft[selectedId] ?? '').trim();
-    if (!text && props.attachedPins(selectedId).length === 0) return;
-    props.onSend(selectedId, text);
-    setDraft((d) => ({ ...d, [selectedId]: '' }));
+  const send = async () => {
+    if (selectedId === null || attachments.uploading) return;
+    const agentId = selectedId;
+    const text = (draft[agentId] ?? '').trim();
+    if (!text && props.attachedPins(agentId).length === 0 && attachments.files.length === 0) return;
+    const paths = await attachments.upload();
+    if (!paths) return; // error shown; draft and files kept
+    props.onSend(agentId, withFileMentions(paths, text));
+    setDraft((d) => ({ ...d, [agentId]: d[agentId]?.trim() === text ? '' : (d[agentId] ?? '') }));
     setAtBottom(true);
   };
 
@@ -743,7 +754,32 @@ export function MessengerPanel(props: MessengerPanelProps) {
               )}
             </div>
 
-            <div className="border-t-2 border-border px-12 py-8">
+            <div
+              className="relative border-t-2 border-border px-12 py-8"
+              onDragOver={(e) => {
+                if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
+                e.preventDefault();
+                setIsFileDropTarget(true);
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                  setIsFileDropTarget(false);
+              }}
+              onDrop={(e) => {
+                setIsFileDropTarget(false);
+                if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
+                e.preventDefault();
+                attachments.add(e.dataTransfer.files);
+              }}
+            >
+              {isFileDropTarget && (
+                <div
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
+                  data-testid="messenger-file-drop"
+                >
+                  Drop files to send them to {agent.label}
+                </div>
+              )}
               <div className="max-w-680 mx-auto flex flex-col gap-6">
                 {readOnly ? (
                   <div className="text-xs text-text-muted">{readOnly}</div>
@@ -769,14 +805,22 @@ export function MessengerPanel(props: MessengerPanelProps) {
                         ))}
                       </div>
                     )}
+                    {filesEnabled && <FileChips attachments={attachments} />}
                     <textarea
                       value={draft[agent.id] ?? ''}
+                      onPaste={(e) => {
+                        if (!filesEnabled) return;
+                        const pasted = pastedFiles(e.clipboardData);
+                        if (pasted.length === 0) return;
+                        e.preventDefault();
+                        attachments.add(pasted);
+                      }}
                       onChange={(e) => setDraft((d) => ({ ...d, [agent.id]: e.target.value }))}
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                           e.preventDefault();
-                          send();
+                          void send();
                         }
                       }}
                       rows={3}
@@ -788,6 +832,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                       <Button size="sm" onClick={() => setShowPins((v) => !v)}>
                         + Attach
                       </Button>
+                      {filesEnabled && <AttachFileButton attachments={attachments} />}
                       {showPins && (
                         <div className="absolute bottom-full left-0 mb-4 w-280 max-h-240 overflow-y-auto pixel-panel p-6 flex flex-col gap-2 z-10">
                           {props.pinsFor(agent.id).length === 0 && (
@@ -814,14 +859,16 @@ export function MessengerPanel(props: MessengerPanelProps) {
                       )}
                       <span className="flex-1 text-2xs text-text-muted max-sm:hidden">
                         Enter sends · Shift+Enter new line
+                        {filesEnabled ? ' · paste or drop files' : ''}
                       </span>
                       <Button
                         variant="accent"
                         size="sm"
-                        onClick={send}
+                        disabled={attachments.uploading}
+                        onClick={() => void send()}
                         data-testid="messenger-send"
                       >
-                        Send
+                        {attachments.uploading ? 'Uploading' : 'Send'}
                       </Button>
                     </div>
                   </>

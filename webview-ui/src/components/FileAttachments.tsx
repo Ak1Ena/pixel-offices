@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { canSendChatFiles, chatImageUrl, isImageFile, splitImageMentions } from '../fileUpload.js';
+import {
+  canSendChatFiles,
+  chatImageUrl,
+  isImageFile,
+  splitUploadMentions,
+  uploadDisplayName,
+} from '../fileUpload.js';
 import type { FileAttachments } from '../hooks/useFileAttachments.js';
 import { Button } from './ui/Button.js';
 
@@ -86,19 +92,40 @@ function ChatImage({ name }: { name: string }) {
   );
 }
 
+/** A file sent from the chat that isn't an image: its name, as a card. */
+function ChatFileCard({ name }: { name: string }) {
+  const shown = uploadDisplayName(name);
+  const ext = shown.includes('.') ? shown.split('.').pop()!.toUpperCase() : 'FILE';
+  return (
+    <span
+      className="inline-flex items-center gap-6 self-start max-w-full px-6 py-4 bg-bg-dark border-2 border-border text-sm"
+      title={shown}
+      data-testid="chat-file-card"
+    >
+      <span className="shrink-0 px-4 border-2 border-border text-2xs font-pixel">
+        {ext.slice(0, 5)}
+      </span>
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{shown}</span>
+    </span>
+  );
+}
+
 /**
- * A chat message's text with the images uploaded from the chat shown inline
- * instead of their `@path`. Plain text where images can't be fetched (VS Code
- * panel, untokened page).
+ * A chat message's text with the files uploaded from the chat shown instead
+ * of their `@path`: images inline, other files as cards. Plain text where
+ * uploads can't be fetched (VS Code panel, untokened page).
  */
 export function MessageText({ text }: { text: string }) {
   if (!canSendChatFiles()) return <>{text}</>;
-  const { images, text: rest } = splitImageMentions(text);
-  if (images.length === 0) return <>{text}</>;
+  const { images, files, text: rest } = splitUploadMentions(text);
+  if (images.length === 0 && files.length === 0) return <>{text}</>;
   return (
     <span className="flex flex-col gap-4">
       {images.map((name, i) => (
         <ChatImage key={`${name}-${i}`} name={name} />
+      ))}
+      {files.map((name, i) => (
+        <ChatFileCard key={`${name}-${i}`} name={name} />
       ))}
       {rest && <span>{rest}</span>}
     </span>

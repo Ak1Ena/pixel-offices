@@ -378,6 +378,8 @@ export const CHAT_FILE_API = '/api/files';
 export const CHAT_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'] as const;
 /** Folder (under the home directory) uploaded chat files are stored in. */
 export const CHAT_UPLOAD_DIR_SUFFIX = '.pixel-agents/files';
+/** Stored chat uploads are named `chat_<id>-<name>` (server/src/boardFiles.ts). */
+export const CHAT_FILE_ID_PREFIX = 'chat_';
 /** Most files attached to one chat message. */
 export const CHAT_FILE_MAX_COUNT = 10;
 /** Page styling for Word documents, shown inside a sandboxed frame. */

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ChatEntry } from '../../../core/src/messages.js';
 import { GROUP_CHAT_WIDTH_PX } from '../constants.js';
-import { canSendChatFiles, dragHasFiles, withFileMentions } from '../fileUpload.js';
+import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatChannel } from '../officeChat.js';
 import { addressedMembers, groupNote, mergeTimeline } from '../officeChat.js';
@@ -239,6 +239,13 @@ export function GroupChatPanel({
             </label>
             <div className="flex gap-6 items-end">
               <textarea
+                onPaste={(e) => {
+                  if (!filesEnabled) return;
+                  const pasted = pastedFiles(e.clipboardData);
+                  if (pasted.length === 0) return;
+                  e.preventDefault();
+                  attachments.add(pasted);
+                }}
                 id="group-input"
                 rows={2}
                 value={draft}

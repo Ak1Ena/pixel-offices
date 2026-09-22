@@ -9,6 +9,8 @@ export interface FileAttachments {
   uploading: boolean;
   add: (incoming: FileList | File[] | null | undefined) => void;
   remove: (index: number) => void;
+  /** Drop every pending file (another chat was opened). */
+  clear: () => void;
   /** Upload everything attached; resolves with the stored paths, or null on failure (error set). */
   upload: () => Promise<string[] | null>;
 }
@@ -38,6 +40,11 @@ export function useFileAttachments(): FileAttachments {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const clear = useCallback(() => {
+    setError(null);
+    setFiles([]);
+  }, []);
+
   const upload = useCallback(async () => {
     if (files.length === 0) return [];
     setUploading(true);
@@ -52,5 +59,5 @@ export function useFileAttachments(): FileAttachments {
     return result.paths;
   }, [files]);
 
-  return { files, error, uploading, add, remove, upload };
+  return { files, error, uploading, add, remove, clear, upload };
 }

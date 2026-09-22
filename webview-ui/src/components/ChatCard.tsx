@@ -19,7 +19,7 @@ import {
 } from '../constants.js';
 import type { DocRef } from '../docViewer.js';
 import { refLabel } from '../docViewer.js';
-import { canSendChatFiles, dragHasFiles, withFileMentions } from '../fileUpload.js';
+import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { OfficeState } from '../office/engine/officeState.js';
@@ -751,6 +751,13 @@ export function ChatCard({
           </label>
           <div className="flex gap-6 items-end">
             <textarea
+              onPaste={(e) => {
+                if (!filesEnabled) return;
+                const pasted = pastedFiles(e.clipboardData);
+                if (pasted.length === 0) return;
+                e.preventDefault();
+                attachments.add(pasted);
+              }}
               id={`chat-input-${agentId}`}
               ref={inputRef}
               rows={2}
