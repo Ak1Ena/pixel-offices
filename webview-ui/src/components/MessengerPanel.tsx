@@ -138,7 +138,12 @@ function Inline({ parts }: { parts: MdInline[] }) {
     <>
       {parts.map((p, i) =>
         p.kind === 'code' ? (
-          <code key={i} className="font-mono text-[0.88em] px-3 bg-bg-dark border border-bg-thumb">
+          // Highlighted, not resized: the message's own font and size, so a
+          // monospace face never towers over (or shrinks under) the words around it.
+          <code
+            key={i}
+            className="[font:inherit] px-3 bg-bg-dark border border-bg-thumb text-status-success"
+          >
             {p.text}
           </code>
         ) : p.kind === 'bold' ? (
