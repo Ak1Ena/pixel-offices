@@ -274,7 +274,7 @@ export class OfficeSessions {
     return this.pty !== null;
   }
 
-  start(req: StartAgentRequest): { ok: true } | { ok: false; error: string } {
+  start(req: StartAgentRequest): { ok: true; sessionId: string } | { ok: false; error: string } {
     if (!this.pty)
       return { ok: false, error: 'node-pty is not installed, so the office cannot start agents.' };
     if (this.sessions.size >= OFFICE_SESSION_LIMIT) {
@@ -365,7 +365,7 @@ export class OfficeSessions {
       }
       this.host.adoptLaunchedSession(sessionId, cwd);
     }, 1_000);
-    return { ok: true };
+    return { ok: true, sessionId };
   }
 
   recentFolders(): string[] {
@@ -406,6 +406,19 @@ export class OfficeSessions {
         if (this.sessions.get(session.sessionId) === session) session.pty.write(bytes);
       }, i * OFFICE_SESSION_KEY_GAP_MS);
     });
+    return true;
+  }
+
+  /** The agent adopted for a session this office started, once it exists. */
+  agentIdFor(sessionId: string): number | undefined {
+    return this.agentFor(sessionId)?.id;
+  }
+
+  /** Stop a session by id — also one whose agent was never adopted. */
+  stopSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    session.pty.kill();
     return true;
   }
 

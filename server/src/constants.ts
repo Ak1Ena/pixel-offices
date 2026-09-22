@@ -166,6 +166,23 @@ export const WORKFLOW_STEP_MAX_CHARS = 400;
 export const WORKFLOW_REF_MAX_CHARS = 300;
 export const WORKFLOW_MAX_RUNS = 50;
 
+// ── Team presets (teamStore.ts, teamRuns.ts) and AI drafts (aiDraft.ts) ──
+export const TEAM_DIR_NAME = 'teams';
+export const TEAM_MAX_TEAMS = 100;
+export const TEAM_MAX_MEMBERS = 8;
+export const TEAM_NAME_MAX_CHARS = 32;
+export const TEAM_TEXT_MAX_CHARS = 2_000;
+export const TEAM_COMMAND_MAX_CHARS = 300;
+/** How long a started team waits for each member's session to be adopted. */
+export const TEAM_ADOPT_WAIT_MS = 10 * 60_000;
+export const TEAM_MAX_RUNS = 20;
+/** Command and model the AI drafter runs (`claude -p`, non-interactive). */
+export const AI_DRAFT_COMMAND = 'claude';
+export const AI_DRAFT_MODEL = 'claude-sonnet-5';
+/** A draft that takes longer than this is abandoned. */
+export const AI_DRAFT_TIMEOUT_MS = 4 * 60_000;
+export const AI_DRAFT_MAX_OUTPUT_BYTES = 1024 * 1024;
+
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before
  *  letting it show in the agent's own terminal. */

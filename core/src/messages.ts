@@ -43,6 +43,11 @@ export type ServerMessage =
   | WorkflowsLoaded
   | WorkflowRuns
   | WorkflowNotice
+  | TeamsLoaded
+  | TeamRuns
+  | TeamNotice
+  | TeamDraft
+  | WorkflowDraft
   | TaskDeskLoaded
   | TaskDeskNotice
   | LayoutLoaded
@@ -93,6 +98,14 @@ export type ClientMessage =
   | AttachWorkflow
   | AnswerGate
   | StopWorkflowRun
+  | ImportWorkflow
+  | SaveTeam
+  | DeleteTeam
+  | StartTeam
+  | StopTeam
+  | ImportTeam
+  | DraftTeam
+  | DraftWorkflow
   | SaveDeskTask
   | RemoveDeskTask
   | DeskTaskAction
@@ -457,6 +470,81 @@ export type WorkflowRunState = 'running' | 'done' | 'stopped' | 'abandoned';
 export interface WorkflowNotice {
   type: 'workflowNotice';
   error: string;
+}
+
+export interface TeamsLoaded {
+  type: 'teamsLoaded';
+  teams: TeamPreset[];
+}
+
+export interface TeamPreset {
+  id: string;
+  title: string;
+  description?: string;
+  goalTemplate?: string;
+  relay?: boolean;
+  members: TeamMember[];
+}
+
+export interface TeamMember {
+  name: string;
+  role: string;
+  lead?: boolean;
+  instructions: string;
+  command?: string;
+  palette?: number;
+  workflowId?: string;
+}
+
+export interface TeamRuns {
+  type: 'teamRuns';
+  runs: TeamRun[];
+}
+
+export interface TeamRun {
+  crewId: string;
+  teamId: string;
+  title: string;
+  goal: string;
+  folder: string;
+  members: TeamRunMember[];
+  startedAt: string;
+  state: TeamRunState;
+}
+
+export interface TeamRunMember {
+  name: string;
+  role: string;
+  lead?: boolean;
+  palette?: number;
+  agentId?: number;
+  error?: string;
+}
+
+export type TeamRunState = 'running' | 'stopped';
+
+export interface TeamNotice {
+  type: 'teamNotice';
+  message: string;
+  error?: boolean;
+}
+
+export interface TeamDraft {
+  type: 'teamDraft';
+  requestId: string;
+  team?: TeamPreset;
+  workflows?: Workflow[];
+  note?: string;
+  error?: string;
+}
+
+export interface WorkflowDraft {
+  type: 'workflowDraft';
+  requestId: string;
+  workflow?: Workflow;
+  unsure?: number[];
+  note?: string;
+  error?: string;
 }
 
 export interface TaskDeskLoaded {
@@ -855,6 +943,59 @@ export type GateDecision = 'continue' | 'stop';
 export interface StopWorkflowRun {
   type: 'stopWorkflowRun';
   runId: string;
+}
+
+export interface ImportWorkflow {
+  type: 'importWorkflow';
+  markdown: string;
+}
+
+export interface SaveTeam {
+  type: 'saveTeam';
+  team: TeamPreset;
+}
+
+export interface DeleteTeam {
+  type: 'deleteTeam';
+  teamId: string;
+}
+
+export interface StartTeam {
+  type: 'startTeam';
+  teamId: string;
+  folder: string;
+  goal: string;
+}
+
+export interface StopTeam {
+  type: 'stopTeam';
+  crewId: string;
+}
+
+export interface ImportTeam {
+  type: 'importTeam';
+  team: TeamPreset;
+  workflows: Workflow[];
+}
+
+export interface DraftTeam {
+  type: 'draftTeam';
+  requestId: string;
+  description: string;
+  folder?: string;
+  readProject?: boolean;
+  previous?: TeamPreset;
+  change?: string;
+}
+
+export interface DraftWorkflow {
+  type: 'draftWorkflow';
+  requestId: string;
+  description: string;
+  folder?: string;
+  readProject?: boolean;
+  previous?: Workflow;
+  change?: string;
 }
 
 export interface SaveDeskTask {

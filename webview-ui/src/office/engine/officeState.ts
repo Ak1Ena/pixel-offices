@@ -946,6 +946,17 @@ export class OfficeState {
     }
   }
 
+  /** Give an agent a chosen character look (a team member's preset look). */
+  setLook(id: number, palette: number): void {
+    const ch = this.characters.get(id);
+    const count = getLoadedCharacterCount();
+    if (!ch || ch.isSubagent || count === 0) return;
+    const next = ((palette % count) + count) % count;
+    if (ch.palette === next && ch.hueShift === 0) return;
+    ch.palette = next;
+    ch.hueShift = 0;
+  }
+
   /** Show or hide the "show me" bubble (an agent pointed the user at a file). */
   setDocBubble(id: number, on: boolean): void {
     const ch = this.characters.get(id);

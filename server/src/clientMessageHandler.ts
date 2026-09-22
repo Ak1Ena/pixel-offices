@@ -25,6 +25,7 @@ import {
   hookProviderById,
 } from './providers/index.js';
 import { handleTaskDeskMessage } from './taskDeskMessages.js';
+import { handleTeamMessage } from './teamMessages.js';
 import { handleWorkflowMessage } from './workflowMessages.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
@@ -99,6 +100,7 @@ export function handleClientMessage(
 
   if (handleTaskDeskMessage(msg, send, runtime?.desk, ctx.privileged === true)) return;
   if (handleWorkflowMessage(msg, send, runtime, ctx.privileged === true)) return;
+  if (handleTeamMessage(msg, send, runtime, ctx.privileged === true)) return;
 
   switch (msg.type) {
     case 'webviewReady':

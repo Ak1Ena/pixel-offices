@@ -27,6 +27,8 @@ interface BottomToolbarProps {
   onToggleMessenger: () => void;
   isWorkflowsOpen: boolean;
   onToggleWorkflows: () => void;
+  isTeamsOpen: boolean;
+  onToggleTeams: () => void;
   /** Agents with replies the user hasn't read. */
   unreadChats: number;
   workspaceFolders: WorkspaceFolder[];
@@ -51,6 +53,8 @@ export function BottomToolbar({
   onToggleMessenger,
   isWorkflowsOpen,
   onToggleWorkflows,
+  isTeamsOpen,
+  onToggleTeams,
   unreadChats,
   workspaceFolders,
 }: BottomToolbarProps) {
@@ -186,6 +190,14 @@ export function BottomToolbar({
         data-testid="group-chat-toggle"
       >
         Chat
+      </Button>
+      <Button
+        variant={isTeamsOpen ? 'active' : 'default'}
+        onClick={onToggleTeams}
+        title="Teams: presets you start in one go"
+        data-testid="teams-toggle"
+      >
+        Teams
       </Button>
       <Button
         variant={isWorkflowsOpen ? 'active' : 'default'}

@@ -18,6 +18,7 @@ import { MigrationNotice } from './components/MigrationNotice.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TaskDesk } from './components/TaskDesk.js';
+import { TeamsPanel } from './components/TeamsPanel.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
@@ -35,6 +36,7 @@ import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
 import { useTaskDesk } from './hooks/useTaskDesk.js';
+import { useTeams } from './hooks/useTeams.js';
 import { useWorkflows } from './hooks/useWorkflows.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
@@ -152,6 +154,8 @@ function App() {
   const [isDeskOpen, setIsDeskOpen] = useState(false);
   const workflows = useWorkflows();
   const [isWorkflowsOpen, setIsWorkflowsOpen] = useState(false);
+  const teams = useTeams();
+  const [isTeamsOpen, setIsTeamsOpen] = useState(false);
   const permissionAsks = usePermissionAsks();
   const focus = useFocusRequests();
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
@@ -387,6 +391,31 @@ function App() {
     );
     for (const id of agents) os.setDocBubble(id, asking.has(id));
   }, [agents, focus.requests]);
+
+  // Teams started from presets: members are linked to their lead (team room,
+  // group-chat channel), named, and given the look the preset chose.
+  useEffect(() => {
+    const os = getOfficeState();
+    for (const crew of teams.crews) {
+      if (crew.state !== 'running') continue;
+      const leadId = crew.members.find((m) => m.lead)?.agentId;
+      for (const member of crew.members) {
+        const id = member.agentId;
+        if (id === undefined || !os.characters.has(id)) continue;
+        const ch = os.characters.get(id);
+        if (member.palette !== undefined) os.setLook(id, member.palette);
+        const wantLead = member.lead === true;
+        const wantLeadId = wantLead ? undefined : leadId;
+        if (
+          ch?.isTeamLead !== wantLead ||
+          ch?.leadAgentId !== wantLeadId ||
+          ch?.agentName !== member.name
+        ) {
+          os.setTeamInfo(id, ch?.teamName, member.name, wantLead || undefined, wantLeadId);
+        }
+      }
+    }
+  }, [agents, teams.crews]);
 
   // A closed agent takes its chat card with it.
   useEffect(() => {
@@ -881,6 +910,27 @@ function App() {
             />
           )}
 
+          {isTeamsOpen && !editor.isEditMode && (
+            <TeamsPanel
+              teams={teams}
+              workflows={workflows.workflows}
+              labelOf={agentLabel}
+              folders={[
+                ...chat.recentFolders,
+                ...workspaceFolders
+                  .map((f) => f.path)
+                  .filter((p) => !chat.recentFolders.includes(p)),
+              ]}
+              canEdit={chat.privileged || !isBrowserRuntime}
+              canStart={chat.canStartAgents}
+              onOpenAgent={(id) => {
+                setIsTeamsOpen(false);
+                openChat(id);
+              }}
+              onClose={() => setIsTeamsOpen(false)}
+            />
+          )}
+
           {isWorkflowsOpen && !editor.isEditMode && (
             <WorkflowRail
               workflows={workflows.workflows}
@@ -896,6 +946,15 @@ function App() {
               notice={workflows.notice}
               onClearNotice={workflows.clearNotice}
               onClose={() => setIsWorkflowsOpen(false)}
+              onImport={chat.privileged || !isBrowserRuntime ? teams.importWorkflow : undefined}
+              onDraft={chat.privileged || !isBrowserRuntime ? teams.draftWorkflow : undefined}
+              drafts={teams.workflowDrafts}
+              folders={[
+                ...chat.recentFolders,
+                ...workspaceFolders
+                  .map((f) => f.path)
+                  .filter((p) => !chat.recentFolders.includes(p)),
+              ]}
             />
           )}
 
@@ -1037,6 +1096,8 @@ function App() {
           setIsGroupChatOpen((v) => !v);
           setIsBoardOpen(false);
         }}
+        isTeamsOpen={isTeamsOpen}
+        onToggleTeams={() => setIsTeamsOpen((v) => !v)}
         isWorkflowsOpen={isWorkflowsOpen}
         onToggleWorkflows={() => {
           setIsWorkflowsOpen((v) => !v);

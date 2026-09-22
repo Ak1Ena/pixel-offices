@@ -122,6 +122,11 @@ components:
         - $ref: '#/components/schemas/WorkflowsLoaded'
         - $ref: '#/components/schemas/WorkflowRuns'
         - $ref: '#/components/schemas/WorkflowNotice'
+        - $ref: '#/components/schemas/TeamsLoaded'
+        - $ref: '#/components/schemas/TeamRuns'
+        - $ref: '#/components/schemas/TeamNotice'
+        - $ref: '#/components/schemas/TeamDraft'
+        - $ref: '#/components/schemas/WorkflowDraft'
         # Task desk
         - $ref: '#/components/schemas/TaskDeskLoaded'
         - $ref: '#/components/schemas/TaskDeskNotice'
@@ -179,6 +184,14 @@ components:
         - $ref: '#/components/schemas/AttachWorkflow'
         - $ref: '#/components/schemas/AnswerGate'
         - $ref: '#/components/schemas/StopWorkflowRun'
+        - $ref: '#/components/schemas/ImportWorkflow'
+        - $ref: '#/components/schemas/SaveTeam'
+        - $ref: '#/components/schemas/DeleteTeam'
+        - $ref: '#/components/schemas/StartTeam'
+        - $ref: '#/components/schemas/StopTeam'
+        - $ref: '#/components/schemas/ImportTeam'
+        - $ref: '#/components/schemas/DraftTeam'
+        - $ref: '#/components/schemas/DraftWorkflow'
         # Task desk
         - $ref: '#/components/schemas/SaveDeskTask'
         - $ref: '#/components/schemas/RemoveDeskTask'
@@ -1742,6 +1755,305 @@ components:
         type:
           const: stopWorkflowRun
         runId:
+          type: string
+
+    TeamPreset:
+      description: A team set up once and started in one go (~/.pixel-agents/teams/<id>.json).
+      type: object
+      additionalProperties: false
+      required: [id, title, members]
+      properties:
+        id:
+          type: string
+          description: '"" for a new team.'
+        title:
+          type: string
+        description:
+          type: string
+        goalTemplate:
+          type: string
+          description: What the lead is told when the team starts; "{goal}" is replaced by what the user typed.
+        relay:
+          type: boolean
+          description: Turn on @mention passing when the team starts.
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamMember'
+
+    TeamMember:
+      type: object
+      additionalProperties: false
+      required: [name, role, instructions]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        lead:
+          type: boolean
+        instructions:
+          type: string
+        command:
+          type: string
+          description: How to start it (claude, an alias, extra args). Empty means plain claude.
+        palette:
+          type: integer
+          description: Character look (index into the office's characters).
+        workflowId:
+          type: string
+
+    TeamsLoaded:
+      description: Every saved team preset. Sent on each change and in the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, teams]
+      properties:
+        type:
+          const: teamsLoaded
+        teams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamPreset'
+
+    TeamRuns:
+      description: Teams started from presets in this office. Sent on each change and in the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, runs]
+      properties:
+        type:
+          const: teamRuns
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamRun'
+
+    TeamRun:
+      type: object
+      additionalProperties: false
+      required: [crewId, teamId, title, goal, folder, members, startedAt, state]
+      properties:
+        crewId:
+          type: string
+        teamId:
+          type: string
+        title:
+          type: string
+        goal:
+          type: string
+        folder:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamRunMember'
+        startedAt:
+          type: string
+        state:
+          $ref: '#/components/schemas/TeamRunState'
+
+    TeamRunMember:
+      type: object
+      additionalProperties: false
+      required: [name, role]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        lead:
+          type: boolean
+        palette:
+          type: integer
+        agentId:
+          type: integer
+          description: Set once the member's session is adopted.
+        error:
+          type: string
+          description: Why this member did not start.
+
+    TeamRunState:
+      type: string
+      enum: [running, stopped]
+
+    TeamNotice:
+      description: Why a team action was refused, or what happened. Sent only to the client that asked.
+      type: object
+      additionalProperties: false
+      required: [type, message]
+      properties:
+        type:
+          const: teamNotice
+        message:
+          type: string
+        error:
+          type: boolean
+
+    TeamDraft:
+      description: A team drafted by AI for the user to review. Nothing is saved until they save it.
+      type: object
+      additionalProperties: false
+      required: [type, requestId]
+      properties:
+        type:
+          const: teamDraft
+        requestId:
+          type: string
+        team:
+          $ref: '#/components/schemas/TeamPreset'
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workflow'
+        note:
+          type: string
+          description: A line from the drafter about what it changed.
+        error:
+          type: string
+
+    WorkflowDraft:
+      description: A workflow drafted by AI for the user to review. Nothing is saved until they save it.
+      type: object
+      additionalProperties: false
+      required: [type, requestId]
+      properties:
+        type:
+          const: workflowDraft
+        requestId:
+          type: string
+        workflow:
+          $ref: '#/components/schemas/Workflow'
+        unsure:
+          type: array
+          description: 1-based numbers of steps the drafter guessed.
+          items:
+            type: integer
+        note:
+          type: string
+        error:
+          type: string
+
+    ImportWorkflow:
+      description: Save a workflow from markdown (an exported file). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, markdown]
+      properties:
+        type:
+          const: importWorkflow
+        markdown:
+          type: string
+
+    SaveTeam:
+      description: Create a team preset (empty id) or replace the one with that id. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, team]
+      properties:
+        type:
+          const: saveTeam
+        team:
+          $ref: '#/components/schemas/TeamPreset'
+
+    DeleteTeam:
+      description: Delete a team preset. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, teamId]
+      properties:
+        type:
+          const: deleteTeam
+        teamId:
+          type: string
+
+    StartTeam:
+      description: Start every member of a preset in `folder`; the lead is told `goal`. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, teamId, folder, goal]
+      properties:
+        type:
+          const: startTeam
+        teamId:
+          type: string
+        folder:
+          type: string
+        goal:
+          type: string
+
+    StopTeam:
+      description: Stop every member of a started team. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, crewId]
+      properties:
+        type:
+          const: stopTeam
+        crewId:
+          type: string
+
+    ImportTeam:
+      description: |
+        Save an exported team and the workflows it brings. A workflow whose id
+        is taken is saved under a new id (keep both). Nothing starts. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, team, workflows]
+      properties:
+        type:
+          const: importTeam
+        team:
+          $ref: '#/components/schemas/TeamPreset'
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Workflow'
+
+    DraftTeam:
+      description: |
+        Ask AI to draft a team preset (or change `previous` as `change` says).
+        The answer comes back as teamDraft to this client only. Privileged —
+        it spends tokens.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, description]
+      properties:
+        type:
+          const: draftTeam
+        requestId:
+          type: string
+        description:
+          type: string
+        folder:
+          type: string
+          description: Project the drafter may read (only with readProject).
+        readProject:
+          type: boolean
+        previous:
+          $ref: '#/components/schemas/TeamPreset'
+        change:
+          type: string
+
+    DraftWorkflow:
+      description: Ask AI to draft a workflow (or change `previous`). Answered as workflowDraft. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, description]
+      properties:
+        type:
+          const: draftWorkflow
+        requestId:
+          type: string
+        description:
+          type: string
+        folder:
+          type: string
+        readProject:
+          type: boolean
+        previous:
+          $ref: '#/components/schemas/Workflow'
+        change:
           type: string
 
     SaveBoardPin:

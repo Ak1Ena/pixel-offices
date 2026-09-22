@@ -52,6 +52,9 @@ import { PermissionBroker } from './permissionBroker.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { TaskDesk } from './taskDesk.js';
+import type { AgentStarter } from './teamRuns.js';
+import { TeamRuns } from './teamRuns.js';
+import { TeamStore } from './teamStore.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
 import { tickTokenBurn } from './tokenUsage.js';
 import {
@@ -109,6 +112,10 @@ export class AgentRuntime {
   private focusRequests: FocusRequests | null = null;
   private workflowStore: WorkflowStore | null = null;
   private workflowRuns: WorkflowRuns | null = null;
+  private teamStore: TeamStore | null = null;
+  private teamRuns: TeamRuns | null = null;
+  /** Starts agents the office runs itself (standalone only; set by the CLI). */
+  agentStarter: AgentStarter | undefined;
   private taskDesk: TaskDesk | null = null;
   /** Which agents pick up task desk cards without being asked to (the host knows which it started). */
   deskDefaultPickup: (agentId: number) => boolean = () => false;
@@ -756,6 +763,26 @@ export class AgentRuntime {
     return this.workflowRuns;
   }
 
+  /** Saved team presets (~/.pixel-agents/teams/*.json). */
+  get teams(): TeamStore {
+    this.teamStore ??= new TeamStore((teams) =>
+      this.store.broadcast({ type: 'teamsLoaded', teams }),
+    );
+    return this.teamStore;
+  }
+
+  /** Teams started from presets in this office. */
+  get crews(): TeamRuns {
+    this.teamRuns ??= new TeamRuns(this.store, () => this.agentStarter, {
+      attachWorkflow: (agentId, workflowId) => {
+        const result = this.attachWorkflow(agentId, workflowId);
+        if (!result.ok) console.warn(`[Pixel Agents] Team workflow not attached: ${result.error}`);
+      },
+      setRelay: (enabled) => this.relay.setEnabled(enabled),
+    });
+    return this.teamRuns;
+  }
+
   /**
    * Give a workflow to an agent: start a run and type a short message naming
    * the workflow FILE — the agent reads the steps itself.
@@ -808,6 +835,8 @@ export class AgentRuntime {
     this.focusRequests?.dispose();
     this.workflowStore?.dispose();
     this.workflowRuns?.dispose();
+    this.teamStore?.dispose();
+    this.teamRuns?.dispose();
     this.taskDesk?.dispose();
 
     if (this.projectScanTimer.current) {

@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type {
   Workflow,
+  WorkflowDraft,
   WorkflowRun,
   WorkflowStep,
   WorkflowStepKind,
 } from '../../../core/src/messages.js';
 import { WORKFLOW_DRAG_MIME } from '../constants.js';
+import { downloadText } from '../download.js';
+import { fileSlug } from '../teams.js';
 import { moveStep, previewMarkdown, runProgress } from '../workflows.js';
 import { Button } from './ui/Button.js';
 
@@ -24,6 +27,19 @@ interface WorkflowRailProps {
   notice: string | null;
   onClearNotice: () => void;
   onClose: () => void;
+  /** Save a workflow from an exported .md file. */
+  onImport?: (markdown: string) => void;
+  /** Ask AI for a draft; the answer lands in `drafts[requestId]`. */
+  onDraft?: (req: {
+    requestId: string;
+    description: string;
+    folder?: string;
+    readProject?: boolean;
+    previous?: Workflow;
+    change?: string;
+  }) => void;
+  drafts: Record<string, WorkflowDraft>;
+  folders: string[];
 }
 
 const KINDS: Array<{ kind: WorkflowStepKind; label: string; hint: string; color: string }> = [
@@ -53,15 +69,21 @@ function kindClass(kind: WorkflowStepKind): string {
 
 function Editor({
   initial,
+  unsure = [],
   onSave,
   onCancel,
   onDelete,
 }: {
   initial: Workflow;
+  /** 1-based steps an AI draft guessed: drawn dashed until edited. */
+  unsure?: number[];
   onSave?: (workflow: Workflow) => void;
   onCancel: () => void;
   onDelete?: () => void;
 }) {
+  const [guessed, setGuessed] = useState<ReadonlySet<number>>(
+    () => new Set(unsure.map((n) => n - 1)),
+  );
   const [title, setTitle] = useState(initial.title);
   const [steps, setSteps] = useState<WorkflowStep[]>(
     initial.steps.length > 0 ? initial.steps : [{ kind: 'do', text: '' }],
@@ -119,8 +141,8 @@ function Editor({
             <div
               key={i}
               className={`grid grid-cols-[28px_1fr_auto] gap-8 items-start p-8 border-2 ${
-                i === focusIndex ? 'bg-active-bg border-accent' : 'bg-bg-thumb border-border'
-              }`}
+                guessed.has(i) ? 'border-dashed border-pin-note ' : ''
+              }${i === focusIndex ? 'bg-active-bg border-accent' : 'bg-bg-thumb border-border'}`}
               onFocus={() => setFocusIndex(i)}
               data-testid="workflow-step"
             >
@@ -130,7 +152,14 @@ function Editor({
               <div className="flex flex-col gap-4 min-w-0">
                 <input
                   value={step.text}
-                  onChange={(e) => setStep(i, { text: e.target.value })}
+                  onChange={(e) => {
+                    setStep(i, { text: e.target.value });
+                    setGuessed((g) => {
+                      const next = new Set(g);
+                      next.delete(i);
+                      return next;
+                    });
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
@@ -151,6 +180,11 @@ function Editor({
                   }
                   className="w-full bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
                 />
+                {guessed.has(i) && (
+                  <span className="text-2xs text-pin-note">
+                    ? The draft guessed this step. Check it.
+                  </span>
+                )}
                 {i === focusIndex && (
                   <>
                     <div className="flex gap-4 flex-wrap">
@@ -294,8 +328,25 @@ export function WorkflowRail({
   notice,
   onClearNotice,
   onClose,
+  onImport,
+  onDraft,
+  drafts,
+  folders,
 }: WorkflowRailProps) {
-  const [editing, setEditing] = useState<Workflow | null>(null);
+  const [editing, setEditing] = useState<{ workflow: Workflow; unsure?: number[] } | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiText, setAiText] = useState('');
+  const [aiFolder, setAiFolder] = useState(folders[0] ?? '');
+  const [aiRead, setAiRead] = useState(true);
+  const [aiRequest, setAiRequest] = useState<string | null>(null);
+  const aiDraft = aiRequest ? drafts[aiRequest] : undefined;
+  useEffect(() => {
+    if (!aiDraft?.workflow) return;
+    setEditing({ workflow: aiDraft.workflow, unsure: aiDraft.unsure });
+    setAiOpen(false);
+    setAiRequest(null);
+    setAiText('');
+  }, [aiDraft]);
   const [givingId, setGivingId] = useState<string | null>(null);
   const live = runs.filter((r) => r.state === 'running');
 
@@ -310,11 +361,39 @@ export function WorkflowRail({
         <div className="flex items-center gap-6 px-10 py-6 border-b-2 border-border">
           <span className="text-lg">Workflows</span>
           <span className="flex-1" />
+          {onDraft && (
+            <Button
+              size="sm"
+              onClick={() => setAiOpen((v) => !v)}
+              title="Create a workflow with AI"
+              data-testid="workflow-ai"
+            >
+              AI
+            </Button>
+          )}
+          {onImport && (
+            <label
+              className="px-8 py-1 text-sm bg-btn-bg border-2 border-transparent hover:bg-btn-hover cursor-pointer"
+              title="Import a workflow .md file"
+            >
+              Import
+              <input
+                type="file"
+                accept=".md,text/markdown"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void file.text().then(onImport);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          )}
           {onSave && (
             <Button
               size="sm"
               variant="accent"
-              onClick={() => setEditing({ id: '', title: '', steps: [] })}
+              onClick={() => setEditing({ workflow: { id: '', title: '', steps: [] } })}
               data-testid="workflow-new"
             >
               + New
@@ -334,6 +413,59 @@ export function WorkflowRail({
             >
               ✕
             </button>
+          </div>
+        )}
+        {aiOpen && onDraft && (
+          <div
+            className="flex flex-col gap-6 m-8 p-8 border-2 border-accent bg-bg-dark"
+            data-testid="workflow-ai-panel"
+          >
+            <span className="text-sm">
+              <span className="px-4 mr-4 text-2xs bg-accent text-white">AI</span>Create a workflow
+            </span>
+            <textarea
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              rows={3}
+              placeholder="How we ship a hotfix: branch off the release tag, fix, test, get my OK, then tag and deploy."
+              className="bg-bg border-2 border-border px-6 py-2 text-xs text-text font-reading resize-y"
+            />
+            <input
+              value={aiFolder}
+              onChange={(e) => setAiFolder(e.target.value)}
+              placeholder="Project folder (optional)"
+              className="bg-bg border-2 border-border px-6 py-1 text-2xs text-text font-mono"
+            />
+            <label className="flex items-center gap-6 text-2xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiRead}
+                onChange={(e) => setAiRead(e.target.checked)}
+              />
+              Let it read the project (real commands and paths)
+            </label>
+            {aiDraft?.error && <span className="text-2xs text-danger">{aiDraft.error}</span>}
+            <Button
+              size="sm"
+              variant={aiText.trim() && !(aiRequest && !aiDraft) ? 'accent' : 'disabled'}
+              disabled={!aiText.trim() || (aiRequest !== null && !aiDraft)}
+              onClick={() => {
+                const requestId = `r${Math.random().toString(36).slice(2, 10)}`;
+                setAiRequest(requestId);
+                onDraft({
+                  requestId,
+                  description: aiText.trim(),
+                  folder: aiFolder.trim() || undefined,
+                  readProject: aiRead,
+                });
+              }}
+            >
+              {aiRequest && !aiDraft ? 'Drafting…' : 'Draft workflow'}
+            </Button>
+            <span className="text-2xs text-text-muted">
+              The draft opens in the editor. Nothing is saved until you press Save.
+            </span>
           </div>
         )}
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-8 p-8">
@@ -377,10 +509,23 @@ export function WorkflowRail({
                 )}
                 <div className="flex gap-4 relative">
                   {onSave && (
-                    <Button size="sm" onClick={() => setEditing(w)}>
+                    <Button size="sm" onClick={() => setEditing({ workflow: w })}>
                       Edit
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      downloadText(
+                        `${fileSlug(w.title)}.md`,
+                        previewMarkdown(w.title, w.steps),
+                        'text/markdown',
+                      )
+                    }
+                    title="Save this workflow as a markdown file"
+                  >
+                    Export
+                  </Button>
                   {onAttach && (
                     <Button size="sm" onClick={() => setGivingId(givingId === w.id ? null : w.id)}>
                       Give to…
@@ -446,8 +591,9 @@ export function WorkflowRail({
       </div>
       {editing && (
         <Editor
-          key={editing.id || 'new'}
-          initial={editing}
+          key={editing.workflow.id || `new-${editing.unsure?.join('-') ?? ''}`}
+          initial={editing.workflow}
+          unsure={editing.unsure}
           onSave={
             onSave
               ? (w) => {
@@ -458,9 +604,9 @@ export function WorkflowRail({
           }
           onCancel={() => setEditing(null)}
           onDelete={
-            editing.id && onDelete
+            editing.workflow.id && onDelete
               ? () => {
-                  onDelete(editing.id);
+                  onDelete(editing.workflow.id);
                   setEditing(null);
                 }
               : undefined

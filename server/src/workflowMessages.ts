@@ -1,4 +1,5 @@
 import type { AgentRuntime } from './agentRuntime.js';
+import { parseWorkflow } from './workflowFile.js';
 
 /**
  * Workflow client messages, shared by both surfaces' dispatch (like the task
@@ -19,7 +20,8 @@ export function handleWorkflowMessage(
     type !== 'deleteWorkflow' &&
     type !== 'attachWorkflow' &&
     type !== 'answerGate' &&
-    type !== 'stopWorkflowRun'
+    type !== 'stopWorkflowRun' &&
+    type !== 'importWorkflow'
   ) {
     return false;
   }
@@ -54,6 +56,16 @@ export function handleWorkflowMessage(
     case 'stopWorkflowRun':
       runtime.runs.stop(msg.runId);
       break;
+    case 'importWorkflow': {
+      if (typeof msg.markdown !== 'string' || msg.markdown.length > 200_000) {
+        refuse('That is not a workflow file.');
+        break;
+      }
+      const parsed = parseWorkflow('', msg.markdown);
+      const result = runtime.workflows.save({ ...parsed, id: '' });
+      if (!result.ok) refuse(result.error);
+      break;
+    }
   }
   return true;
 }

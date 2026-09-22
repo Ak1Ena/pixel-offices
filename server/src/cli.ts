@@ -392,6 +392,7 @@ async function main(): Promise<void> {
     runtime.chatSender.addWriter(officeSessions.writer);
     // Agents the office started were started to be given work.
     runtime.deskDefaultPickup = (agentId) => officeSessions.owns(agentId);
+    runtime.agentStarter = officeSessions;
     disposeOfficeSessions = () => officeSessions.dispose();
 
     const config = await server.start({

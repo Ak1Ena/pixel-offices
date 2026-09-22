@@ -56,6 +56,7 @@ import {
 } from '../../server/src/providers/index.js';
 import { PixelAgentsServer } from '../../server/src/server.js';
 import { handleTaskDeskMessage } from '../../server/src/taskDeskMessages.js';
+import { handleTeamMessage } from '../../server/src/teamMessages.js';
 import { typePrompt } from '../../server/src/terminalTyping.js';
 import { handleWorkflowMessage } from '../../server/src/workflowMessages.js';
 import {
@@ -512,7 +513,10 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         handleTaskDeskMessage(message, (m) => this.sendOrBuffer(m), this.runtime.desk, true)
       ) {
         // handled
-      } else if (handleWorkflowMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true)) {
+      } else if (
+        handleWorkflowMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
+        handleTeamMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true)
+      ) {
         // handled
       } else if (message.type === 'answerFocus') {
         this.runtime.focus.answer(message.requestId, message.reply);

@@ -118,6 +118,8 @@ export function sendOfficeChatState(
   send({ ...runtime.focus.snapshot() });
   send({ type: 'workflowsLoaded', workflows: runtime.workflows.list() });
   send({ ...runtime.runs.snapshot() });
+  send({ type: 'teamsLoaded', teams: runtime.teams.list() });
+  send({ ...runtime.crews.snapshot() });
   send({ ...runtime.desk.snapshot() });
   void runtime.desk.tick(); // agents' folders resolve asynchronously; this broadcasts them
   send({ type: 'agentRelayState', enabled: runtime.relay.enabled });
