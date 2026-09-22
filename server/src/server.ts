@@ -75,6 +75,7 @@ export class PixelAgentsServer {
     onReloadAssets?: ReloadAssetsSideEffect;
     launchers?: LauncherHub;
     onLauncherPoll?: (sessionId: string, cwd: string, pid?: number) => void;
+    onLauncherEnd?: (sessionId: string) => void;
     officeSessions?: OfficeSessions;
     getBoardPins?: () => BoardPin[];
     saveBoardPin?: (pin: BoardPin) => boolean;
@@ -120,6 +121,7 @@ export class PixelAgentsServer {
       onReloadAssets: options?.onReloadAssets,
       launchers: options?.launchers,
       onLauncherPoll: options?.onLauncherPoll,
+      onLauncherEnd: options?.onLauncherEnd,
       officeSessions: options?.officeSessions,
       getBoardPins: options?.getBoardPins,
       saveBoardPin: options?.saveBoardPin,

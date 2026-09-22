@@ -50,6 +50,8 @@ export interface OfficeSessionHost {
   /** Link hook events from this pid to the session known as `key` (agy). */
   followPid?(pid: number, key: string, cwd: string): void;
   forgetPid?(pid: number): void;
+  /** Show a pid-followed run (agy) now, as a hooks-only agent known by `key`. */
+  adoptLaunchedHooksSession?(key: string, cwd: string, providerId: string): void;
   renameAgent(agentId: number, name: string): void;
   removeAgent(agentId: number): void;
   refreshSendable(): void;
@@ -319,7 +321,7 @@ export class OfficeSessions {
     const firstMessage = req.firstMessage?.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
     let plan: { program: string; args: string[]; sessionId: string };
     if (isAgy) {
-      // agy shows up through its hooks only, from its first model call on.
+      // The office follows agy through its hooks: without them it stays a blank character.
       if (!antigravityHooksInstalled()) {
         return {
           ok: false,
@@ -327,13 +329,7 @@ export class OfficeSessions {
             'Turn on the Antigravity (agy) hooks first: the office sees agy only through them (Settings → Show Welcome Tour).',
         };
       }
-      if (!firstMessage) {
-        return {
-          ok: false,
-          error: 'Give agy a first message: it appears in the office once it starts working.',
-        };
-      }
-      command.args.push('-i', firstMessage);
+      if (firstMessage) command.args.push('-i', firstMessage);
       const agy = planAgyLaunch(command.program, command.args)!;
       plan = { program: agy.program, args: agy.args, sessionId: agy.key };
     } else {
@@ -387,6 +383,7 @@ export class OfficeSessions {
     if (isAgy) {
       session.followedPid = pty.pid;
       this.host.followPid?.(pty.pid, sessionId, cwd);
+      this.host.adoptLaunchedHooksSession?.(sessionId, cwd, 'antigravity');
     }
     this.sessions.set(sessionId, session);
     this.recent.splice(0, this.recent.length, cwd, ...this.recent.filter((f) => f !== cwd));
@@ -402,7 +399,7 @@ export class OfficeSessions {
     let tries = 0;
     session.adoptTimer = setInterval(() => {
       const agent = this.agentFor(sessionId);
-      // agy appears through hooks whenever its first model call lands: keep waiting.
+      // agy's character is created at once (adoptLaunchedHooksSession): no cap needed.
       if (agent || (!isAgy && ++tries > OFFICE_SESSION_ADOPT_TRIES)) {
         if (session.adoptTimer) clearInterval(session.adoptTimer);
         session.adoptTimer = null;

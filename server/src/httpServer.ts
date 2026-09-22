@@ -95,6 +95,8 @@ export interface HttpServerOptions {
   /** A launcher polled: make sure its session is in the office (runtime.adoptLaunchedSession).
    *  `pid` = a run followed by process id (agy), linked when its hooks arrive. */
   onLauncherPoll?: (sessionId: string, cwd: string, pid?: number) => void;
+  /** A launcher said goodbye (its program exited). */
+  onLauncherEnd?: (sessionId: string) => void;
 }
 
 /** Result of createHttpServer(). */
@@ -285,6 +287,7 @@ function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions
     { preHandler: [noBrowsers, bearerAuth(options.token)], schema: { params } },
     async (request) => {
       launchers.end(request.params.sessionId);
+      options.onLauncherEnd?.(request.params.sessionId);
       return { ok: true };
     },
   );

@@ -36,6 +36,7 @@ import { OfficeSessions } from './officeSessions.js';
 import { runProposeCommand } from './proposeCli.js';
 import {
   activeHookProviders,
+  antigravityProvider,
   claudeProvider,
   copyProviderHookScript,
   hookProviderById,
@@ -390,6 +391,8 @@ async function main(): Promise<void> {
     const officeSessions = new OfficeSessions(store, {
       adoptLaunchedSession: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
       followPid: (pid, key, cwd) => runtime.followLaunchedPid(pid, key, cwd),
+      adoptLaunchedHooksSession: (key, cwd, providerId) =>
+        runtime.adoptLaunchedHooksSession(key, cwd, providerId),
       forgetPid: (pid) => runtime.forgetLaunchedPid(pid),
       renameAgent: (id, name) => runtime.renameAgent(id, name),
       removeAgent: (id) => runtime.removeAgent(id),
@@ -413,10 +416,13 @@ async function main(): Promise<void> {
       onSetHooksEnabled,
       onReloadAssets,
       launchers: runtime.launchers,
-      onLauncherPoll: (sessionId, cwd, pid) =>
-        pid
-          ? runtime.followLaunchedPid(pid, sessionId, cwd)
-          : runtime.adoptLaunchedSession(sessionId, cwd),
+      onLauncherPoll: (sessionId, cwd, pid) => {
+        if (!pid) return runtime.adoptLaunchedSession(sessionId, cwd);
+        // `pixel-office agy`: shown at once, linked to agy's conversation by pid.
+        runtime.followLaunchedPid(pid, sessionId, cwd);
+        runtime.adoptLaunchedHooksSession(sessionId, cwd, antigravityProvider.id);
+      },
+      onLauncherEnd: (sessionId) => runtime.endLaunched(sessionId),
       officeSessions,
       taskDesk: () => runtime.desk,
       getBoardPins: () => runtime.board.getPins(),

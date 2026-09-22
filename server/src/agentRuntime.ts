@@ -744,9 +744,56 @@ export class AgentRuntime {
     }
   }
 
+  /**
+   * Show a run the office follows by pid (agy) right away, before its first
+   * hook: a hooks-only agent known by `key`. When agy's conversation turns up
+   * (linkLaunched), the agent moves onto its session id. Idempotent.
+   */
+  adoptLaunchedHooksSession(key: string, cwd: string, providerId: string): void {
+    for (const agent of this.store.values()) {
+      if (agent.launchKey === key || agent.sessionId === key) return;
+    }
+    adoptExternalSessionFromHook(
+      key,
+      undefined,
+      cwd,
+      this.knownJsonlFiles,
+      this.store.nextAgentId,
+      this.store,
+      this.fileWatchers,
+      this.pollingTimers,
+      this.waitingTimers,
+      this.permissionTimers,
+      () => this.store.persist(),
+      (agent) => {
+        agent.providerId = providerId;
+        agent.cwd = cwd;
+        agent.launchKey = key;
+        agent.isWaiting = true;
+        this.registerAgent(key, agent.id);
+      },
+    );
+    this.chatSender.refreshSendable();
+  }
+
+  /** Remove the agent of a followed run whose terminal went away. */
+  endLaunched(key: string): void {
+    for (const agent of this.store.values()) {
+      if (agent.launchKey === key) this.removeAgent(agent.id);
+    }
+  }
+
   private linkLaunched(sessionId: string, key: string, cwd?: string): void {
     this.launchedSessions.set(sessionId, key);
     if (cwd) this.launchedCwds.set(sessionId, cwd);
+    // The agent shown since the run started takes over the conversation's id.
+    for (const agent of this.store.values()) {
+      if (agent.launchKey !== key || agent.sessionId === sessionId) continue;
+      this.unregisterAgent(agent.sessionId);
+      agent.sessionId = sessionId;
+      this.registerAgent(sessionId, agent.id);
+      this.store.persist();
+    }
     for (const agent of this.store.values()) {
       if (agent.sessionId === sessionId && agent.launchKey !== key) {
         agent.launchKey = key;

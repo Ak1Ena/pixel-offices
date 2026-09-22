@@ -80,14 +80,14 @@ event; every model call re-announces the session, so an office opened mid-conver
 Each hook prints `{}`, since agy requires a JSON reply.
 
 **Starting agy from the office.** `pixel-office agy …` and **+ Agent** with `agy` as the start command
-both work (with the agy hooks on). + Agent needs a first message: agy appears once it starts working,
-and the message rides the command line as `agy -i "<message>"`. agy takes no session id up front, so the
-office links its conversation to the terminal it started by process id: on a conversation's first event
-the hook reports its ancestor pids (`ps` on macOS/Linux, one PowerShell `Get-CimInstance` call on
-Windows, where hooks run through `cmd /c`), and the office matches the terminal's pid among them. That
-run is shown whatever **Watch All Sessions** says, the office can type into it and stop it, and on
-Windows (which can't read another process's working folder) the office fills in the folder it started
-agy in. agy's replies are not read into the chat card; watch its screen instead.
+both work (with the agy hooks on). The character appears at once; a first message is optional and rides
+the command line as `agy -i "<message>"`. agy takes no session id up front, so the office links its
+conversation to the terminal it started by process id: on a conversation's first event the hook reports
+its ancestor pids (`ps` on macOS/Linux, one PowerShell `Get-CimInstance` call on Windows, where hooks run
+through `cmd /c`), and the office matches the terminal's pid among them and moves the character onto that
+conversation. That run is shown whatever **Watch All Sessions** says, the office can type into it and
+stop it, and on Windows (which can't read another process's working folder) the office fills in the
+folder it started agy in. agy's replies are not read into the chat card; watch its screen instead.
 
 ### Undo
 
