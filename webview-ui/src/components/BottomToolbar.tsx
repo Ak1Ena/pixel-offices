@@ -23,6 +23,10 @@ interface BottomToolbarProps {
   deskWaiting: number;
   isGroupChatOpen: boolean;
   onToggleGroupChat: () => void;
+  isMessengerOpen: boolean;
+  onToggleMessenger: () => void;
+  /** Agents with replies the user hasn't read. */
+  unreadChats: number;
   workspaceFolders: WorkspaceFolder[];
 }
 
@@ -41,6 +45,9 @@ export function BottomToolbar({
   deskWaiting,
   isGroupChatOpen,
   onToggleGroupChat,
+  isMessengerOpen,
+  onToggleMessenger,
+  unreadChats,
   workspaceFolders,
 }: BottomToolbarProps) {
   const [isFolderPickerOpen, setIsFolderPickerOpen] = useState(false);
@@ -159,6 +166,14 @@ export function BottomToolbar({
         title="Edit office layout"
       >
         Layout
+      </Button>
+      <Button
+        variant={isMessengerOpen ? 'active' : 'default'}
+        onClick={onToggleMessenger}
+        title="Messages: read and answer each agent's chat (M)"
+        data-testid="messenger-toggle"
+      >
+        Messages{unreadChats > 0 ? ` · ${unreadChats}` : ''}
       </Button>
       <Button
         variant={isGroupChatOpen ? 'active' : 'default'}

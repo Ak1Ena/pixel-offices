@@ -41,6 +41,8 @@ interface ChatCardProps {
   onClose: () => void;
   /** Present only where a terminal can be shown (VS Code). */
   onOpenTerminal?: () => void;
+  /** Open this chat in the Messenger, for reading long replies. */
+  onExpand?: () => void;
   usage: AgentTokenUsage | undefined;
   /** The user-given name, '' when none (then `title` is the default label). */
   customName: string;
@@ -161,6 +163,7 @@ export function ChatCard({
   onCancel,
   onClose,
   onOpenTerminal,
+  onExpand,
   usage,
   customName,
   onRename,
@@ -403,6 +406,16 @@ export function ChatCard({
             data-testid="chat-screen-toggle"
           >
             Screen
+          </Button>
+        )}
+        {onExpand && (
+          <Button
+            size="sm"
+            onClick={onExpand}
+            title="Read this chat in Messages"
+            data-testid="chat-expand"
+          >
+            ⤢
           </Button>
         )}
         {onOpenTerminal && (

@@ -397,6 +397,10 @@ Every agent's context gauge. Fed from `message.usage` on assistant records by `p
 - **+ Agent folder picker** (`FolderPicker.tsx`, `folderBrowser.ts`): browses sub-folders over `listFolder`/`folderListing` (privileged; dot-folders and node_modules hidden, project folders tagged).
 - Clicking a character opens its chat (a sub-agent opens its parent's); "Terminal" in the card is what `focusAgent` used to be on click.
 
+## Messenger
+
+- **Messages** (toolbar button, `M`, or ⤢ on a chat card; `MessengerPanel.tsx`, pure helpers in `webview-ui/src/messenger.ts`): a full-window (or docked, `w-440` beside the office) reader for long chats — client-side only, same `chat.*` state as the chat card. Replies render through `parseMarkdown` (fenced code, headings, lists, `code`, **bold**) into React elements — never HTML. Runs of tool rows fold into one "N steps" block (`groupEntries`). Message text uses `font-reading` (system face; the pixel font stays on chrome); reading prefs (font, size, fold steps, times) live in localStorage under `MESSENGER_PREFS_KEY`, wrapped in try/catch. Rooms in its list open the group chat on that channel (`initialChannelId`). The side panel (lg+) shows context, token totals, an outline of the user's prompts, and files the agent showed.
+
 ## Token Usage, Fire, Names, City Office
 
 - **Token usage** (`server/src/tokenUsage.ts`): sums, unlike the context snapshot, so each request is folded ONCE per `message.id` as a delta (one request spans several records repeating the same usage, output growing while it streams). Totals include cache reads; the **burn rate** counts only NEW tokens (input + cache writes + output) over 5 min and decays on a 5 s tick. Sidechain records count (a sub-agent's spend is its lead's). Seeded once in `startFileWatching` from up to 32 MB before `fileOffset` (`partial` beyond that). Broadcast as `agentTokenUsage`; assistant chat entries carry their request's `usage`.

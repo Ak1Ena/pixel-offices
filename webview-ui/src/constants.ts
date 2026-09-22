@@ -407,6 +407,8 @@ export const SCREEN_QUESTION_RETRY_MS = 4_000;
 export const DOC_NUMBERED_MAX_LINES = 20_000;
 /** "Show me" notices shown at once; more wait in the viewer's list. */
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
+/** localStorage key for the Messenger's reading settings (per viewer). */
+export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;

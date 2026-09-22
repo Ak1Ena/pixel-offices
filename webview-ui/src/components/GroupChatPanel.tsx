@@ -21,6 +21,8 @@ interface GroupChatPanelProps {
   onPin: (text: string, scope: number[]) => void;
   onOpenAgent: (agentId: number) => void;
   onClose: () => void;
+  /** Channel to open on (the Messenger's room list opens a room directly). */
+  initialChannelId?: string;
 }
 
 /** Agents already told about the team chat and the shared docs this session. */
@@ -42,8 +44,9 @@ export function GroupChatPanel({
   onPin,
   onOpenAgent,
   onClose,
+  initialChannelId,
 }: GroupChatPanelProps) {
-  const [channelId, setChannelId] = useState('everyone');
+  const [channelId, setChannelId] = useState(initialChannelId ?? 'everyone');
   const [draft, setDraft] = useState('');
   const [skipped, setSkipped] = useState<Record<number, boolean>>({});
   const [isFileDropTarget, setIsFileDropTarget] = useState(false);

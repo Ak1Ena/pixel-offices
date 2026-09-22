@@ -13,6 +13,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { FocusNotices } from './components/FocusNotices.js';
 import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
+import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { SettingsModal } from './components/SettingsModal.js';
@@ -138,6 +139,10 @@ function App() {
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
   const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
+  const [groupChannelId, setGroupChannelId] = useState<string | undefined>(undefined);
+  const [isMessengerOpen, setIsMessengerOpen] = useState(false);
+  const [messengerDocked, setMessengerDocked] = useState(false);
+  const [messengerAgentId, setMessengerAgentId] = useState<number | null>(null);
   const chat = useOfficeChat(chatAgentId);
   const desk = useTaskDesk();
   const [isDeskOpen, setIsDeskOpen] = useState(false);
@@ -327,6 +332,28 @@ function App() {
     os.selectedAgentId = agentId;
     os.cameraFollowId = agentId;
     setChatAgentId(agentId);
+  }, []);
+
+  const openMessenger = useCallback((agentId: number | null) => {
+    if (agentId !== null) setMessengerAgentId(agentId);
+    setIsMessengerOpen(true);
+    setIsGroupChatOpen(false);
+  }, []);
+
+  // M opens Messages from anywhere in the office (not while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'm' && e.key !== 'M') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      setIsMessengerOpen((open) => {
+        if (!open) setIsGroupChatOpen(false);
+        return !open;
+      });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   const closeChat = useCallback(() => {
@@ -643,6 +670,10 @@ function App() {
                   onOpenTerminal={
                     isBrowserRuntime ? undefined : () => transport.send({ type: 'focusAgent', id })
                   }
+                  onExpand={() => {
+                    openMessenger(id);
+                    closeChat();
+                  }}
                 />
               );
             })()}
@@ -687,8 +718,92 @@ function App() {
             />
           )}
 
+          {isMessengerOpen && !editor.isEditMode && (
+            <MessengerPanel
+              agents={agents
+                .filter((id) => !officeState.characters.get(id)?.isSubagent)
+                .map((id) => ({
+                  id,
+                  label: agentLabel(id),
+                  status: (chat.asking[id]
+                    ? 'asking'
+                    : agentStatuses[id] === 'waiting'
+                      ? 'idle'
+                      : 'working') as MessengerStatus,
+                }))}
+              rooms={buildChannels(
+                agents
+                  .filter((id) => !officeState.characters.get(id)?.isSubagent)
+                  .map((id) => {
+                    const ch = officeState.characters.get(id);
+                    return {
+                      id,
+                      label: agentLabel(id),
+                      leadId: ch?.isTeamLead ? id : ch?.leadAgentId,
+                      room: officeState.getTeamRoom(id),
+                    };
+                  }),
+              ).map((c) => ({ id: c.id, name: c.name }))}
+              selectedId={messengerAgentId}
+              onSelect={(id) => {
+                setMessengerAgentId(id);
+                chat.markRead(id);
+              }}
+              chats={chat.chats}
+              unread={chat.unread}
+              queues={chat.queues}
+              usage={chat.usage}
+              contextOf={(id) => {
+                const ch = officeState.characters.get(id);
+                return ch && ch.maxContextTokens > 0 && ch.contextTokens > 0
+                  ? { tokens: ch.contextTokens, max: ch.maxContextTokens }
+                  : null;
+              }}
+              readOnlyReason={(id) => chatReadOnlyReason(id, chat.sendable[id] === true)}
+              onSend={(id, text) => {
+                const attached = (attachedPinIds[id] ?? [])
+                  .map((pinId) => chat.pins.find((p) => p.id === pinId))
+                  .filter((p): p is NonNullable<typeof p> => p !== undefined);
+                const message = composeMessage(text, attached);
+                if (!message) return;
+                chat.sendMessage(id, message);
+                setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
+              }}
+              onCancel={chat.cancelMessage}
+              pinsFor={(id) => pinsForAgent(chat.pins, id)}
+              attachedPins={(id) =>
+                (attachedPinIds[id] ?? [])
+                  .map((pinId) => chat.pins.find((p) => p.id === pinId))
+                  .filter((p): p is NonNullable<typeof p> => p !== undefined)
+              }
+              onAttachPin={attachPin}
+              onDetachPin={detachPin}
+              requests={focus.requests}
+              onOpenRequest={
+                isBrowserRuntime
+                  ? (r) => {
+                      setViewedPinId(r.pinId);
+                      setViewedFocusId(r.requestId);
+                    }
+                  : undefined
+              }
+              onOpenRoom={(roomId) => {
+                setIsMessengerOpen(false);
+                setGroupChannelId(roomId);
+                setIsGroupChatOpen(true);
+              }}
+              onOpenTerminal={
+                isBrowserRuntime ? undefined : (id) => transport.send({ type: 'focusAgent', id })
+              }
+              docked={messengerDocked}
+              onToggleDock={() => setMessengerDocked((v) => !v)}
+              onClose={() => setIsMessengerOpen(false)}
+            />
+          )}
+
           {isGroupChatOpen && !editor.isEditMode && (
             <GroupChatPanel
+              initialChannelId={groupChannelId}
               channels={buildChannels(
                 agents
                   .filter((id) => !officeState.characters.get(id)?.isSubagent)
@@ -854,9 +969,17 @@ function App() {
         deskWaiting={desk.tasks.filter(needsYou).length}
         isGroupChatOpen={isGroupChatOpen}
         onToggleGroupChat={() => {
+          setGroupChannelId(undefined);
           setIsGroupChatOpen((v) => !v);
           setIsBoardOpen(false);
         }}
+        isMessengerOpen={isMessengerOpen}
+        onToggleMessenger={() =>
+          isMessengerOpen
+            ? setIsMessengerOpen(false)
+            : openMessenger(chatAgentId ?? messengerAgentId)
+        }
+        unreadChats={Object.values(chat.unread).filter(Boolean).length}
         workspaceFolders={workspaceFolders}
       />
 
