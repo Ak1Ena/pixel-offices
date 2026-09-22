@@ -23,6 +23,8 @@ interface IntroBubbleProps {
    *  terms, only orientation. */
   headline: string;
   disclosure: string;
+  /** No ask pending (a replay from Settings): the consent step is skipped. */
+  hasConsent: boolean;
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoom: number;
   panRef: React.RefObject<{ x: number; y: number }>;
@@ -97,6 +99,7 @@ export function IntroBubble({
   officeState,
   headline,
   disclosure,
+  hasConsent,
   containerRef,
   zoom,
   panRef,
@@ -166,6 +169,11 @@ export function IntroBubble({
     prevPendingRef.current = installPending;
   }, [installPending]);
 
+  // The ask was answered elsewhere while a replay sat on it: nothing left to approve.
+  useEffect(() => {
+    if (!hasConsent && step === CONSENT_STEP && !installPending) setStep(CLOSING_STEP);
+  }, [hasConsent, step, installPending]);
+
   const el = containerRef.current;
   if (!el) return null;
 
@@ -206,8 +214,21 @@ export function IntroBubble({
     wrapperStyle = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
   }
 
-  const back = (): void => setStep((s) => Math.max(WELCOME_STEP, s - 1));
-  const forward = (): void => setStep((s) => Math.min(CLOSING_STEP, s + 1));
+  // A replay with nothing to approve steps over the consent step both ways.
+  const skip = (s: number): boolean => s === CONSENT_STEP && !hasConsent;
+  const back = (): void =>
+    setStep((s) => {
+      let next = Math.max(WELCOME_STEP, s - 1);
+      if (skip(next)) next -= 1;
+      return next;
+    });
+  const forward = (): void =>
+    setStep((s) => {
+      let next = Math.min(CLOSING_STEP, s + 1);
+      if (skip(next)) next += 1;
+      return next;
+    });
+  const shownSteps = Array.from({ length: STEP_COUNT }, (_, i) => i).filter((i) => !skip(i));
   const choose = (choice: ConsentChoice): void => {
     onChoice(choice);
     // A decline has no outcome to wait on, so it advances immediately. An
@@ -269,8 +290,11 @@ export function IntroBubble({
         </Button>
 
         {/* Step dots: the tour's "1 of 4", drawn as pixels rather than prose. */}
-        <div className="flex gap-4 mb-8" aria-label={`Step ${step + 1} of ${STEP_COUNT}`}>
-          {Array.from({ length: STEP_COUNT }, (_, i) => (
+        <div
+          className="flex gap-4 mb-8"
+          aria-label={`Step ${shownSteps.indexOf(step) + 1} of ${shownSteps.length}`}
+        >
+          {shownSteps.map((i) => (
             <div
               key={i}
               aria-hidden

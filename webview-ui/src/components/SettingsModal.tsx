@@ -38,6 +38,8 @@ interface SettingsModalProps {
   onImportLayout: (file: File) => void;
   /** Switch to the bundled City Office layout (an undoable edit). */
   onUseCityOffice: () => void;
+  /** Replay the welcome tour (it shows by itself only once). */
+  onShowIntro: () => void;
 }
 
 export function SettingsModal({
@@ -60,6 +62,7 @@ export function SettingsModal({
   onExportLayout,
   onImportLayout,
   onUseCityOffice,
+  onShowIntro,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +113,14 @@ export function SettingsModal({
         }}
       >
         Use City Office Layout
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          onShowIntro();
+          onClose();
+        }}
+      >
+        Show Welcome Tour
       </MenuItem>
       {isBrowserRuntime && (
         <input

@@ -413,6 +413,8 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
+/** Set once the welcome tour has shown itself; Settings can still replay it. */
+export const INTRO_SEEN_KEY = 'pixel-office:intro-seen';
 /** Docked Messenger: width the user dragged it to (per viewer), and its bounds. */
 export const MESSENGER_DOCK_WIDTH_KEY = 'pixel-office:messenger-dock-width';
 export const MESSENGER_DOCK_DEFAULT_PX = 440;

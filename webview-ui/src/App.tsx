@@ -29,7 +29,7 @@ import { WhiteboardRail } from './components/WhiteboardRail.js';
 import { WorkflowBadges } from './components/WorkflowBadges.js';
 import { WorkflowRail } from './components/WorkflowRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
-import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES } from './constants.js';
+import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constants.js';
 import type { DocRef } from './docViewer.js';
 import { refText, withRefs } from './docViewer.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -262,6 +262,20 @@ function App() {
     onChoice: handleConsentChoice,
     onClose: handleIntroClose,
   } = useIntroTour({ consentRequest, hooksInstalled, hooksStatusSeq, dismissConsentRequest });
+
+  // The tour shows by itself once per browser; after that only Settings →
+  // Show Welcome Tour opens it. The consent ask stays answerable from the
+  // Settings hooks checkbox, so an unanswered ask no longer reopens the tour.
+  const [introSeenBefore] = useState(readIntroSeen);
+  const [introReplay, setIntroReplay] = useState(false);
+  const showIntro = introReplay || (intro !== null && !introSeenBefore);
+  useEffect(() => {
+    if (showIntro) markIntroSeen();
+  }, [showIntro]);
+  const closeIntro = useCallback(() => {
+    setIntroReplay(false);
+    if (intro) handleIntroClose();
+  }, [intro, handleIntroClose]);
 
   // The Settings surface renders one provider today; its checkbox binds to
   // the Claude row of the per-provider install-state map.
@@ -1259,6 +1273,7 @@ function App() {
         showAreasAvailable={areasAvailable}
         onExportLayout={handleExportLayout}
         onImportLayout={handleImportLayout}
+        onShowIntro={() => setIntroReplay(true)}
         onUseCityOffice={() =>
           editor.applyPresetLayout(migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout))
         }
@@ -1371,18 +1386,19 @@ function App() {
         <MigrationNotice onDismiss={() => setMigrationNoticeDismissed(true)} />
       )}
 
-      {intro && (
+      {showIntro && (
         <IntroBubble
           officeState={officeState}
-          headline={intro.headline}
-          disclosure={intro.disclosure}
+          headline={intro?.headline ?? ''}
+          disclosure={intro?.disclosure ?? ''}
+          hasConsent={intro !== null}
           containerRef={containerRef}
           zoom={editor.zoom}
           panRef={editor.panRef}
           installFailed={installFailed}
           installPending={installPending}
           onChoice={handleConsentChoice}
-          onClose={handleIntroClose}
+          onClose={closeIntro}
           escapeSuppressed={
             isSettingsOpen ||
             isChangelogOpen ||
@@ -1397,3 +1413,19 @@ function App() {
 }
 
 export default App;
+
+function readIntroSeen(): boolean {
+  try {
+    return window.localStorage.getItem(INTRO_SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markIntroSeen(): void {
+  try {
+    window.localStorage.setItem(INTRO_SEEN_KEY, '1');
+  } catch {
+    // Storage blocked: the tour just shows again next time.
+  }
+}
