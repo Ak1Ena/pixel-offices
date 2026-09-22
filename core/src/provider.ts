@@ -7,7 +7,7 @@
  * speculation.
  */
 
-import type { ChatEdit } from './messages.js';
+import type { ChatEdit, ChatEntry } from './messages.js';
 import type { TeamProvider } from './teamProvider.js';
 
 // ── Normalized Events (all provider types produce these) ──────
@@ -107,6 +107,15 @@ export interface HookProvider {
    *  provider's `agent_name`). Applied only while the character has none, so
    *  a user's rename always wins. */
   agentNameFromEvent?(raw: Record<string, unknown>): string | undefined;
+
+  /** A hooks-only CLI that keeps its OWN transcript (not Claude JSONL): where
+   *  an event says it is, and a reader that turns its lines into chat. The
+   *  runtime tails the file per agent; each reader is stateful (a tool row is
+   *  marked done when its result line arrives). */
+  chatTranscript?: {
+    pathFromEvent(raw: Record<string, unknown>): string | undefined;
+    createReader(): (line: string) => { entries: ChatEntry[]; doneToolIds: string[] };
+  };
 
   /** Format tool status for display (e.g., "Read" -> "Reading foo.ts") */
   formatToolStatus(toolName: string, input?: unknown): string;

@@ -51,6 +51,8 @@ export const CHAT_ENTRY_MAX_CHARS = 4_000;
 export const CHAT_EDIT_MAX_CHARS = 6_000;
 /** How much transcript before the read offset to replay into a restored agent's chat. */
 export const CHAT_SEED_TAIL_BYTES = 512 * 1024;
+/** How often a hooks-only CLI's own transcript is re-read for new chat (agy). */
+export const HOOK_CHAT_POLL_MS = 1000;
 /** Longest message the office will type into a terminal. */
 export const CHAT_SEND_MAX_CHARS = 16_000;
 /** Office messages waiting for one agent's turn to end. */

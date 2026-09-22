@@ -87,7 +87,8 @@ its ancestor pids (`ps` on macOS/Linux, one PowerShell `Get-CimInstance` call on
 through `cmd /c`), and the office matches the terminal's pid among them and moves the character onto that
 conversation. That run is shown whatever **Watch All Sessions** says, the office can type into it and
 stop it, and on Windows (which can't read another process's working folder) the office fills in the
-folder it started agy in. agy's replies are not read into the chat card; watch its screen instead.
+folder it started agy in. Its chat (your prompts, agy's replies and tool rows) is read from agy's own transcript, the
+`transcriptPath` every hook reports, into the chat card and Messages.
 
 ### Undo
 

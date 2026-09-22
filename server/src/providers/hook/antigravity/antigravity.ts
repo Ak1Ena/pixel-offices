@@ -3,6 +3,7 @@ import * as path from 'path';
 
 import type { AgentEvent, HookProvider } from '../../../../../core/src/provider.js';
 import { BASH_COMMAND_DISPLAY_MAX_LENGTH } from '../../../constants.js';
+import { createAgyChatReader } from './agyTranscript.js';
 import {
   areHooksInstalled as installerAreHooksInstalled,
   getAntigravityCliDir,
@@ -154,6 +155,13 @@ export const antigravityProvider: HookProvider = {
   },
 
   formatToolStatus,
+  chatTranscript: {
+    pathFromEvent: (raw) =>
+      typeof raw.transcriptPath === 'string' && raw.transcriptPath.endsWith('.jsonl')
+        ? raw.transcriptPath
+        : undefined,
+    createReader: () => createAgyChatReader(formatToolStatus),
+  },
   // No describePermissionRequest: agy's prompt is answered in the terminal.
   permissionExemptTools: new Set<string>(),
   subagentToolNames: new Set<string>(),

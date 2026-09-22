@@ -319,6 +319,26 @@ function applyDelta(
   }
 }
 
+/**
+ * Fold chat that a provider read from its OWN transcript (a hooks-only CLI,
+ * see HookProvider.chatTranscript) into the agent's chat and broadcast the
+ * changes. `live` = newly written, so the @mention relay may pass it on.
+ */
+export function applyChatDelta(
+  agentId: number,
+  agent: AgentState,
+  agents: AgentStateStore,
+  delta: ChatDelta,
+  live: boolean,
+): void {
+  applyDelta(
+    agent,
+    delta,
+    (entry) => agents.broadcast({ type: 'agentChatEntry', id: agentId, entry: { ...entry } }),
+    live,
+  );
+}
+
 /** Fold one parsed transcript record into the agent's chat and broadcast the changes. */
 export function recordChat(
   agentId: number,

@@ -61,3 +61,86 @@ describe('agy runs the office started', () => {
     expect(store.size).toBe(0);
   });
 });
+
+describe('agy chat from its own transcript', () => {
+  it('reads prompts, replies and tool rows, and marks tools done on their result', async () => {
+    const { createAgyChatReader } =
+      await import('../src/providers/hook/antigravity/agyTranscript.js');
+    const read = createAgyChatReader(antigravityProvider.formatToolStatus);
+    const line = (o: object) => JSON.stringify(o);
+    expect(
+      read(
+        line({
+          step_index: 0,
+          source: 'USER_EXPLICIT',
+          type: 'USER_INPUT',
+          created_at: 't0',
+          content:
+            '<USER_REQUEST>\nhi?\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nx\n</ADDITIONAL_METADATA>',
+        }),
+      ).entries,
+    ).toEqual([{ entryId: 'agy-0', role: 'user', text: 'hi?', timestamp: 't0' }]);
+    const tool = read(
+      line({
+        step_index: 1,
+        source: 'MODEL',
+        type: 'PLANNER_RESPONSE',
+        tool_calls: [{ name: 'run_command', args: { CommandLine: 'cat note.txt' } }],
+      }),
+    );
+    expect(tool.entries).toMatchObject([
+      { entryId: 'agy-1-t0', role: 'tool', text: 'Running: cat note.txt' },
+    ]);
+    expect(read(line({ step_index: 2, type: 'GENERIC', status: 'DONE' })).doneToolIds).toEqual([
+      'agy-1-t0',
+    ]);
+    expect(
+      read(line({ step_index: 3, type: 'PLANNER_RESPONSE', content: 'hello' })).entries,
+    ).toMatchObject([{ entryId: 'agy-3', role: 'assistant', text: 'hello' }]);
+    expect(read(line({ step_index: 4, type: 'SYSTEM_MESSAGE', content: 'x' })).entries).toEqual([]);
+    expect(read('not json').entries).toEqual([]);
+  });
+
+  it('tails the transcript into the agent chat, history first, then new lines', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-agy-chat-'));
+    const file = path.join(dir, 'transcript_full.jsonl');
+    const step = (o: object) => JSON.stringify(o) + '\n';
+    fs.writeFileSync(
+      file,
+      step({
+        step_index: 0,
+        source: 'USER_EXPLICIT',
+        type: 'USER_INPUT',
+        content: '<USER_REQUEST>hi</USER_REQUEST>',
+      }),
+    );
+    const store = new AgentStateStore();
+    const sent: Array<Record<string, unknown>> = [];
+    store.on('broadcast', (m) => sent.push(m));
+    const runtime = new AgentRuntime(store, claudeProvider, [antigravityProvider]);
+    runtime.watchAllSessions.current = true;
+    try {
+      const base = { session_id: 'conv-9', cwd: dir, transcriptPath: file };
+      runtime.handleHookEvent('antigravity', { ...base, hook_event_name: 'SessionStart' });
+      runtime.handleHookEvent('antigravity', { ...base, hook_event_name: 'Stop' });
+      const [agent] = [...store.values()];
+      expect(agent.chatLog?.map((e) => e.text)).toEqual(['hi']);
+
+      fs.appendFileSync(
+        file,
+        step({ step_index: 1, type: 'PLANNER_RESPONSE', content: 'hello there' }),
+      );
+      runtime.handleHookEvent('antigravity', { ...base, hook_event_name: 'Stop' });
+      expect(agent.chatLog?.map((e) => e.text)).toEqual(['hi', 'hello there']);
+      expect(sent).toContainEqual(
+        expect.objectContaining({ type: 'agentChatEntry', id: agent.id }),
+      );
+    } finally {
+      runtime.dispose();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

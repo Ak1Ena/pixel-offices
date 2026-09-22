@@ -42,6 +42,7 @@ import {
   startStaleExternalAgentCheck,
 } from './fileWatcher.js';
 import { FocusRequests } from './focusRequests.js';
+import { HookChatWatch } from './hookChatWatch.js';
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
@@ -101,6 +102,8 @@ export class AgentRuntime {
   readonly dismissalTracker = new DismissalTracker();
   /** Shadow-store watcher for unnamed background spawns (sub-agents). */
   readonly subagentWatch: SubagentWatch;
+  /** Chat from hooks-only CLIs' own transcripts (agy). */
+  private readonly hookChat: HookChatWatch;
   /** Office chat: messages typed into agents' terminals (host supplies the writer). */
   readonly chatSender: ChatSender;
   /** Agent-to-agent @mention passing (off by default). */
@@ -153,6 +156,7 @@ export class AgentRuntime {
     setHookProvider(provider);
     setFileWatcherHookProvider(provider);
     this.subagentWatch = new SubagentWatch(store);
+    this.hookChat = new HookChatWatch(store);
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
     this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
@@ -387,6 +391,10 @@ export class AgentRuntime {
     this.hookEventHandler.handleEvent(providerId, event as HookEvent);
     const provider = this.providersById.get(providerId);
     if (!provider) return; // unknown provider: the handler dropped it too
+    if (provider.chatTranscript && sessionId) {
+      const chatAgent = this.hookEventHandler.agentIdForSession(sessionId);
+      if (chatAgent !== undefined) this.hookChat.observe(chatAgent, provider, event);
+    }
     // A finished turn or session settles every prompt it had open (answered in
     // another window, or in the terminal after the wait ran out).
     const kind = provider.normalizeHookEvent(event)?.event.kind;
@@ -955,6 +963,7 @@ export class AgentRuntime {
   dispose(): void {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
+    this.hookChat.dispose();
     this.chatSender.dispose();
     this.permissions.dispose();
     clearInterval(this.tokenBurnTimer);
