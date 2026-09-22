@@ -5,6 +5,8 @@ import { test } from 'vitest';
 import type { ChatEntry } from '../../core/src/messages.js';
 import {
   chatOutline,
+  editCounts,
+  editRows,
   groupEntries,
   parseInline,
   parseMarkdown,
@@ -98,4 +100,40 @@ test('reading prefs fall back to the defaults', () => {
     timestamps: true,
   });
   assert.equal(readPrefs('not json').font, 'readable');
+});
+
+test('a file edit breaks out of the steps block as its own card', () => {
+  const edit: ChatEntry = {
+    ...e('3', 'tool', 'Editing a.ts'),
+    edit: { path: '/repo/a.ts', kind: 'edit', hunks: [{ removed: 'a', added: 'b' }] },
+  };
+  const blocks = groupEntries([e('1', 'tool', 'Read a.ts'), edit, e('4', 'tool', 'Bash test')]);
+  assert.deepEqual(
+    blocks.map((b) => b.kind),
+    ['steps', 'edit', 'steps'],
+  );
+});
+
+test('edit rows trim shared lines to one line of context each side', () => {
+  assert.deepEqual(editRows('a\nb\nold\nc\nd', 'a\nb\nnew\nnewer\nc\nd'), [
+    { kind: 'ctx', text: 'b' },
+    { kind: 'del', text: 'old' },
+    { kind: 'add', text: 'new' },
+    { kind: 'add', text: 'newer' },
+    { kind: 'ctx', text: 'c' },
+  ]);
+});
+
+test('a write is all added lines, and counts add up across hunks', () => {
+  assert.deepEqual(editRows('', 'x\ny'), [
+    { kind: 'add', text: 'x' },
+    { kind: 'add', text: 'y' },
+  ]);
+  assert.deepEqual(
+    editCounts([
+      { removed: 'a', added: 'b\nc' },
+      { removed: 'd\ne', added: '' },
+    ]),
+    { added: 2, removed: 3 },
+  );
 });

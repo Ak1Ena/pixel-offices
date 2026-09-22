@@ -5,8 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { BoardStore, sanitizePin } from '../src/boardStore.js';
-import { extractChatDelta, recordChat, seedChatHistory, userPromptText } from '../src/chatLog.js';
+import {
+  clipEdit,
+  extractChatDelta,
+  recordChat,
+  seedChatHistory,
+  userPromptText,
+} from '../src/chatLog.js';
 import { ChatSender } from '../src/chatSender.js';
+import { CHAT_EDIT_MAX_CHARS } from '../src/constants.js';
+import { describeEdit } from '../src/providers/hook/claude/claude.js';
 import type { AgentState } from '../src/types.js';
 
 const fmt = (name: string, input: Record<string, unknown>) =>
@@ -331,5 +339,72 @@ describe('ChatSender.interrupt (Stop)', () => {
     expect(sender.interrupt(1)).toBe(false);
     expect(sender.interrupt(99)).toBe(false);
     expect(pressed).toEqual([]);
+  });
+});
+
+describe('chat edits (Messenger diff cards)', () => {
+  it('Claude describes Edit, MultiEdit and Write as the change they make', () => {
+    expect(
+      describeEdit('Edit', { file_path: '/r/a.ts', old_string: 'x', new_string: 'y' }),
+    ).toEqual({ path: '/r/a.ts', kind: 'edit', hunks: [{ removed: 'x', added: 'y' }] });
+    expect(
+      describeEdit('MultiEdit', {
+        file_path: '/r/a.ts',
+        edits: [
+          { old_string: 'a', new_string: 'b' },
+          { old_string: 'c', new_string: 'd' },
+        ],
+      })?.hunks,
+    ).toHaveLength(2);
+    expect(describeEdit('Write', { file_path: '/r/n.ts', content: 'hi' })).toEqual({
+      path: '/r/n.ts',
+      kind: 'write',
+      hunks: [{ removed: '', added: 'hi' }],
+    });
+    expect(describeEdit('Read', { file_path: '/r/a.ts' })).toBeNull();
+    expect(describeEdit('Edit', {})).toBeNull();
+  });
+
+  it('attaches the edit to its tool row', () => {
+    const delta = extractChatDelta(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_1',
+              name: 'Edit',
+              input: { file_path: '/r/a.ts', old_string: 'x', new_string: 'y' },
+            },
+          ],
+        },
+      },
+      fmt,
+      describeEdit,
+    );
+    expect(delta.entries[0]).toMatchObject({
+      entryId: 'toolu_1',
+      role: 'tool',
+      edit: { path: '/r/a.ts', kind: 'edit' },
+    });
+  });
+
+  it('bounds an edit across all its hunks and says it was cut', () => {
+    const big = 'x'.repeat(CHAT_EDIT_MAX_CHARS);
+    const clipped = clipEdit({
+      path: '/r/a.ts',
+      kind: 'edit',
+      hunks: [
+        { removed: 'old', added: big },
+        { removed: 'more', added: 'y' },
+      ],
+    })!;
+    const total = clipped.hunks.reduce((n, h) => n + h.removed.length + h.added.length, 0);
+    expect(total).toBe(CHAT_EDIT_MAX_CHARS);
+    expect(clipped.clipped).toBe(true);
+    expect(clipEdit({ path: '/r/a.ts', kind: 'edit', hunks: [{ removed: '', added: '' }] })).toBe(
+      undefined,
+    );
   });
 });

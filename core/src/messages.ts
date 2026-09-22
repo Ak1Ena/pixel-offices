@@ -263,6 +263,7 @@ export interface ChatEntry {
   toolDone?: boolean;
   usage?: TokenUsage;
   timestamp?: string;
+  edit?: ChatEdit;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'tool';
@@ -274,6 +275,20 @@ export interface TokenUsage {
   output: number;
   cacheRead: number;
   cacheCreation: number;
+}
+
+export interface ChatEdit {
+  path: string;
+  kind: ChatEditKind;
+  hunks: ChatEditHunk[];
+  clipped?: boolean;
+}
+
+export type ChatEditKind = 'edit' | 'write';
+
+export interface ChatEditHunk {
+  removed: string;
+  added: string;
 }
 
 export interface AgentChatHistory {

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { ChatEdit } from '../../../../../core/src/messages.js';
 import { normalizeProjectPath } from '../../../../../core/src/normalizeProjectPath.js';
 import type { AgentEvent, HookProvider } from '../../../../../core/src/provider.js';
 import {
@@ -69,6 +70,39 @@ export function formatToolStatus(toolName: string, input?: unknown): string {
     }
     default:
       return `Using ${toolName}`;
+  }
+}
+
+/** Edit, MultiEdit, Write and NotebookEdit calls, as the change they make. */
+export function describeEdit(toolName: string, input?: unknown): ChatEdit | null {
+  const inp = (input ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v : '');
+  const filePath = str(inp.file_path) || str(inp.notebook_path);
+  if (!filePath) return null;
+  switch (toolName) {
+    case 'Edit':
+      return {
+        path: filePath,
+        kind: 'edit',
+        hunks: [{ removed: str(inp.old_string), added: str(inp.new_string) }],
+      };
+    case 'MultiEdit': {
+      const edits = Array.isArray(inp.edits) ? (inp.edits as Array<Record<string, unknown>>) : [];
+      const hunks = edits
+        .filter((e) => e && typeof e === 'object')
+        .map((e) => ({ removed: str(e.old_string), added: str(e.new_string) }));
+      return hunks.length > 0 ? { path: filePath, kind: 'edit', hunks } : null;
+    }
+    case 'Write':
+      return { path: filePath, kind: 'write', hunks: [{ removed: '', added: str(inp.content) }] };
+    case 'NotebookEdit':
+      return {
+        path: filePath,
+        kind: 'edit',
+        hunks: [{ removed: '', added: str(inp.new_source) }],
+      };
+    default:
+      return null;
   }
 }
 
@@ -336,6 +370,7 @@ export const claudeProvider: HookProvider = {
   consentDisclosure,
 
   formatToolStatus,
+  describeEdit,
   describePermissionRequest,
   permissionExemptTools: new Set(['Task', 'Agent', 'AskUserQuestion']),
   subagentToolNames: new Set(['Task', 'Agent']),

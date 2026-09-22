@@ -1,8 +1,13 @@
 import * as fs from 'fs';
 
-import type { ChatEntry } from '../../core/src/messages.js';
+import type { ChatEdit, ChatEntry } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import { CHAT_ENTRY_MAX_CHARS, CHAT_HISTORY_LIMIT, CHAT_SEED_TAIL_BYTES } from './constants.js';
+import {
+  CHAT_EDIT_MAX_CHARS,
+  CHAT_ENTRY_MAX_CHARS,
+  CHAT_HISTORY_LIMIT,
+  CHAT_SEED_TAIL_BYTES,
+} from './constants.js';
 import { usageOf } from './tokenUsage.js';
 import type { AgentState } from './types.js';
 
@@ -15,6 +20,8 @@ import type { AgentState } from './types.js';
  */
 
 type FormatToolStatus = (toolName: string, input: Record<string, unknown>) => string;
+/** The provider's describeEdit: what a file-editing tool call changes. */
+export type DescribeEdit = (toolName: string, input: Record<string, unknown>) => ChatEdit | null;
 
 /** Fields of a transcript record the chat reads. */
 interface ChatRecord {
@@ -57,6 +64,28 @@ function clip(text: string): string {
   return text.length > CHAT_ENTRY_MAX_CHARS ? `${text.slice(0, CHAT_ENTRY_MAX_CHARS)}…` : text;
 }
 
+/**
+ * Bound an edit for the wire: CHAT_EDIT_MAX_CHARS shared by every hunk side,
+ * in order, so a huge Write can't crowd the log. Empty edits are dropped.
+ */
+export function clipEdit(edit: ChatEdit | null | undefined): ChatEdit | undefined {
+  if (!edit || edit.hunks.every((h) => !h.removed && !h.added)) return undefined;
+  let budget = CHAT_EDIT_MAX_CHARS;
+  let clipped = false;
+  const take = (text: string): string => {
+    if (text.length <= budget) {
+      budget -= text.length;
+      return text;
+    }
+    clipped = true;
+    const kept = text.slice(0, Math.max(0, budget));
+    budget = 0;
+    return kept;
+  };
+  const hunks = edit.hunks.map((h) => ({ removed: take(h.removed), added: take(h.added) }));
+  return { path: edit.path, kind: edit.kind, hunks, ...(clipped ? { clipped: true } : {}) };
+}
+
 /** Visible text of a typed prompt, or null when the harness wrote it. */
 export function userPromptText(raw: string): string | null {
   const text = raw.trim();
@@ -77,6 +106,7 @@ export function userPromptText(raw: string): string | null {
 export function extractChatDelta(
   record: ChatRecord,
   formatToolStatus: FormatToolStatus,
+  describeEdit?: DescribeEdit,
 ): ChatDelta {
   const delta: ChatDelta = { entries: [], doneToolIds: [] };
   if (record.isMeta) return delta;
@@ -133,12 +163,14 @@ export function extractChatDelta(
       if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
         texts.push(block.text.trim());
       } else if (block.type === 'tool_use' && block.id) {
+        const edit = clipEdit(describeEdit?.(block.name ?? '', block.input ?? {}));
         delta.entries.push({
           ...base,
           entryId: block.id,
           role: 'tool',
           text: clip(formatToolStatus(block.name ?? '', block.input ?? {})),
           toolDone: false,
+          ...(edit ? { edit } : {}),
         });
       }
     }
@@ -226,12 +258,13 @@ export function recordChat(
   agents: AgentStateStore,
   record: unknown,
   formatToolStatus: FormatToolStatus,
+  describeEdit?: DescribeEdit,
 ): void {
   if (!record || typeof record !== 'object') return;
   const chatRecord = record as ChatRecord;
   if (chatRecord.type !== 'user' && chatRecord.type !== 'assistant') return;
   if (!belongsToAgent(agent, chatRecord)) return;
-  const delta = extractChatDelta(chatRecord, formatToolStatus);
+  const delta = extractChatDelta(chatRecord, formatToolStatus, describeEdit);
   applyDelta(
     agent,
     delta,
@@ -251,6 +284,7 @@ export function seedChatHistory(
   agentId: number,
   agents: AgentStateStore,
   formatToolStatus: FormatToolStatus,
+  describeEdit?: DescribeEdit,
 ): void {
   const agent = agents.get(agentId);
   if (!agent || agent.chatLog || !agent.jsonlFile) return;
@@ -285,7 +319,7 @@ export function seedChatHistory(
     }
     if (record.type !== 'user' && record.type !== 'assistant') continue;
     if (!belongsToAgent(agent, record)) continue;
-    applyDelta(agent, extractChatDelta(record, formatToolStatus), () => {});
+    applyDelta(agent, extractChatDelta(record, formatToolStatus, describeEdit), () => {});
   }
   // A seeded tool row with no result in the tail is from an earlier turn, not live.
   for (const entry of agent.chatLog) {

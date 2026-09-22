@@ -7,13 +7,17 @@ import type { ChatEntry } from '../../core/src/messages.js';
  */
 
 export type MessengerBlock =
-  { kind: 'message'; entry: ChatEntry } | { kind: 'steps'; id: string; entries: ChatEntry[] };
+  | { kind: 'message'; entry: ChatEntry }
+  | { kind: 'steps'; id: string; entries: ChatEntry[] }
+  | { kind: 'edit'; entry: ChatEntry };
 
-/** Runs of tool rows become one foldable "steps" block. */
+/** Runs of tool rows become one foldable "steps" block; a file edit stands on its own. */
 export function groupEntries(entries: ChatEntry[]): MessengerBlock[] {
   const blocks: MessengerBlock[] = [];
   for (const entry of entries) {
-    if (entry.role === 'tool') {
+    if (entry.role === 'tool' && entry.edit) {
+      blocks.push({ kind: 'edit', entry });
+    } else if (entry.role === 'tool') {
       const last = blocks[blocks.length - 1];
       if (last?.kind === 'steps') last.entries.push(entry);
       else blocks.push({ kind: 'steps', id: entry.entryId, entries: [entry] });
@@ -155,4 +159,49 @@ export function readPrefs(raw: string | null): ReadingPrefs {
   } catch {
     return { ...DEFAULT_READING_PREFS };
   }
+}
+
+export type DiffRow = { kind: 'ctx' | 'del' | 'add'; text: string };
+
+/**
+ * One hunk as diff rows. Not a real diff: the lines both sides share at the
+ * start and end are trimmed to one line of context, and what's left shows as
+ * removed-then-added — Edit's old/new strings are already small and local.
+ */
+export function editRows(removed: string, added: string): DiffRow[] {
+  const split = (t: string) => (t === '' ? [] : t.replace(/\r\n?/g, '\n').split('\n'));
+  const del = split(removed);
+  const add = split(added);
+  let head = 0;
+  while (head < del.length && head < add.length && del[head] === add[head]) head++;
+  let tail = 0;
+  while (
+    tail < del.length - head &&
+    tail < add.length - head &&
+    del[del.length - 1 - tail] === add[add.length - 1 - tail]
+  ) {
+    tail++;
+  }
+  const rows: DiffRow[] = [];
+  if (head > 0) rows.push({ kind: 'ctx', text: del[head - 1] });
+  for (const text of del.slice(head, del.length - tail)) rows.push({ kind: 'del', text });
+  for (const text of add.slice(head, add.length - tail)) rows.push({ kind: 'add', text });
+  if (tail > 0) rows.push({ kind: 'ctx', text: del[del.length - tail] });
+  return rows;
+}
+
+/** "+12 −3" for an edit's header. */
+export function editCounts(hunks: Array<{ removed: string; added: string }>): {
+  added: number;
+  removed: number;
+} {
+  let added = 0;
+  let removed = 0;
+  for (const h of hunks) {
+    for (const row of editRows(h.removed, h.added)) {
+      if (row.kind === 'add') added++;
+      else if (row.kind === 'del') removed++;
+    }
+  }
+  return { added, removed };
 }

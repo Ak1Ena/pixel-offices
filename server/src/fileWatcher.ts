@@ -51,7 +51,12 @@ import { pathsMatch } from './pathKey.js';
 import type { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer, clearAgentActivity } from './timerManager.js';
 import { seedTokenUsage } from './tokenUsage.js';
-import { formatToolStatus, getHookProvider, processTranscriptLine } from './transcriptParser.js';
+import {
+  describeEdit,
+  formatToolStatus,
+  getHookProvider,
+  processTranscriptLine,
+} from './transcriptParser.js';
 import type { AgentState } from './types.js';
 
 /** Dismissal tracker instance. Set once at startup via setDismissalTracker().
@@ -116,7 +121,7 @@ export function startFileWatching(
   // give an agent adopted or restored mid-session a context gauge without
   // replaying its whole transcript.
   seedContextUsage(agentId, agents, getHookProvider());
-  seedChatHistory(agentId, agents, formatToolStatus);
+  seedChatHistory(agentId, agents, formatToolStatus, describeEdit);
   seedTokenUsage(agentId, agents);
   seedAgentCwd(agentId, agents);
 

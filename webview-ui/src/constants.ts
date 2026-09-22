@@ -419,6 +419,8 @@ export const MESSENGER_DOCK_MIN_PX = 320;
 export const MESSENGER_DOCK_OFFICE_MIN_PX = 160;
 /** Arrow-key step on the dock's resize handle. */
 export const MESSENGER_DOCK_KEY_STEP_PX = 32;
+/** Diff rows an edit card shows before "Show all". */
+export const MESSENGER_EDIT_PREVIEW_ROWS = 24;
 /** How far above a character's feet its workflow progress pips sit (sprite px). */
 export const WORKFLOW_BADGE_VERTICAL_OFFSET = 30;
 /** How long the flash lasts when a character steps through a portal. */

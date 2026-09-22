@@ -2497,6 +2497,43 @@ components:
         timestamp:
           type: string
           description: ISO 8601 time from the transcript record.
+        edit:
+          $ref: '#/components/schemas/ChatEdit'
+
+    ChatEdit:
+      description: |
+        What a file-editing tool row changes, from the tool call's own input
+        (the provider decides which tools edit files). `write` replaces or
+        creates the whole file, so its one hunk has only `added`. Each side is
+        clipped for the wire; `clipped` says so.
+      type: object
+      additionalProperties: false
+      required: [path, kind, hunks]
+      properties:
+        path:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ChatEditKind'
+        hunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatEditHunk'
+        clipped:
+          type: boolean
+
+    ChatEditKind:
+      type: string
+      enum: [edit, write]
+
+    ChatEditHunk:
+      type: object
+      additionalProperties: false
+      required: [removed, added]
+      properties:
+        removed:
+          type: string
+        added:
+          type: string
 
     TokenUsage:
       description: One request's token counts, as the transcript reports them.

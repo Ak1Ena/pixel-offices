@@ -7,6 +7,7 @@
  * speculation.
  */
 
+import type { ChatEdit } from './messages.js';
 import type { TeamProvider } from './teamProvider.js';
 
 // ── Normalized Events (all provider types produce these) ──────
@@ -109,6 +110,9 @@ export interface HookProvider {
 
   /** Format tool status for display (e.g., "Read" -> "Reading foo.ts") */
   formatToolStatus(toolName: string, input?: unknown): string;
+  /** What a file-editing tool call changes, for the chat's diff view; null for
+   *  tools that don't edit files. Unclipped — the runtime bounds it. */
+  describeEdit?(toolName: string, input?: unknown): ChatEdit | null;
   /** Tools that don't trigger permission timers */
   readonly permissionExemptTools: ReadonlySet<string>;
   /** Tools that spawn sub-agent characters */

@@ -1,5 +1,6 @@
 const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
 
+import type { ChatEdit } from '../../core/src/messages.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { cwdFromRecord } from './agentCwd.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -93,6 +94,11 @@ export function formatToolStatus(toolName: string, input: Record<string, unknown
   return hookProvider?.formatToolStatus(toolName, input) ?? `Using ${toolName}`;
 }
 
+/** What a file-editing tool call changes (chat diff view). Delegates to the active HookProvider. */
+export function describeEdit(toolName: string, input: Record<string, unknown>): ChatEdit | null {
+  return hookProvider?.describeEdit?.(toolName, input) ?? null;
+}
+
 export function processTranscriptLine(
   agentId: number,
   line: string,
@@ -145,7 +151,7 @@ export function processTranscriptLine(
     updateContextUsage(agentId, agent, agents, record, hookProvider);
 
     // -- Session chat (the office chat card) --
-    recordChat(agentId, agent, agents, record, formatToolStatus);
+    recordChat(agentId, agent, agents, record, formatToolStatus, describeEdit);
 
     // -- Token totals + burn rate (chat header, "on fire" effect) --
     recordTokenUsage(agentId, agent, agents, record);

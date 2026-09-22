@@ -12,12 +12,21 @@ import {
   MESSENGER_DOCK_MIN_PX,
   MESSENGER_DOCK_OFFICE_MIN_PX,
   MESSENGER_DOCK_WIDTH_KEY,
+  MESSENGER_EDIT_PREVIEW_ROWS,
   MESSENGER_PREFS_KEY,
 } from '../constants.js';
 import { fileBaseName, spotLabel } from '../docViewer.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { MdBlock, MdInline, ReadingPrefs } from '../messenger.js';
-import { chatOutline, groupEntries, parseMarkdown, readPrefs, stepCounts } from '../messenger.js';
+import {
+  chatOutline,
+  editCounts,
+  editRows,
+  groupEntries,
+  parseMarkdown,
+  readPrefs,
+  stepCounts,
+} from '../messenger.js';
 import { formatTokens } from '../officeChat.js';
 import { MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
@@ -199,6 +208,74 @@ function Markdown({ blocks }: { blocks: MdBlock[] }) {
         );
       })}
     </div>
+  );
+}
+
+/** A file the agent edited: its path, +/− counts, and the change itself. */
+function EditCard({ entry }: { entry: ChatEntry }) {
+  const edit = entry.edit!;
+  const [showAll, setShowAll] = useState(false);
+  const rows = useMemo(
+    () =>
+      edit.hunks.flatMap((h, i) => [
+        ...(i > 0 ? [{ kind: 'gap' as const, text: '' }] : []),
+        ...editRows(h.removed, h.added),
+      ]),
+    [edit],
+  );
+  const counts = useMemo(() => editCounts(edit.hunks), [edit]);
+  const shown = showAll ? rows : rows.slice(0, MESSENGER_EDIT_PREVIEW_ROWS);
+  return (
+    <details open className="border-2 border-bg-thumb bg-chat-tool" data-testid="messenger-edit">
+      <summary className="flex items-center gap-8 px-8 py-2 text-xs cursor-pointer select-none">
+        <span className={entry.toolDone ? 'text-status-success' : 'text-status-active'}>
+          {entry.toolDone ? '✓' : '▶'}
+        </span>
+        <span className="text-text-muted">{edit.kind === 'write' ? 'Wrote' : 'Edited'}</span>
+        <span
+          className="font-mono overflow-hidden text-ellipsis whitespace-nowrap"
+          title={edit.path}
+        >
+          {fileBaseName(edit.path)}
+        </span>
+        <span className="ml-auto flex gap-6 font-mono text-2xs shrink-0">
+          {counts.added > 0 && <span className="text-status-success">+{counts.added}</span>}
+          {counts.removed > 0 && <span className="text-danger">−{counts.removed}</span>}
+        </span>
+      </summary>
+      <div className="border-t-2 border-bg-thumb overflow-x-auto font-mono text-[12px] leading-snug">
+        {shown.map((r, i) =>
+          r.kind === 'gap' ? (
+            <div key={i} className="px-8 text-text-muted">
+              ⋯
+            </div>
+          ) : (
+            <div
+              key={i}
+              className={`flex whitespace-pre ${r.kind === 'del' ? 'bg-diff-del' : r.kind === 'add' ? 'bg-diff-add' : 'text-text-muted'}`}
+            >
+              <span className="w-16 shrink-0 text-center select-none">
+                {r.kind === 'del' ? '−' : r.kind === 'add' ? '+' : ' '}
+              </span>
+              <span>{r.text || ' '}</span>
+            </div>
+          ),
+        )}
+        {(rows.length > shown.length || edit.clipped) && (
+          <div className="flex gap-8 px-8 py-2 text-2xs text-text-muted border-t border-bg-thumb font-reading">
+            {rows.length > shown.length && (
+              <button
+                className="bg-transparent border-0 p-0 underline text-text-muted cursor-pointer"
+                onClick={() => setShowAll(true)}
+              >
+                Show all {rows.length} lines
+              </button>
+            )}
+            {edit.clipped && <span>Long change, cut short here.</span>}
+          </div>
+        )}
+      </div>
+    </details>
   );
 }
 
@@ -587,6 +664,9 @@ export function MessengerPanel(props: MessengerPanelProps) {
                   {blocks.map((b) => {
                     if (b.kind === 'steps') {
                       return <Steps key={b.id} entries={b.entries} open={!prefs.foldSteps} />;
+                    }
+                    if (b.kind === 'edit') {
+                      return <EditCard key={b.entry.entryId} entry={b.entry} />;
                     }
                     const e = b.entry;
                     const isUser = e.role === 'user';

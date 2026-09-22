@@ -46,6 +46,9 @@ export const CONTEXT_SEED_TAIL_BYTES = 256 * 1024;
 export const CHAT_HISTORY_LIMIT = 200;
 /** Longest text one chat entry carries; longer text is cut with an ellipsis. */
 export const CHAT_ENTRY_MAX_CHARS = 4_000;
+/** A tool row's edit (what the change removes + adds), across all its hunks.
+ *  The whole history rides the handshake, so edits are bounded like text. */
+export const CHAT_EDIT_MAX_CHARS = 6_000;
 /** How much transcript before the read offset to replay into a restored agent's chat. */
 export const CHAT_SEED_TAIL_BYTES = 512 * 1024;
 /** Longest message the office will type into a terminal. */
