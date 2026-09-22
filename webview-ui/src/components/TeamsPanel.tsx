@@ -7,6 +7,7 @@ import { getLoadedCharacterCount } from '../office/sprites/spriteData.js';
 import type { TeamBundle } from '../teams.js';
 import { encodeShareCode, exportBundle, fileSlug, readBundle } from '../teams.js';
 import { CharacterPortrait } from './CharacterPortrait.js';
+import { FolderField } from './FolderField.js';
 import { Button } from './ui/Button.js';
 
 interface TeamsPanelProps {
@@ -15,6 +16,8 @@ interface TeamsPanelProps {
   labelOf: (agentId: number) => string;
   /** Folders to offer when starting a team (recent + workspace). */
   folders: string[];
+  /** The folder browser works here (standalone, tokened page). */
+  canBrowseFolders: boolean;
   /** Absent when this connection may not change anything. */
   canEdit: boolean;
   /** Only the standalone office can start agents. */
@@ -318,11 +321,13 @@ function TeamEditor({
 function StartDialog({
   team,
   folders,
+  canBrowseFolders,
   onStart,
   onCancel,
 }: {
   team: TeamPreset;
   folders: string[];
+  canBrowseFolders: boolean;
   onStart: (folder: string, goal: string) => void;
   onCancel: () => void;
 }) {
@@ -337,26 +342,15 @@ function StartDialog({
     >
       <div className="px-12 py-8 border-b-2 border-border text-lg">Start {team.title}</div>
       <div className="p-12 flex flex-col gap-10">
-        <label className="flex flex-col gap-2 text-2xs text-text-muted">
+        <div className="flex flex-col gap-2 text-2xs text-text-muted">
           Project folder
-          <input
+          <FolderField
             value={folder}
-            onChange={(e) => setFolder(e.target.value)}
-            placeholder="~/code/my-project"
-            className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text font-mono"
+            onChange={setFolder}
+            folders={folders}
+            canBrowse={canBrowseFolders}
           />
-          <span className="flex gap-4 flex-wrap mt-2">
-            {folders.slice(0, 5).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFolder(f)}
-                className="px-4 text-2xs bg-bg-dark border-2 border-border text-text-muted cursor-pointer max-w-full overflow-hidden text-ellipsis whitespace-nowrap"
-              >
-                {f}
-              </button>
-            ))}
-          </span>
-        </label>
+        </div>
         <label className="flex flex-col gap-2 text-2xs text-text-muted">
           What should the team do?
           <textarea
@@ -626,11 +620,13 @@ function ImportDialog({
 function AiDialog({
   teams,
   folders,
+  canBrowseFolders,
   onUse,
   onCancel,
 }: {
   teams: TeamsState;
   folders: string[];
+  canBrowseFolders: boolean;
   onUse: (team: TeamPreset, workflows: Workflow[]) => void;
   onCancel: () => void;
 }) {
@@ -689,14 +685,16 @@ function AiDialog({
               data-testid="team-ai-description"
             />
           </label>
-          <label className="flex flex-col gap-2 text-2xs text-text-muted">
+          <div className="flex flex-col gap-2 text-2xs text-text-muted">
             Project (optional)
-            <input
+            <FolderField
               value={folder}
-              onChange={(e) => setFolder(e.target.value)}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-xs text-text font-mono"
+              onChange={setFolder}
+              folders={folders}
+              canBrowse={canBrowseFolders}
+              optional
             />
-          </label>
+          </div>
           <label className="flex items-center gap-6 text-xs cursor-pointer">
             <input
               type="checkbox"
@@ -888,6 +886,7 @@ export function TeamsPanel({
   workflows,
   labelOf,
   folders,
+  canBrowseFolders,
   canEdit,
   canStart,
   onOpenAgent,
@@ -1105,6 +1104,7 @@ export function TeamsPanel({
           <StartDialog
             team={view.team}
             folders={folders}
+            canBrowseFolders={canBrowseFolders}
             onStart={(folder, goal) => {
               teams.start(view.team.id, folder, goal);
               onClose();
@@ -1143,6 +1143,7 @@ export function TeamsPanel({
           <AiDialog
             teams={teams}
             folders={folders}
+            canBrowseFolders={canBrowseFolders}
             onUse={(team, drafted) => setView({ kind: 'edit', team, draftWorkflows: drafted })}
             onCancel={() => setView({ kind: 'library' })}
           />

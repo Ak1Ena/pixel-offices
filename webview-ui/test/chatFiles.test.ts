@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { pastedFileName, splitUploadMentions, uploadDisplayName } from '../src/chatFiles.js';
 import { asFilePath, splitFilePaths } from '../src/fileLinks.js';
-import { pastedFiles, splitUploadMentions, uploadDisplayName } from '../src/fileUpload.js';
 
 const dir = '/Users/me/.pixel-agents/files';
 
@@ -25,15 +25,10 @@ describe('files sent from the chat', () => {
   });
 
   it('gives pasted screenshots their own names and keeps real file names', () => {
-    const data = {
-      files: [
-        new File(['x'], 'image.png', { type: 'image/png' }),
-        new File(['y'], 'notes.txt', { type: 'text/plain' }),
-      ],
-    } as unknown as DataTransfer;
-    const names = pastedFiles(data, Date.UTC(2026, 8, 22, 13, 5, 7)).map((f) => f.name);
-    expect(names).toEqual(['pasted-2026-09-22T13-05-07.png', 'notes.txt']);
-    expect(pastedFiles(null)).toEqual([]);
+    const now = Date.UTC(2026, 8, 22, 13, 5, 7);
+    expect(pastedFileName('image.png', 'image/png', now, 0)).toBe('pasted-2026-09-22T13-05-07.png');
+    expect(pastedFileName('', 'image/jpeg', now, 1)).toBe('pasted-2026-09-22T13-05-07-1.jpg');
+    expect(pastedFileName('notes.txt', 'text/plain', now, 0)).toBe('notes.txt');
   });
 });
 

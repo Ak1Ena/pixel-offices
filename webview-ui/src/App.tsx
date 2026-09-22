@@ -1002,6 +1002,7 @@ function App() {
               teams={teams}
               workflows={workflows.workflows}
               labelOf={agentLabel}
+              canBrowseFolders={isBrowserRuntime && chat.privileged}
               folders={[
                 ...chat.recentFolders,
                 ...workspaceFolders
@@ -1036,6 +1037,7 @@ function App() {
               onImport={chat.privileged || !isBrowserRuntime ? teams.importWorkflow : undefined}
               onDraft={chat.privileged || !isBrowserRuntime ? teams.draftWorkflow : undefined}
               drafts={teams.workflowDrafts}
+              canBrowseFolders={isBrowserRuntime && chat.privileged}
               folders={[
                 ...chat.recentFolders,
                 ...workspaceFolders

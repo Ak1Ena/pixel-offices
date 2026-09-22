@@ -7,10 +7,11 @@ import type {
   WorkflowStep,
   WorkflowStepKind,
 } from '../../../core/src/messages.js';
-import { WORKFLOW_DRAG_MIME } from '../constants.js';
+import { WORKFLOW_DRAG_MIME, WORKFLOW_PREVIEW_STEPS } from '../constants.js';
 import { downloadText } from '../download.js';
 import { fileSlug } from '../teams.js';
 import { moveStep, previewMarkdown, runProgress } from '../workflows.js';
+import { FolderField } from './FolderField.js';
 import { Button } from './ui/Button.js';
 
 interface WorkflowRailProps {
@@ -40,6 +41,8 @@ interface WorkflowRailProps {
   }) => void;
   drafts: Record<string, WorkflowDraft>;
   folders: string[];
+  /** The folder browser works here (standalone, tokened page). */
+  canBrowseFolders: boolean;
 }
 
 const KINDS: Array<{ kind: WorkflowStepKind; label: string; hint: string; color: string }> = [
@@ -332,6 +335,7 @@ export function WorkflowRail({
   onDraft,
   drafts,
   folders,
+  canBrowseFolders,
 }: WorkflowRailProps) {
   const [editing, setEditing] = useState<{ workflow: Workflow; unsure?: number[] } | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -348,63 +352,86 @@ export function WorkflowRail({
     setAiText('');
   }, [aiDraft]);
   const [givingId, setGivingId] = useState<string | null>(null);
+  const [full, setFull] = useState(false);
   const live = runs.filter((r) => r.state === 'running');
 
   return (
     <>
       <div
-        className="absolute left-0 top-0 bottom-0 z-30 flex flex-col w-280 max-sm:w-full bg-bg text-text border-r-4 border-border"
+        className={`absolute flex flex-col bg-bg text-text ${
+          full
+            ? 'inset-0 z-58'
+            : 'z-30 left-0 top-0 bottom-0 w-300 max-sm:w-full border-r-4 border-border'
+        }`}
         data-testid="workflow-rail"
+        data-full={full || undefined}
         onMouseDown={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-6 px-10 py-6 border-b-2 border-border">
-          <span className="text-lg">Workflows</span>
-          <span className="flex-1" />
-          {onDraft && (
+        <div className="flex flex-col gap-8 px-12 py-10 border-b-2 border-border">
+          <div className="flex items-center gap-6">
+            <span className="text-lg">Workflows</span>
+            <span className="text-2xs text-text-muted">{workflows.length}</span>
+            <span className="flex-1" />
             <Button
               size="sm"
-              onClick={() => setAiOpen((v) => !v)}
-              title="Create a workflow with AI"
-              data-testid="workflow-ai"
+              variant="ghost"
+              onClick={() => setFull((v) => !v)}
+              title={full ? 'Back to the side rail' : 'Open as a full page'}
+              aria-label={full ? 'Back to the side rail' : 'Open as a full page'}
+              data-testid="workflow-full"
             >
-              AI
+              {full ? '⇲' : '⤢'}
             </Button>
-          )}
-          {onImport && (
-            <label
-              className="px-8 py-1 text-sm bg-btn-bg border-2 border-transparent hover:bg-btn-hover cursor-pointer"
-              title="Import a workflow .md file"
-            >
-              Import
-              <input
-                type="file"
-                accept=".md,text/markdown"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void file.text().then(onImport);
-                  e.target.value = '';
-                }}
-              />
-            </label>
-          )}
-          {onSave && (
-            <Button
-              size="sm"
-              variant="accent"
-              onClick={() => setEditing({ workflow: { id: '', title: '', steps: [] } })}
-              data-testid="workflow-new"
-            >
-              + New
+            <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close workflows">
+              ×
             </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close workflows">
-            ×
-          </Button>
+          </div>
+          <div className="flex items-center gap-6 flex-wrap">
+            {onSave && (
+              <Button
+                size="sm"
+                variant="accent"
+                className="whitespace-nowrap"
+                onClick={() => setEditing({ workflow: { id: '', title: '', steps: [] } })}
+                data-testid="workflow-new"
+              >
+                + New
+              </Button>
+            )}
+            {onDraft && (
+              <Button
+                size="sm"
+                className="whitespace-nowrap"
+                onClick={() => setAiOpen((v) => !v)}
+                title="Create a workflow with AI"
+                data-testid="workflow-ai"
+              >
+                AI draft
+              </Button>
+            )}
+            {onImport && (
+              <label
+                className="px-8 py-1 text-sm whitespace-nowrap bg-btn-bg border-2 border-transparent hover:bg-btn-hover cursor-pointer"
+                title="Import a workflow .md file"
+              >
+                Import
+                <input
+                  type="file"
+                  accept=".md,text/markdown"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void file.text().then(onImport);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+          </div>
         </div>
         {notice && (
-          <div className="flex gap-6 items-start m-8 p-6 border-2 border-status-permission bg-chat-permission text-2xs">
+          <div className="flex gap-6 items-start m-12 p-6 border-2 border-status-permission bg-chat-permission text-2xs">
             <span className="flex-1">{notice}</span>
             <button
               className="bg-transparent border-0 text-text-muted cursor-pointer"
@@ -417,7 +444,7 @@ export function WorkflowRail({
         )}
         {aiOpen && onDraft && (
           <div
-            className="flex flex-col gap-6 m-8 p-8 border-2 border-accent bg-bg-dark"
+            className={`flex flex-col gap-6 m-12 p-10 border-2 border-accent bg-bg-dark ${full ? 'max-w-640' : ''}`}
             data-testid="workflow-ai-panel"
           >
             <span className="text-sm">
@@ -431,12 +458,16 @@ export function WorkflowRail({
               placeholder="How we ship a hotfix: branch off the release tag, fix, test, get my OK, then tag and deploy."
               className="bg-bg border-2 border-border px-6 py-2 text-xs text-text font-reading resize-y"
             />
-            <input
-              value={aiFolder}
-              onChange={(e) => setAiFolder(e.target.value)}
-              placeholder="Project folder (optional)"
-              className="bg-bg border-2 border-border px-6 py-1 text-2xs text-text font-mono"
-            />
+            <div className="flex flex-col gap-2 text-2xs text-text-muted">
+              Project folder (optional)
+              <FolderField
+                value={aiFolder}
+                onChange={setAiFolder}
+                folders={folders}
+                canBrowse={canBrowseFolders}
+                optional
+              />
+            </div>
             <label className="flex items-center gap-6 text-2xs cursor-pointer">
               <input
                 type="checkbox"
@@ -468,7 +499,13 @@ export function WorkflowRail({
             </span>
           </div>
         )}
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-8 p-8">
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto p-12 ${
+            full
+              ? 'grid gap-12 content-start grid-cols-[repeat(auto-fill,minmax(280px,1fr))]'
+              : 'flex flex-col gap-10'
+          }`}
+        >
           {workflows.length === 0 && (
             <span className="text-xs text-text-muted p-4">
               No workflows yet. A workflow is a list of steps you write once and give to any agent.
@@ -476,6 +513,10 @@ export function WorkflowRail({
           )}
           {workflows.map((w) => {
             const running = live.filter((r) => r.workflowId === w.id);
+            const counts = KINDS.map((k) => ({
+              ...k,
+              count: w.steps.filter((st) => st.kind === k.kind).length,
+            })).filter((k) => k.count > 0);
             return (
               <div
                 key={w.id}
@@ -484,30 +525,68 @@ export function WorkflowRail({
                   e.dataTransfer.setData(WORKFLOW_DRAG_MIME, w.id);
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
-                className="flex flex-col gap-4 p-8 bg-pin-link text-board-ink border-2 border-board-ink shadow-pixel cursor-grab"
+                className="flex flex-col gap-8 p-10 bg-bg-dark border-2 border-border hover:border-accent shadow-pixel cursor-grab"
                 data-testid="workflow-card"
               >
-                <div className="flex items-center gap-6">
-                  <span className="text-sm flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                <div className="flex items-start gap-6">
+                  <span className="text-sm flex-1 min-w-0 break-words leading-tight">
                     {w.title}
                   </span>
-                  <span className="text-2xs text-board-ink-muted">⠿</span>
-                </div>
-                <div className="flex gap-8 text-2xs text-board-ink-muted">
-                  <span>{w.steps.length} steps</span>
-                  {w.steps.some((s) => s.kind === 'gate') && (
-                    <span>{w.steps.filter((s) => s.kind === 'gate').length} gate</span>
-                  )}
-                  {w.steps.some((s) => s.kind === 'show') && (
-                    <span>{w.steps.filter((s) => s.kind === 'show').length} show</span>
+                  {onAttach && (
+                    <span className="text-xs text-text-muted" title="Drag onto a character">
+                      ⠿
+                    </span>
                   )}
                 </div>
+                <div className="flex gap-4 flex-wrap text-2xs">
+                  <span className="px-4 border-2 border-border text-text-muted">
+                    {w.steps.length} steps
+                  </span>
+                  {counts.map((k) => (
+                    <span key={k.kind} className={`px-4 border-2 ${k.color}`}>
+                      {k.count} {k.label}
+                    </span>
+                  ))}
+                </div>
+                {full && w.steps.length > 0 && (
+                  <ol className="m-0 pl-0 list-none flex flex-col gap-2 text-xs">
+                    {w.steps.slice(0, WORKFLOW_PREVIEW_STEPS).map((st, i) => (
+                      <li key={i} className="flex gap-6 items-baseline min-w-0">
+                        <span className="text-2xs text-text-muted w-16 shrink-0 text-right">
+                          {i + 1}.
+                        </span>
+                        <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
+                          {st.text}
+                        </span>
+                        {st.kind !== 'do' && (
+                          <span className={`px-2 text-2xs border ${kindClass(st.kind)}`}>
+                            {st.kind}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                    {w.steps.length > WORKFLOW_PREVIEW_STEPS && (
+                      <li className="text-2xs text-text-muted pl-22">
+                        +{w.steps.length - WORKFLOW_PREVIEW_STEPS} more
+                      </li>
+                    )}
+                  </ol>
+                )}
                 {running.length > 0 && (
                   <span className="self-start px-4 text-2xs bg-accent text-white">
                     running · {running.map((r) => labelOf(r.agentId)).join(', ')}
                   </span>
                 )}
-                <div className="flex gap-4 relative">
+                <div className="flex gap-6 flex-wrap relative mt-2">
+                  {onAttach && (
+                    <Button
+                      size="sm"
+                      variant="accent"
+                      onClick={() => setGivingId(givingId === w.id ? null : w.id)}
+                    >
+                      Give to…
+                    </Button>
+                  )}
                   {onSave && (
                     <Button size="sm" onClick={() => setEditing({ workflow: w })}>
                       Edit
@@ -515,6 +594,7 @@ export function WorkflowRail({
                   )}
                   <Button
                     size="sm"
+                    variant="ghost"
                     onClick={() =>
                       downloadText(
                         `${fileSlug(w.title)}.md`,
@@ -526,11 +606,6 @@ export function WorkflowRail({
                   >
                     Export
                   </Button>
-                  {onAttach && (
-                    <Button size="sm" onClick={() => setGivingId(givingId === w.id ? null : w.id)}>
-                      Give to…
-                    </Button>
-                  )}
                   {givingId === w.id && (
                     <div className="absolute top-full left-0 mt-4 z-10 w-220 pixel-panel p-4 flex flex-col text-text">
                       {agents.length === 0 && (
@@ -558,7 +633,11 @@ export function WorkflowRail({
           })}
           {live.length > 0 && (
             <>
-              <span className="text-2xs text-text-muted uppercase mt-8">Running</span>
+              <span
+                className={`text-2xs text-text-muted uppercase mt-8 ${full ? 'col-span-full' : ''}`}
+              >
+                Running
+              </span>
               {live.map((r) => {
                 const p = runProgress(r);
                 return (
@@ -585,8 +664,10 @@ export function WorkflowRail({
             </>
           )}
         </div>
-        <div className="px-10 py-6 border-t-2 border-border text-2xs text-text-muted">
-          Drag a card onto a character to give it that workflow.
+        <div className="px-12 py-8 border-t-2 border-border text-2xs text-text-muted leading-snug">
+          {full
+            ? 'Give a workflow to an agent with “Give to…”, or go back to the rail and drag a card onto a character.'
+            : 'Drag a card onto a character to give it that workflow.'}
         </div>
       </div>
       {editing && (

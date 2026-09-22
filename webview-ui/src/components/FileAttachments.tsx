@@ -1,13 +1,8 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 
+import { splitUploadMentions, uploadDisplayName } from '../chatFiles.js';
 import { OpenFileContext, splitFilePaths } from '../fileLinks.js';
-import {
-  canSendChatFiles,
-  chatImageUrl,
-  isImageFile,
-  splitUploadMentions,
-  uploadDisplayName,
-} from '../fileUpload.js';
+import { canSendChatFiles, chatImageUrl, isImageFile } from '../fileUpload.js';
 import type { FileAttachments } from '../hooks/useFileAttachments.js';
 import { Button } from './ui/Button.js';
 

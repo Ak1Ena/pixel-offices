@@ -1,10 +1,5 @@
-import {
-  CHAT_FILE_API,
-  CHAT_FILE_ID_PREFIX,
-  CHAT_IMAGE_EXTENSIONS,
-  CHAT_UPLOAD_DIR_SUFFIX,
-  DOC_UPLOAD_MAX_BYTES,
-} from './constants.js';
+import { pastedFileName } from './chatFiles.js';
+import { CHAT_FILE_API, CHAT_IMAGE_EXTENSIONS, DOC_UPLOAD_MAX_BYTES } from './constants.js';
 import { isBrowserRuntime } from './runtime.js';
 
 /**
@@ -82,63 +77,15 @@ export function isImageFile(file: File): boolean {
   return (CHAT_IMAGE_EXTENSIONS as readonly string[]).includes(ext);
 }
 
-const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const UPLOADED_MENTION = new RegExp(
-  `@\\S*[\\\\/]${CHAT_UPLOAD_DIR_SUFFIX.split('/').map(escapeRegExp).join('[\\\\/]')}` +
-    `[\\\\/](${CHAT_FILE_ID_PREFIX}[A-Za-z0-9]+-[A-Za-z0-9._-]+)(?=\\s|$)`,
-  'gi',
-);
-const STORED_ID_RE = new RegExp(`^${CHAT_FILE_ID_PREFIX}[A-Za-z0-9]+-`, 'i');
-
-/** Whether a stored upload name is an image the chat can preview. */
-function isImageName(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase() ?? '';
-  return (CHAT_IMAGE_EXTENSIONS as readonly string[]).includes(ext);
-}
-
-/** The name the user picked, without the store's `chat_<id>-` prefix. */
-export function uploadDisplayName(stored: string): string {
-  return stored.replace(STORED_ID_RE, '');
-}
-
 /**
- * Pull `@<path>` mentions of files uploaded from the chat out of a message:
- * the stored names of images (to show inline) and of other files (to show as
- * file cards), and the text that is left.
- */
-export function splitUploadMentions(text: string): {
-  images: string[];
-  files: string[];
-  text: string;
-} {
-  const images: string[] = [];
-  const files: string[] = [];
-  const rest = text.replace(UPLOADED_MENTION, (_m, name: string) => {
-    (isImageName(name) ? images : files).push(name);
-    return '';
-  });
-  if (images.length === 0 && files.length === 0) return { images, files, text };
-  return {
-    images,
-    files,
-    text: rest
-      .replace(/^[ \t]*\n/, '')
-      .replace(/[ \t]{2,}/g, ' ')
-      .trim(),
-  };
-}
-
-/**
- * Files on the clipboard (a copied file, or a screenshot). A pasted screenshot
- * is always called "image.png", so it gets a name that tells pastes apart.
+ * Files on the clipboard (a copied file, or a screenshot), renamed where the
+ * browser gave them a meaningless name (see pastedFileName).
  */
 export function pastedFiles(data: DataTransfer | null, now = Date.now()): File[] {
   if (!data) return [];
   return Array.from(data.files).map((file, i) => {
-    if (file.name && file.name !== 'image.png') return file;
-    const ext = file.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
-    const stamp = new Date(now).toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    return new File([file], `pasted-${stamp}${i ? `-${i}` : ''}.${ext}`, { type: file.type });
+    const name = pastedFileName(file.name, file.type, now, i);
+    return name === file.name ? file : new File([file], name, { type: file.type });
   });
 }
 

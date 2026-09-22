@@ -352,6 +352,8 @@ export const CHAT_CLIENT_HISTORY_LIMIT = 200;
 export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';
 /** A workflow card dragged from the Workflows rail onto a character. */
 export const WORKFLOW_DRAG_MIME = 'application/x-pixel-agents-workflow';
+/** Steps a workflow card lists on the full Workflows page before "+N more". */
+export const WORKFLOW_PREVIEW_STEPS = 6;
 /** Longest character name the rename box accepts (the server caps it too). */
 export const AGENT_NAME_INPUT_MAX_CHARS = 32;
 
