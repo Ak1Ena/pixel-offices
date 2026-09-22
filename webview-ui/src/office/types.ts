@@ -87,6 +87,7 @@ export const EditTool = {
   CARPET_PAINT: 'carpet_paint',
   CARPET_PICK: 'carpet_pick',
   AREA_PAINT: 'area_paint',
+  ROOM: 'room',
 } as const;
 export type EditTool = (typeof EditTool)[keyof typeof EditTool];
 
@@ -146,6 +147,32 @@ export interface AreaDefinition {
   /** A team room: glass walls are drawn around it, and a team that forms
    *  (a lead plus its teammates) moves into the first free one. */
   teamRoom?: boolean;
+  /** A room drawn as a rectangle (the room tool): its bounds, for resize/move handles. */
+  rect?: RoomRect;
+  /** The one opening in a team room's walls: the side of one room tile. */
+  door?: RoomDoor;
+}
+
+export interface RoomRect {
+  col: number;
+  row: number;
+  w: number;
+  h: number;
+}
+
+export type DoorSide = 'N' | 'S' | 'E' | 'W';
+
+export interface RoomDoor {
+  col: number;
+  row: number;
+  side: DoorSide;
+}
+
+/** Two linked tiles: a character stepping on one comes out on the other. */
+export interface Portal {
+  id: string;
+  a: { col: number; row: number };
+  b: { col: number; row: number };
 }
 
 export interface OfficeLayout {
@@ -166,6 +193,8 @@ export interface OfficeLayout {
   areas?: AreaDefinition[];
   /** Per-tile Area label, parallel to tiles array. null = no area assignment. */
   areaTiles?: Array<string | null>;
+  /** Portal pairs linking places no one can walk between (a room out of reach). */
+  portals?: Portal[];
 }
 
 export interface Character {
@@ -213,6 +242,9 @@ export interface Character {
   /** An agent's "show me" request is waiting on the user. Drawn only when no
    *  other bubble is showing — permission and turn-done outrank it. */
   docBubble?: boolean;
+  /** Seconds left of the flash after stepping through a portal, and where it left from. */
+  warpTimer?: number;
+  warpFrom?: { x: number; y: number };
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number;
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */

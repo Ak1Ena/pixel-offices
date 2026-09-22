@@ -213,6 +213,7 @@ export function updatePet(
             target.row,
             tileMap,
             blockedTiles,
+            { portals: false },
           );
           if (path.length > 0) {
             pet.state = PetState.WALK;
@@ -291,7 +292,9 @@ export function updatePet(
       if (pet.followRecalcTimer <= 0) {
         const adj = findAdjacentTile(target, tileMap, blockedTiles);
         if (adj) {
-          const path = findPath(pet.tileCol, pet.tileRow, adj.col, adj.row, tileMap, blockedTiles);
+          const path = findPath(pet.tileCol, pet.tileRow, adj.col, adj.row, tileMap, blockedTiles, {
+            portals: false,
+          });
           if (path.length > 0) {
             pet.path = path;
             pet.moveProgress = 0;

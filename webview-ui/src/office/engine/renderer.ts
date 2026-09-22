@@ -37,6 +37,13 @@ import {
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
+  PORTAL_CORE_COLOR,
+  PORTAL_GLOW_COLOR,
+  PORTAL_PULSE_SEC,
+  PORTAL_RING_COLOR,
+  ROOM_DOOR_COLOR,
+  ROOM_DOOR_EDGE_COLOR,
+  ROOM_NO_DOOR_TINT,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
   SEAT_BUSY_COLOR,
@@ -51,6 +58,8 @@ import {
   TEAM_ROOM_WALL_PX,
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
+  WARP_FLASH_SEC,
+  WARP_SPARK_COLOR,
 } from '../../constants.js';
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
 import { mapOffset } from '../projection.js';
@@ -76,6 +85,7 @@ import type {
   Character,
   FurnitureInstance,
   Pet,
+  Portal,
   Seat,
   SpriteData,
   TileType as TileTypeVal,
@@ -247,6 +257,74 @@ export function renderAreaOverlay(
  *
  * @internal
  */
+/** Portal pairs: a pulsing ring on each end (drawn on the floor, under characters). */
+export function renderPortals(
+  ctx: CanvasRenderingContext2D,
+  portals: Portal[] | undefined,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  timeSec: number,
+): void {
+  if (!portals || portals.length === 0) return;
+  const s = TILE_SIZE * zoom;
+  const pulse = 0.5 + 0.5 * Math.sin((timeSec * Math.PI * 2) / PORTAL_PULSE_SEC);
+  ctx.save();
+  for (const p of portals) {
+    for (const end of [p.a, p.b]) {
+      const cx = offsetX + end.col * s + s / 2;
+      const cy = offsetY + end.row * s + s / 2;
+      const px = Math.max(1, Math.round(zoom));
+      const ring = Math.round(s * (0.34 + 0.06 * pulse));
+      ctx.fillStyle = PORTAL_GLOW_COLOR;
+      ctx.fillRect(cx - ring - px, cy - ring - px, (ring + px) * 2, (ring + px) * 2);
+      ctx.fillStyle = PORTAL_RING_COLOR;
+      ctx.fillRect(cx - ring, cy - ring, ring * 2, ring * 2);
+      const core = ring - px * 2;
+      ctx.fillStyle = PORTAL_CORE_COLOR;
+      ctx.fillRect(cx - core, cy - core, core * 2, core * 2);
+      const eye = Math.max(px, Math.round(core * 0.45 * (0.7 + 0.3 * pulse)));
+      ctx.fillStyle = PORTAL_RING_COLOR;
+      ctx.fillRect(cx - eye, cy - eye, eye * 2, eye * 2);
+    }
+  }
+  ctx.restore();
+}
+
+/** The flash where a character came out of (and went into) a portal. */
+function renderWarpFlashes(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  ctx.save();
+  for (const ch of characters) {
+    if (!ch.warpTimer) continue;
+    const t = ch.warpTimer / WARP_FLASH_SEC;
+    ctx.globalAlpha = t;
+    ctx.fillStyle = WARP_SPARK_COLOR;
+    const px = Math.max(1, Math.round(zoom * 1.5));
+    for (const at of [{ x: ch.x, y: ch.y }, ...(ch.warpFrom ? [ch.warpFrom] : [])]) {
+      const spread = (1 - t) * 10 * zoom;
+      const x = offsetX + at.x * zoom;
+      const y = offsetY + (at.y - 8) * zoom;
+      for (const [dx, dy] of [
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
+        [0, -1.4],
+        [0, 1.4],
+      ]) {
+        ctx.fillRect(Math.round(x + dx * spread), Math.round(y + dy * spread), px, px);
+      }
+    }
+  }
+  ctx.restore();
+}
+
 export function renderTeamRooms(
   ctx: CanvasRenderingContext2D,
   areaTiles: Array<string | null> | undefined,
@@ -256,10 +334,17 @@ export function renderTeamRooms(
   offsetX: number,
   offsetY: number,
   zoom: number,
+  /** Edit mode: a room with no door is washed red so it can't go unnoticed. */
+  markDoorless = false,
 ): void {
   if (!areaTiles || areaTiles.length === 0 || !areas) return;
   const rooms = new Set(areas.filter((a) => a.teamRoom).map((a) => a.label));
   if (rooms.size === 0) return;
+  const doors = new Map(areas.filter((a) => a.teamRoom && a.door).map((a) => [a.label, a.door!]));
+  const isDoor = (label: string, c: number, r: number, side: string) => {
+    const d = doors.get(label);
+    return !!d && d.col === c && d.row === r && d.side === side;
+  };
 
   const s = TILE_SIZE * zoom;
   const wall = Math.max(2, Math.round(TEAM_ROOM_WALL_PX * zoom));
@@ -274,13 +359,47 @@ export function renderTeamRooms(
       if (!label || !rooms.has(label)) continue;
       const x = offsetX + c * s;
       const y = offsetY + r * s;
-      ctx.fillStyle = TEAM_ROOM_TINT;
+      ctx.fillStyle = markDoorless && !doors.has(label) ? ROOM_NO_DOOR_TINT : TEAM_ROOM_TINT;
       ctx.fillRect(x, y, s, s);
-      ctx.fillStyle = TEAM_ROOM_GLASS;
-      if (at(c, r - 1) !== label) ctx.fillRect(x, y, s, wall);
-      if (at(c, r + 1) !== label) ctx.fillRect(x, y + s - wall, s, wall);
-      if (at(c - 1, r) !== label) ctx.fillRect(x, y, wall, s);
-      if (at(c + 1, r) !== label) ctx.fillRect(x + s - wall, y, wall, s);
+      const edges: Array<[string, boolean, number, number, number, number]> = [
+        ['N', at(c, r - 1) !== label, x, y, s, wall],
+        ['S', at(c, r + 1) !== label, x, y + s - wall, s, wall],
+        ['W', at(c - 1, r) !== label, x, y, wall, s],
+        ['E', at(c + 1, r) !== label, x + s - wall, y, wall, s],
+      ];
+      for (const [side, open, ex, ey, ew, eh] of edges) {
+        if (!open) continue;
+        if (isDoor(label, c, r, side)) {
+          // The door: an open wooden frame instead of glass.
+          const post = Math.max(2, Math.round(zoom * 2));
+          ctx.fillStyle = ROOM_DOOR_EDGE_COLOR;
+          if (ew > eh) {
+            ctx.fillRect(ex, ey, post, eh);
+            ctx.fillRect(ex + ew - post, ey, post, eh);
+            ctx.fillStyle = ROOM_DOOR_COLOR;
+            ctx.fillRect(
+              ex + post,
+              ey + Math.floor(eh / 3),
+              Math.max(1, Math.round(ew / 5)),
+              Math.ceil(eh / 3),
+            );
+          } else {
+            ctx.fillRect(ex, ey, ew, post);
+            ctx.fillRect(ex, ey + eh - post, ew, post);
+            ctx.fillStyle = ROOM_DOOR_COLOR;
+            ctx.fillRect(
+              ex + Math.floor(ew / 3),
+              ey + post,
+              Math.ceil(ew / 3),
+              Math.max(1, Math.round(eh / 5)),
+            );
+          }
+          ctx.fillStyle = TEAM_ROOM_GLASS;
+          continue;
+        }
+        ctx.fillStyle = TEAM_ROOM_GLASS;
+        ctx.fillRect(ex, ey, ew, eh);
+      }
       if (!tabAt.has(label)) tabAt.set(label, { c, r }); // first tile in reading order
     }
   }
@@ -1014,6 +1133,7 @@ export function renderFrame(
   showAreas?: boolean,
   activeAreaLabel?: string | null,
   pets?: Pet[],
+  portals?: Portal[],
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1035,7 +1155,8 @@ export function renderFrame(
   }
 
   // Team rooms (glass walls) — always drawn
-  renderTeamRooms(ctx, areaTiles, areas, cols, rows, offsetX, offsetY, zoom);
+  renderTeamRooms(ctx, areaTiles, areas, cols, rows, offsetX, offsetY, zoom, !!editor);
+  renderPortals(ctx, portals, offsetX, offsetY, zoom, performance.now() / 1000);
 
   // Area overlay (translucent color wash) — above carpets, below seat indicators
   if (showAreas) {
@@ -1077,6 +1198,7 @@ export function renderFrame(
 
   // Token burn effects, then speech bubbles (always on top of characters)
   renderBurnEffects(ctx, characters, offsetX, offsetY, zoom);
+  renderWarpFlashes(ctx, characters, offsetX, offsetY, zoom);
   renderBubbles(ctx, characters, offsetX, offsetY, zoom);
   // Pet heart bubbles (same overlay pass)
   if (pets && pets.length > 0) {

@@ -24,7 +24,13 @@ import {
   layoutToSeats,
   layoutToTileMap,
 } from '../layout/layoutSerializer.js';
-import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
+import {
+  blockedEdges,
+  ensureRoomDoors,
+  portalLinks,
+  unreachableRooms as findUnreachableRooms,
+} from '../layout/rooms.js';
+import { findPath, getWalkableTiles, isWalkable, setNavigation } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
@@ -152,12 +158,23 @@ export class OfficeState {
     if (seat) this.reassignSeat(agentId, seat);
   }
 
+  /** Room walls (blocked edges) and portals for the pathfinder. */
+  private applyNavigation(): void {
+    setNavigation({ blocked: blockedEdges(this.layout), portals: portalLinks(this.layout) });
+  }
+
+  /** Team rooms nobody can walk into (no usable door, no portal). */
+  unreachableRooms(): string[] {
+    return findUnreachableRooms(this.layout, this.blockedTiles);
+  }
+
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
   }
 
   constructor(layout?: OfficeLayout) {
-    this.layout = layout || createDefaultLayout();
+    this.layout = ensureRoomDoors(layout || createDefaultLayout());
+    this.applyNavigation();
     this.tileMap = layoutToTileMap(this.layout);
     this.seats = layoutToSeats(this.layout.furniture);
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
@@ -169,8 +186,11 @@ export class OfficeState {
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
    *  @param shift Optional pixel shift to apply when grid expands left/up */
-  rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
+  rebuildFromLayout(nextLayout: OfficeLayout, shift?: { col: number; row: number }): void {
+    // Every team room has a door (older layouts get one here).
+    const layout = ensureRoomDoors(nextLayout);
     this.layout = layout;
+    this.applyNavigation();
     this.tileMap = layoutToTileMap(layout);
     this.seats = layoutToSeats(layout.furniture);
     this.blockedTiles = getBlockedTiles(layout.furniture);

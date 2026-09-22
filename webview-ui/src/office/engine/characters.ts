@@ -10,6 +10,7 @@ import {
   WANDER_MOVES_BEFORE_REST_MIN,
   WANDER_PAUSE_MAX_SEC,
   WANDER_PAUSE_MIN_SEC,
+  WARP_FLASH_SEC,
 } from '../../constants.js';
 import { findPath } from '../layout/tileMap.js';
 import type { CharacterSprites } from '../sprites/spriteData.js';
@@ -98,6 +99,7 @@ export function updateCharacter(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
 ): void {
+  if (ch.warpTimer) ch.warpTimer = Math.max(0, ch.warpTimer - dt);
   ch.frameTimer += dt;
 
   switch (ch.state) {
@@ -273,6 +275,19 @@ export function updateCharacter(
 
       // Move toward next tile in path
       const nextTile = ch.path[0];
+      // A step to a tile that isn't next door is a portal: arrive at once.
+      if (Math.abs(nextTile.col - ch.tileCol) + Math.abs(nextTile.row - ch.tileRow) > 1) {
+        const arrive = tileCenter(nextTile.col, nextTile.row);
+        ch.warpFrom = { x: ch.x, y: ch.y };
+        ch.tileCol = nextTile.col;
+        ch.tileRow = nextTile.row;
+        ch.x = arrive.x;
+        ch.y = arrive.y;
+        ch.path.shift();
+        ch.moveProgress = 0;
+        ch.warpTimer = WARP_FLASH_SEC;
+        break;
+      }
       ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row);
 
       ch.moveProgress += (WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt;

@@ -16,6 +16,7 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
+import { RoomToolOverlay } from './components/RoomToolOverlay.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TaskDesk } from './components/TaskDesk.js';
 import { TeamsPanel } from './components/TeamsPanel.js';
@@ -586,6 +587,19 @@ function App() {
             </div>
           )}
 
+          {editor.isEditMode && editorState.activeTool === EditTool.ROOM && (
+            <RoomToolOverlay
+              officeState={officeState}
+              containerRef={containerRef}
+              zoom={editor.zoom}
+              panRef={editor.panRef}
+              applyEdit={editor.applyEdit}
+              renameRoom={editor.handleRenameArea}
+              removeRoom={editor.handleRemoveArea}
+              onPaintCustom={() => setRoomNameDraft('')}
+            />
+          )}
+
           {editor.isEditMode &&
             (() => {
               const selUid = editorState.selectedFurnitureUid;
@@ -1086,7 +1100,10 @@ function App() {
           setIsGroupChatOpen(false);
         }}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
-        onAddRoom={() => setRoomNameDraft('')}
+        onAddRoom={() => {
+          if (!editor.isEditMode) editor.handleToggleEditMode();
+          editor.handleToolChange(EditTool.ROOM);
+        }}
         isDeskOpen={isDeskOpen}
         onToggleDesk={() => setIsDeskOpen((v) => !v)}
         deskWaiting={desk.tasks.filter(needsYou).length}

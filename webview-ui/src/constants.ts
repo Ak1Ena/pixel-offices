@@ -413,6 +413,18 @@ export const FOCUS_NOTICES_MAX_SHOWN = 3;
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
 /** How far above a character's feet its workflow progress pips sit (sprite px). */
 export const WORKFLOW_BADGE_VERTICAL_OFFSET = 30;
+/** How long the flash lasts when a character steps through a portal. */
+export const WARP_FLASH_SEC = 0.5;
+/** Portal ring colors (canvas) and how fast it pulses. */
+export const PORTAL_RING_COLOR = '#6ef0ff';
+export const PORTAL_CORE_COLOR = '#1b3350';
+export const PORTAL_GLOW_COLOR = 'rgba(110, 240, 255, 0.35)';
+export const PORTAL_PULSE_SEC = 1.2;
+/** Team-room door (canvas): wood frame, and the red wash on a room with no door (edit mode). */
+export const ROOM_DOOR_COLOR = '#8b5e3c';
+export const ROOM_DOOR_EDGE_COLOR = '#4a2f1c';
+export const ROOM_NO_DOOR_TINT = 'rgba(209, 66, 73, 0.18)';
+export const WARP_SPARK_COLOR = '#c8f8ff';
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;

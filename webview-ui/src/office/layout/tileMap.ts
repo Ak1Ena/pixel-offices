@@ -1,5 +1,21 @@
 import { TileType } from '../types.js';
 
+/**
+ * Walls and shortcuts that aren't tiles: team-room walls block crossing a
+ * room's edge except at its door (`blocked` holds "c,r>nc,nr" steps), and
+ * portal tiles lead to their partner. Set by OfficeState whenever the layout
+ * is rebuilt; one office per page, so module state is enough.
+ */
+interface Navigation {
+  blocked: Set<string>;
+  portals: Map<string, { col: number; row: number }>;
+}
+let navigation: Navigation = { blocked: new Set(), portals: new Map() };
+
+export function setNavigation(next: Navigation): void {
+  navigation = next;
+}
+
 /** Check if a tile is walkable (floor, carpet, or doorway, and not blocked by furniture) */
 export function isWalkable(
   col: number,
@@ -42,8 +58,11 @@ export function findPath(
   endRow: number,
   tileMap: TileType[][],
   blockedTiles: Set<string>,
+  /** Pets stay on foot: a portal jump would slide them across the map. */
+  opts: { portals?: boolean } = {},
 ): Array<{ col: number; row: number }> {
   if (startCol === endCol && startRow === endRow) return [];
+  const usePortals = opts.portals !== false;
 
   const key = (c: number, r: number) => `${c},${r}`;
   const startKey = key(startCol, startRow);
@@ -86,17 +105,20 @@ export function findPath(
       return path;
     }
 
-    for (const d of dirs) {
-      const nc = curr.col + d.dc;
-      const nr = curr.row + d.dr;
-      const nk = key(nc, nr);
+    const next = dirs
+      .map((d) => ({ col: curr.col + d.dc, row: curr.row + d.dr }))
+      .filter((n) => !navigation.blocked.has(`${currKey}>${key(n.col, n.row)}`));
+    const via = usePortals ? navigation.portals.get(currKey) : undefined;
+    if (via) next.push(via);
+    for (const n of next) {
+      const nk = key(n.col, n.row);
 
       if (visited.has(nk)) continue;
-      if (!isWalkable(nc, nr, tileMap, blockedTiles)) continue;
+      if (!isWalkable(n.col, n.row, tileMap, blockedTiles)) continue;
 
       visited.add(nk);
       parent.set(nk, currKey);
-      queue.push({ col: nc, row: nr });
+      queue.push({ col: n.col, row: n.row });
     }
   }
 

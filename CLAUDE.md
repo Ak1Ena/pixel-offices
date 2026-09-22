@@ -494,6 +494,10 @@ Custom ESLint rules (`eslint-rules/pixel-agents-rules.mjs`) enforce: `no-inline-
 
 ## Layout Editor
 
+**Rooms tool** (`EditTool.ROOM`, "Rooms" in the editor and "+ Room" in the toolbar; `RoomToolOverlay.tsx`, pure geometry in `office/layout/rooms.ts`): a DOM surface over the canvas (so the canvas mouse code is untouched) for dragging a rectangle into a team room (`AreaDefinition.rect`), resizing by its 8 handles, moving it (furniture whose anchor is inside comes along), dragging its door along the walls, dropping in a ready-made room (`ROOM_TEMPLATES`) and filling a room with a preset (`FILL_PRESETS`). Anything that adds furniture goes through a **preview**: `officeState.rebuildFromLayout(after)` without an undo entry, Before/After swaps, Apply restores `before` then `applyEdit(after)`, Cancel restores `before`. "Paint a custom shape" is the old name-then-Area-paint flow.
+
+**Doors and portals**: every team room has `door: {col,row,side}`; `ensureRoomDoors` gives rooms without a valid one a default (bottom wall first, facing floor) on every `rebuildFromLayout`, so older layouts keep working. Room walls now BLOCK walking except through the door — `setNavigation({blocked, portals})` (module state in `tileMap.ts`, set by OfficeState) makes `findPath` refuse blocked edges and treat `layout.portals` pairs as neighbours. A path step to a non-adjacent tile is a portal: `updateCharacter` jumps there and sets `warpTimer` (sparkle flash). Pets pass `{portals:false}`. `unreachableRooms` (BFS from outside every room, through doors and portals) drives the "can't be reached — place a portal pair" prompt; a room with no possible door is washed red in edit mode.
+
 Toggle via "Layout" button. Tools: SELECT (default), Floor paint, Wall paint, Erase (set tiles to VOID), Furniture place, Furniture pick (eyedropper for furniture type), Eyedropper (floor).
 
 **Floor**: 7 patterns from `floors.png` (grayscale 16×16), colorizable via HSBC sliders (Photoshop Colorize). Color baked per-tile on paint. Eyedropper picks pattern+color.

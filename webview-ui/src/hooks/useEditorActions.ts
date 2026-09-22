@@ -77,6 +77,8 @@ interface EditorActions {
   handleSave: () => void;
   /** Swap in a ready-made layout as an undoable edit (Undo / Reset bring the old one back). */
   applyPresetLayout: (layout: OfficeLayout) => void;
+  /** Apply one layout edit (one undo entry, saved, marked dirty). */
+  applyEdit: (layout: OfficeLayout) => void;
   handleZoomChange: (zoom: number) => void;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
@@ -162,7 +164,8 @@ export function useEditorActions(
       editorState.isDirty = true;
       setIsDirty(true);
       os.rebuildFromLayout(newLayout);
-      saveLayout(newLayout);
+      // Save what the office holds: rebuilding gives every team room a door.
+      saveLayout(os.getLayout());
       setEditorTick((n) => n + 1);
     },
     [getOfficeState, editorState, saveLayout],
@@ -972,6 +975,7 @@ export function useEditorActions(
     handleReset,
     handleSave,
     applyPresetLayout,
+    applyEdit,
     handleZoomChange,
     handleEditorTileAction,
     handleEditorEraseAction,

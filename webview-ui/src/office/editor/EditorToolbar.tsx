@@ -278,6 +278,15 @@ export function EditorToolbar({
           </Button>
         )}
         <Button
+          variant={activeTool === EditTool.ROOM ? 'active' : 'default'}
+          size="md"
+          onClick={() => onToolChange(EditTool.ROOM)}
+          title="Team rooms: drag a rectangle, or drop in a ready-made room"
+          data-testid="room-tool"
+        >
+          Rooms
+        </Button>
+        <Button
           variant={isEraseActive ? 'active' : 'default'}
           size="md"
           onClick={() => onToolChange(EditTool.ERASE)}
