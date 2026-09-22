@@ -47,6 +47,8 @@
   --color-board-ink-muted: #3a3a4a;
   /* Lines/cells an agent pointed at, on the light board ground */
   --color-doc-mark: rgba(96, 48, 255, 0.16);
+  /* Lines/cells the user picked to ask about */
+  --color-doc-pick: rgba(55, 148, 255, 0.22);
   --color-pin-link: #d8d4ff;
   --color-pin-file: #c6efc6;
   --color-pin-snippet: #cfe3ff;
@@ -108,6 +110,7 @@
   --color-board-ink: var(--color-board-ink);
   --color-board-ink-muted: var(--color-board-ink-muted);
   --color-doc-mark: var(--color-doc-mark);
+  --color-doc-pick: var(--color-doc-pick);
   --color-pin-link: var(--color-pin-link);
   --color-pin-file: var(--color-pin-file);
   --color-pin-snippet: var(--color-pin-snippet);

@@ -17,6 +17,8 @@ import {
   MOBILE_BREAKPOINT_PX,
   PIN_DRAG_MIME,
 } from '../constants.js';
+import type { DocRef } from '../docViewer.js';
+import { refLabel } from '../docViewer.js';
 import { canSendChatFiles, dragHasFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
@@ -40,6 +42,9 @@ interface ChatCardProps {
   readOnlyReason: string | null;
   needsApproval: boolean;
   attachedPins: BoardPin[];
+  /** Places picked in the document viewer, sent as references with the next message. */
+  docRefs?: DocRef[];
+  onRemoveDocRef?: (index: number) => void;
   onAttachPin: (pinId: string) => void;
   onDetachPin: (pinId: string) => void;
   onSend: (text: string) => void;
@@ -169,6 +174,8 @@ export function ChatCard({
   readOnlyReason,
   needsApproval,
   attachedPins,
+  docRefs = [],
+  onRemoveDocRef,
   onAttachPin,
   onDetachPin,
   onSend,
@@ -263,7 +270,10 @@ export function ChatCard({
   const canSend = readOnlyReason === null;
   const filesEnabled = canSend && canSendChatFiles();
   const hasContent =
-    draft.trim().length > 0 || attachedPins.length > 0 || attachments.files.length > 0;
+    draft.trim().length > 0 ||
+    attachedPins.length > 0 ||
+    docRefs.length > 0 ||
+    attachments.files.length > 0;
   const submit = async () => {
     if (!canSend || !hasContent || attachments.uploading) return;
     const text = draft;
@@ -694,6 +704,27 @@ export function ChatCard({
                   >
                     ×
                   </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {docRefs.length > 0 && (
+            <div className="flex flex-wrap gap-4" data-testid="chat-doc-refs">
+              {docRefs.map((ref, i) => (
+                <span
+                  key={`${refLabel(ref)}-${i}`}
+                  className="flex items-center gap-4 px-4 border border-accent bg-active-bg text-2xs font-mono"
+                >
+                  {refLabel(ref)}
+                  {onRemoveDocRef && (
+                    <button
+                      className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
+                      aria-label={`Remove ${refLabel(ref)}`}
+                      onClick={() => onRemoveDocRef(i)}
+                    >
+                      ×
+                    </button>
+                  )}
                 </span>
               ))}
             </div>

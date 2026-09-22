@@ -2,13 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
 import { BOARD_FILE_API, DOC_NUMBERED_MAX_LINES, DOCX_FRAME_CSS } from '../constants.js';
-import type { CellRange, SheetView } from '../docViewer.js';
+import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
+  cellRange,
   columnLetter,
   fileBaseName,
   fileExtension,
   parseCellRef,
   parseCsv,
+  refLabel,
+  refText,
   spotLabel,
   toSheetView,
   viewerKind,
@@ -32,6 +35,14 @@ interface DocViewerProps {
   /** Requests from agents, listed above the board's files. */
   requests?: Array<{ request: FocusRequest; agent: string }>;
   onSelectRequest?: (requestId: string) => void;
+  /** Places picked in any file so far (the tray), and what to do with them. */
+  refs?: DocRef[];
+  onAddRef?: (ref: DocRef) => void;
+  onRemoveRef?: (index: number) => void;
+  /** Send the tray to an agent's chat; absent when no chat can take it. */
+  onAskRefs?: () => void;
+  /** Who "Ask about this" goes to ("auth-fix"), for the button. */
+  askLabel?: string;
 }
 
 type Loaded =
@@ -104,7 +115,17 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
   return { status: 'ready', blob, doc: { kind: 'text', text } };
 }
 
-function SheetTable({ sheet, mark }: { sheet: SheetView; mark?: CellRange | null }) {
+function SheetTable({
+  sheet,
+  mark,
+  picked,
+  onPick,
+}: {
+  sheet: SheetView;
+  mark?: CellRange | null;
+  picked?: { a: { r: number; c: number }; b: { r: number; c: number } } | null;
+  onPick?: (cell: { r: number; c: number }, extend: boolean) => void;
+}) {
   const columns = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
   const firstMarked = useRef<HTMLTableCellElement | null>(null);
   useEffect(() => {
@@ -112,6 +133,12 @@ function SheetTable({ sheet, mark }: { sheet: SheetView; mark?: CellRange | null
   }, [sheet, mark]);
   const inMark = (r: number, c: number) =>
     !!mark && r >= mark.r0 && r <= mark.r1 && c >= mark.c0 && c <= mark.c1;
+  const inPick = (r: number, c: number) =>
+    !!picked &&
+    r >= Math.min(picked.a.r, picked.b.r) &&
+    r <= Math.max(picked.a.r, picked.b.r) &&
+    c >= Math.min(picked.a.c, picked.b.c) &&
+    c <= Math.max(picked.a.c, picked.b.c);
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="flex-1 min-h-0 overflow-auto bg-board">
@@ -137,12 +164,18 @@ function SheetTable({ sheet, mark }: { sheet: SheetView; mark?: CellRange | null
                 </th>
                 {Array.from({ length: columns }, (_, c) => {
                   const marked = inMark(r, c);
+                  const isPicked = inPick(r, c);
                   return (
                     <td
                       key={c}
                       ref={marked && r === mark?.r0 && c === mark.c0 ? firstMarked : undefined}
-                      className={`border px-8 py-2 whitespace-nowrap ${
-                        marked ? 'bg-doc-mark border-accent' : 'border-board-edge'
+                      onClick={(e) => onPick?.({ r, c }, e.shiftKey)}
+                      className={`border px-8 py-2 whitespace-nowrap cursor-cell ${
+                        isPicked
+                          ? 'bg-doc-pick border-status-active'
+                          : marked
+                            ? 'bg-doc-mark border-accent'
+                            : 'border-board-edge'
                       }`}
                     >
                       {row[c] ?? ''}
@@ -165,7 +198,20 @@ function SheetTable({ sheet, mark }: { sheet: SheetView; mark?: CellRange | null
 }
 
 /** Text with line numbers; the marked lines are highlighted and scrolled to. */
-function NumberedText({ text, from, to }: { text: string; from?: number; to?: number }) {
+function NumberedText({
+  text,
+  from,
+  to,
+  picked,
+  onPick,
+}: {
+  text: string;
+  from?: number;
+  to?: number;
+  /** Lines the user picked (a range), drawn apart from an agent's mark. */
+  picked?: { a: number; b: number } | null;
+  onPick?: (line: number, extend: boolean) => void;
+}) {
   const lines = text.split(/\r?\n/);
   const firstMarked = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -193,14 +239,28 @@ function NumberedText({ text, from, to }: { text: string; from?: number; to?: nu
       {shown.map((line, i) => {
         const n = start + i;
         const marked = from !== undefined && n >= from && n <= (to ?? from);
+        const isPicked =
+          !!picked && n >= Math.min(picked.a, picked.b) && n <= Math.max(picked.a, picked.b);
         return (
           <div
             key={n}
             ref={marked && n === from ? firstMarked : undefined}
-            className={`grid grid-cols-[52px_1fr] pr-16 border-l-4 ${marked ? 'bg-doc-mark border-accent' : 'border-transparent'}`}
+            className={`grid grid-cols-[52px_1fr] pr-16 border-l-4 ${
+              isPicked
+                ? 'bg-doc-pick border-status-active'
+                : marked
+                  ? 'bg-doc-mark border-accent'
+                  : 'border-transparent'
+            }`}
             data-marked={marked || undefined}
           >
-            <span className="text-right pr-12 text-board-ink-muted select-none">{n}</span>
+            <button
+              className="text-right pr-12 text-board-ink-muted select-none bg-transparent border-0 p-0 cursor-pointer text-xs hover:text-board-ink"
+              onClick={(e) => onPick?.(n, e.shiftKey)}
+              title="Pick this line (Shift-click for a range)"
+            >
+              {n}
+            </button>
             <span className="whitespace-pre-wrap break-words">{line || ' '}</span>
           </div>
         );
@@ -307,7 +367,24 @@ export function DocViewer({
   onAnswerFocus,
   requests = [],
   onSelectRequest,
+  refs = [],
+  onAddRef,
+  onRemoveRef,
+  onAskRefs,
+  askLabel,
 }: DocViewerProps) {
+  const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
+  const [pickedCells, setPickedCells] = useState<{
+    a: { r: number; c: number };
+    b: { r: number; c: number };
+  } | null>(null);
+  const [pdfPage, setPdfPage] = useState('');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    setPickedLines(null);
+    setPickedCells(null);
+    setPdfPage(focus?.page ? String(focus.page) : '');
+  }, [pin, focus?.page]);
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   const [sheetIndex, setSheetIndex] = useState(0);
 
@@ -345,6 +422,22 @@ export function DocViewer({
 
   const doc = state.status === 'ready' ? state.doc : null;
   const mark = focus?.cell ? parseCellRef(focus.cell) : null;
+  const sheetName =
+    doc?.kind === 'table' && doc.sheets.length > 1 ? doc.sheets[sheetIndex]?.name : undefined;
+  const current: DocRef | null =
+    doc?.kind === 'text' && pickedLines
+      ? {
+          path: pin.value,
+          lineStart: Math.min(pickedLines.a, pickedLines.b),
+          lineEnd: Math.max(pickedLines.a, pickedLines.b),
+        }
+      : doc?.kind === 'table' && pickedCells
+        ? { path: pin.value, cell: cellRange(pickedCells.a, pickedCells.b, sheetName) }
+        : doc?.kind === 'pdf' && Number(pdfPage) > 0
+          ? { path: pin.value, page: Number(pdfPage) }
+          : doc && doc.kind !== 'text' && doc.kind !== 'table' && doc.kind !== 'pdf'
+            ? { path: pin.value }
+            : null;
 
   // A request naming a sheet opens on that sheet.
   useEffect(() => {
@@ -474,7 +567,15 @@ export function DocViewer({
             />
           )}
           {doc?.kind === 'text' && (
-            <NumberedText text={doc.text} from={focus?.lineStart} to={focus?.lineEnd} />
+            <NumberedText
+              text={doc.text}
+              from={focus?.lineStart}
+              to={focus?.lineEnd}
+              picked={pickedLines}
+              onPick={(n, extend) =>
+                setPickedLines((prev) => (extend && prev ? { a: prev.a, b: n } : { a: n, b: n }))
+              }
+            />
           )}
           {doc?.kind === 'table' && (
             <>
@@ -500,6 +601,12 @@ export function DocViewer({
               {doc.sheets[sheetIndex] && (
                 <SheetTable
                   sheet={doc.sheets[sheetIndex]}
+                  picked={pickedCells}
+                  onPick={(cell, extend) =>
+                    setPickedCells((prev) =>
+                      extend && prev ? { a: prev.a, b: cell } : { a: cell, b: cell },
+                    )
+                  }
                   mark={
                     mark &&
                     (!mark.sheet ||
@@ -510,6 +617,98 @@ export function DocViewer({
                 />
               )}
             </>
+          )}
+          {(onAddRef || refs.length > 0) && state.status === 'ready' && (
+            <div
+              className="flex flex-col gap-4 px-10 py-6 border-t-2 border-border bg-bg-dark"
+              data-testid="doc-pick-bar"
+            >
+              <div className="flex items-center gap-6 flex-wrap text-xs">
+                {current ? (
+                  <>
+                    <span className="text-status-active">{refLabel(current)}</span>
+                    {onAddRef && (
+                      <Button
+                        size="sm"
+                        onClick={() => onAddRef(current)}
+                        data-testid="doc-pick-add"
+                      >
+                        Add to selection
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        void navigator.clipboard
+                          ?.writeText(refText(current))
+                          .then(() => setCopied(true));
+                        setTimeout(() => setCopied(false), 1_500);
+                      }}
+                    >
+                      {copied ? 'Copied' : 'Copy reference'}
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-text-muted">
+                    {doc?.kind === 'text'
+                      ? 'Click a line number to pick it; Shift-click another for a range.'
+                      : doc?.kind === 'table'
+                        ? 'Click a cell to pick it; Shift-click another for a range.'
+                        : doc?.kind === 'pdf'
+                          ? 'Type the page to point at.'
+                          : 'Point at this whole file.'}
+                  </span>
+                )}
+                {doc?.kind === 'pdf' && (
+                  <input
+                    value={pdfPage}
+                    onChange={(e) => setPdfPage(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={(e) => e.stopPropagation()}
+                    placeholder="page"
+                    className="w-60 bg-bg border-2 border-border px-4 py-1 text-xs text-text"
+                  />
+                )}
+                <span className="flex-1" />
+                {onAskRefs && (refs.length > 0 || current) && (
+                  <Button
+                    variant="accent"
+                    size="sm"
+                    onClick={() => {
+                      if (current && onAddRef && !refs.some((r) => refText(r) === refText(current)))
+                        onAddRef(current);
+                      onAskRefs();
+                    }}
+                    data-testid="doc-pick-ask"
+                  >
+                    Ask {askLabel ?? 'the agent'} about this
+                  </Button>
+                )}
+              </div>
+              {refs.length > 0 && (
+                <div className="flex gap-4 flex-wrap">
+                  {refs.map((r, i) => (
+                    <span
+                      key={`${refText(r)}-${i}`}
+                      className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs font-mono"
+                    >
+                      {refLabel(r)}
+                      {onRemoveRef && (
+                        <button
+                          className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
+                          onClick={() => onRemoveRef(i)}
+                          aria-label={`Remove ${refLabel(r)}`}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                  <span className="text-2xs text-text-muted self-center">
+                    Only the path and place are sent, never the text.
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

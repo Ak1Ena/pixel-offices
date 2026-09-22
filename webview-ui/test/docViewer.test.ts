@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import {
+  cellRange,
   columnLetter,
   fileBaseName,
   parseCellRef,
   parseCsv,
+  refLabel,
+  refText,
   spotLabel,
   toSheetView,
   viewerKind,
+  withRefs,
 } from '../src/docViewer.js';
 
 test('files open by type, judged by extension', () => {
@@ -71,4 +75,20 @@ test('a spot reads as lines, a page or a cell', () => {
   assert.equal(spotLabel({ page: 3 }), 'page 3');
   assert.equal(spotLabel({ cell: 'Q3!B4' }), 'Q3!B4');
   assert.equal(spotLabel({}), '');
+});
+
+test('references name the place, never the content', () => {
+  const lines = { path: '/app/src/session.ts', lineStart: 41, lineEnd: 43 };
+  assert.equal(refLabel(lines), 'session.ts:41–43');
+  assert.equal(refText(lines), '[@/app/src/session.ts lines 41-43]');
+  assert.equal(refText({ path: '/d/b.xlsx', cell: 'Q3!B4:D6' }), '[@/d/b.xlsx cells Q3!B4:D6]');
+  assert.equal(refText({ path: '/d/r.pdf', page: 3 }), '[@/d/r.pdf page 3]');
+  assert.equal(refLabel({ path: '/d/plan.docx' }), 'plan.docx');
+  assert.equal(withRefs('Why?', [lines]), 'Why?\n\n[@/app/src/session.ts lines 41-43]');
+  assert.equal(withRefs('', [lines]), '[@/app/src/session.ts lines 41-43]');
+});
+
+test('clicked cells become a range', () => {
+  assert.equal(cellRange({ r: 5, c: 3 }, { r: 3, c: 1 }, 'Q3'), 'Q3!B4:D6');
+  assert.equal(cellRange({ r: 0, c: 0 }, { r: 0, c: 0 }), 'A1');
 });

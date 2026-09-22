@@ -29,6 +29,8 @@ import { WorkflowBadges } from './components/WorkflowBadges.js';
 import { WorkflowRail } from './components/WorkflowRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES } from './constants.js';
+import type { DocRef } from './docViewer.js';
+import { refText, withRefs } from './docViewer.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
@@ -160,6 +162,9 @@ function App() {
   const permissionAsks = usePermissionAsks();
   const focus = useFocusRequests();
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
+  /** Places picked in the viewer, waiting to be sent (the tray), and those attached per agent. */
+  const [docTray, setDocTray] = useState<DocRef[]>([]);
+  const [docRefsFor, setDocRefsFor] = useState<Record<number, DocRef[]>>({});
   const [focusLater, setFocusLater] = useState<ReadonlySet<string>>(() => new Set());
 
   const {
@@ -716,11 +721,19 @@ function App() {
                   onAttachPin={(pinId) => attachPin(id, pinId)}
                   onDetachPin={(pinId) => detachPin(id, pinId)}
                   onSend={(text) => {
-                    const message = composeMessage(text, attached);
+                    const message = withRefs(composeMessage(text, attached), docRefsFor[id] ?? []);
                     if (!message) return;
                     chat.sendMessage(id, message);
                     setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
+                    setDocRefsFor((prev) => ({ ...prev, [id]: [] }));
                   }}
+                  docRefs={docRefsFor[id] ?? []}
+                  onRemoveDocRef={(i) =>
+                    setDocRefsFor((prev) => ({
+                      ...prev,
+                      [id]: (prev[id] ?? []).filter((_, j) => j !== i),
+                    }))
+                  }
                   onCancel={(queueId) => chat.cancelMessage(id, queueId)}
                   usage={chat.usage[id]}
                   customName={chat.names[id] ?? ''}
@@ -850,10 +863,11 @@ function App() {
                 const attached = (attachedPinIds[id] ?? [])
                   .map((pinId) => chat.pins.find((p) => p.id === pinId))
                   .filter((p): p is NonNullable<typeof p> => p !== undefined);
-                const message = composeMessage(text, attached);
+                const message = withRefs(composeMessage(text, attached), docRefsFor[id] ?? []);
                 if (!message) return;
                 chat.sendMessage(id, message);
                 setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
+                setDocRefsFor((prev) => ({ ...prev, [id]: [] }));
               }}
               onCancel={chat.cancelMessage}
               pinsFor={(id) => pinsForAgent(chat.pins, id)}
@@ -1243,6 +1257,13 @@ function App() {
         const viewedFocus = focus.requests.find(
           (r) => r.requestId === viewedFocusId && r.pinId === viewed.id,
         );
+        // "Ask about this" goes to the open chat, else the agent that asked to look.
+        const askTarget =
+          chatAgentId ??
+          viewedFocus?.agentId ??
+          (messengerAgentId !== null && agents.includes(messengerAgentId)
+            ? messengerAgentId
+            : null);
         const labelOfRequest = (agentId?: number) =>
           agentId !== undefined ? agentLabel(agentId) : 'An agent';
         return (
@@ -1267,6 +1288,33 @@ function App() {
             requests={[...focus.requests]
               .reverse()
               .map((request) => ({ request, agent: labelOfRequest(request.agentId) }))}
+            refs={docTray}
+            onAddRef={(ref) =>
+              setDocTray((prev) =>
+                prev.some((r) => refText(r) === refText(ref)) ? prev : [...prev, ref],
+              )
+            }
+            onRemoveRef={(i) => setDocTray((prev) => prev.filter((_, j) => j !== i))}
+            askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
+            onAskRefs={
+              askTarget !== null
+                ? () => {
+                    const target = askTarget;
+                    setDocRefsFor((prev) => {
+                      const current = prev[target] ?? [];
+                      const merged = [...current];
+                      for (const ref of docTray) {
+                        if (!merged.some((r) => refText(r) === refText(ref))) merged.push(ref);
+                      }
+                      return { ...prev, [target]: merged };
+                    });
+                    setDocTray([]);
+                    setViewedPinId(null);
+                    setViewedFocusId(null);
+                    openChat(target);
+                  }
+                : undefined
+            }
             onSelectRequest={(requestId) => {
               const request = focus.requests.find((r) => r.requestId === requestId);
               if (!request) return;

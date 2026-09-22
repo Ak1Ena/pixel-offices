@@ -192,3 +192,62 @@ export function spotLabel(spot: {
   if (spot.cell) return spot.cell;
   return '';
 }
+
+/** A place in a file the user picked in the viewer, sent to an agent as a reference only. */
+export interface DocRef {
+  path: string;
+  lineStart?: number;
+  lineEnd?: number;
+  page?: number;
+  cell?: string;
+}
+
+/** "session.ts:41–43", "budget.xlsx Q3!B4:D6", "plan.pdf p.3" — for chips. */
+export function refLabel(ref: DocRef): string {
+  const name = fileBaseName(ref.path);
+  if (ref.lineStart) {
+    return ref.lineEnd && ref.lineEnd !== ref.lineStart
+      ? `${name}:${ref.lineStart}–${ref.lineEnd}`
+      : `${name}:${ref.lineStart}`;
+  }
+  if (ref.cell) return `${name} ${ref.cell}`;
+  if (ref.page) return `${name} p.${ref.page}`;
+  return name;
+}
+
+/** What the agent gets: the path and the place, never the text. */
+export function refText(ref: DocRef): string {
+  const where = ref.lineStart
+    ? ref.lineEnd && ref.lineEnd !== ref.lineStart
+      ? ` lines ${ref.lineStart}-${ref.lineEnd}`
+      : ` line ${ref.lineStart}`
+    : ref.cell
+      ? ` cells ${ref.cell}`
+      : ref.page
+        ? ` page ${ref.page}`
+        : '';
+  return `[@${ref.path}${where}]`;
+}
+
+/** Message text with the references appended, one per line. */
+export function withRefs(text: string, refs: DocRef[]): string {
+  if (refs.length === 0) return text;
+  const lines = refs.map(refText);
+  return text.trim() ? `${text.trim()}\n\n${lines.join('\n')}` : lines.join('\n');
+}
+
+/** "B4:D6" from two clicked cells (0-based), with the sheet name when there are several. */
+export function cellRange(
+  a: { r: number; c: number },
+  b: { r: number; c: number },
+  sheet?: string,
+): string {
+  const c0 = Math.min(a.c, b.c);
+  const c1 = Math.max(a.c, b.c);
+  const r0 = Math.min(a.r, b.r);
+  const r1 = Math.max(a.r, b.r);
+  const start = `${columnLetter(c0)}${r0 + 1}`;
+  const end = `${columnLetter(c1)}${r1 + 1}`;
+  const range = start === end ? start : `${start}:${end}`;
+  return sheet ? `${sheet}!${range}` : range;
+}
