@@ -1878,6 +1878,12 @@ components:
         error:
           type: string
           description: Why this member did not start.
+        benched:
+          type: boolean
+          description: Not started yet; the lead calls it in by writing @name in a reply.
+        startedAt:
+          type: string
+          description: When the member's session was started (ISO time).
 
     TeamRunState:
       type: string

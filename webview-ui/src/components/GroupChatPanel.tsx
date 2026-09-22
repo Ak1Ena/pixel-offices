@@ -9,10 +9,12 @@ import {
   addressedMembers,
   completeMention,
   defaultRecipients,
+  formatTokens,
   groupNote,
   mentionHandle,
   mentionQuery,
   mergeTimeline,
+  teamUsage,
 } from '../officeChat.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { Button } from './ui/Button.js';
@@ -21,6 +23,8 @@ interface GroupChatPanelProps {
   channels: ChatChannel[];
   chats: Record<number, ChatEntry[]>;
   labelOf: (agentId: number) => string;
+  /** Per-agent token use, for the channel's total. */
+  usage?: Record<number, { totalTokens: number; burnPerMinute: number } | undefined>;
   sendable: Record<number, boolean>;
   relayEnabled: boolean;
   /** Absent when this connection may not change it. */
@@ -45,6 +49,7 @@ export function GroupChatPanel({
   channels,
   chats,
   labelOf,
+  usage,
   sendable,
   relayEnabled,
   onSetRelay,
@@ -77,6 +82,7 @@ export function GroupChatPanel({
 
   if (!channel) return null;
   const reachable = channel.members.filter((id) => sendable[id]);
+  const channelUse = usage ? teamUsage(channel.members, usage) : null;
   // `@Name` in the draft sends to just those agents, whatever is ticked.
   const addressed = addressedMembers(draft, reachable, labelOf);
   const defaults = defaultRecipients(channel, reachable);
@@ -170,6 +176,18 @@ export function GroupChatPanel({
           </button>
         ))}
         {channel.members.length === 0 && <span className="text-text-muted">No agents yet.</span>}
+        {channelUse && (
+          <span
+            className="ml-auto text-text-muted"
+            title={channelUse.members
+              .map((m) => `${labelOf(m.id)}: ${formatTokens(m.totalTokens)}`)
+              .join('\n')}
+            data-testid="group-usage"
+          >
+            {formatTokens(channelUse.totalTokens)} tokens · {formatTokens(channelUse.burnPerMinute)}
+            /min
+          </span>
+        )}
       </div>
 
       <div ref={threadRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-6 p-10">

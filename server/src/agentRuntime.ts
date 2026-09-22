@@ -65,7 +65,7 @@ import {
   setTeamSwitchCallback,
 } from './transcriptParser.js';
 import type { AgentState } from './types.js';
-import { attachMessage, WorkflowRuns } from './workflowRuns.js';
+import { attachMessage, newRunId, WorkflowRuns } from './workflowRuns.js';
 import { WorkflowStore } from './workflowStore.js';
 
 /** Callbacks that adapters register for platform-specific behavior. */
@@ -151,7 +151,10 @@ export class AgentRuntime {
     this.chatSender = new ChatSender(store);
     this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
     this.permissions = new PermissionBroker(store);
-    setReplyListener((id, text) => this.relay.onReply(id, text));
+    setReplyListener((id, text) => {
+      this.relay.onReply(id, text);
+      this.teamRuns?.onReply(id, text);
+    });
     this.tokenBurnTimer = setInterval(() => tickTokenBurn(this.store), TOKEN_BURN_TICK_MS);
     this.tokenBurnTimer.unref?.();
     this.launchers = new LauncherHub(() => this.chatSender.refreshSendable());
@@ -782,8 +785,14 @@ export class AgentRuntime {
   /** Teams started from presets in this office. */
   get crews(): TeamRuns {
     this.teamRuns ??= new TeamRuns(this.store, () => this.agentStarter, {
-      attachWorkflow: (agentId, workflowId) => {
-        const result = this.attachWorkflow(agentId, workflowId);
+      workflowIntro: (workflowId) => {
+        const path = this.workflows.get(workflowId)?.path;
+        if (!path) return undefined;
+        const runId = newRunId();
+        return { runId, text: attachMessage({ runId }, path) };
+      },
+      attachWorkflow: (agentId, workflowId, runId) => {
+        const result = this.attachWorkflow(agentId, workflowId, runId);
         if (!result.ok) console.warn(`[Pixel Agents] Team workflow not attached: ${result.error}`);
       },
       setRelay: (enabled) => this.relay.setEnabled(enabled),
@@ -793,17 +802,23 @@ export class AgentRuntime {
 
   /**
    * Give a workflow to an agent: start a run and type a short message naming
-   * the workflow FILE — the agent reads the steps itself.
+   * the workflow FILE — the agent reads the steps itself. With `toldRunId`
+   * the agent already has that message (in its first prompt): only the run starts.
    */
   attachWorkflow(
     agentId: unknown,
     workflowId: unknown,
+    toldRunId?: string,
   ): { ok: true } | { ok: false; error: string } {
     if (typeof agentId !== 'number' || !this.store.get(agentId)) {
       return { ok: false, error: 'No such agent.' };
     }
     const workflow = this.workflows.get(workflowId);
     if (!workflow?.path) return { ok: false, error: 'No such workflow.' };
+    if (toldRunId) {
+      this.runs.start(agentId, workflow, toldRunId);
+      return { ok: true };
+    }
     if (!this.chatSender.canSend(agentId)) {
       return {
         ok: false,

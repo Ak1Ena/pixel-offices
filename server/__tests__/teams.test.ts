@@ -51,6 +51,10 @@ describe('team presets', () => {
     const toBackend = firstMessage(TEAM, TEAM.members[0], 'PDF export');
     expect(toBackend).toContain('led by @lead');
     expect(toBackend).not.toContain('PDF export');
+    expect(toLead).toContain('not running yet');
+    const called = firstMessage(TEAM, TEAM.members[0], 'PDF export', '@backend add GET /pdf');
+    expect(called).toContain('@lead called you in: @backend add GET /pdf');
+    expect(called).not.toContain('Wait for instructions');
   });
 });
 
@@ -58,7 +62,7 @@ describe('starting a team', () => {
   let store: AgentStateStore;
   let started: Array<{ name?: string; firstMessage?: string }>;
   let agentIds: Map<string, number>;
-  let attached: Array<[number, string]>;
+  let attached: Array<[number, string, string]>;
   let relay: boolean[];
   let crews: TeamRuns;
   const starter: AgentStarter = {
@@ -78,7 +82,8 @@ describe('starting a team', () => {
     attached = [];
     relay = [];
     crews = new TeamRuns(store, () => starter, {
-      attachWorkflow: (id, w) => attached.push([id, w]),
+      workflowIntro: (w) => ({ runId: 'w1', text: `Follow ${w} (run w1)` }),
+      attachWorkflow: (id, w, runId) => attached.push([id, w, runId]),
       setRelay: (on) => relay.push(on),
     });
   });
@@ -87,24 +92,43 @@ describe('starting a team', () => {
     vi.useRealTimers();
   });
 
-  it('starts the lead first, turns relay on, and hands out workflows once adopted', () => {
+  it('starts only the lead, with its workflow in the first prompt', () => {
     const result = crews.start(TEAM, '/repo', 'PDF export');
     expect(result.ok).toBe(true);
-    expect(started.map((s) => s.name)).toEqual(['lead', 'backend']);
+    expect(started.map((s) => s.name)).toEqual(['lead']);
     expect(relay).toEqual([true]);
+    // The workflow is in the first prompt, not typed after the first turn.
+    expect(started[0].firstMessage).toContain('Follow new-endpoint (run w1)');
     agentIds.set('s-lead', 7);
     vi.advanceTimersByTime(1_100);
-    expect(attached).toEqual([[7, 'new-endpoint']]);
-    expect(crews.snapshot().runs[0].members[0]).toMatchObject({
-      name: 'lead',
-      agentId: 7,
-      lead: true,
-    });
+    expect(attached).toEqual([[7, 'new-endpoint', 'w1']]);
+    const members = crews.snapshot().runs[0].members;
+    expect(members[0]).toMatchObject({ name: 'lead', agentId: 7, lead: true });
+    expect(members[1]).toMatchObject({ name: 'backend', benched: true });
+  });
+
+  it('starts a benched teammate when the lead calls it by @name, once', () => {
+    crews.start(TEAM, '/repo', 'PDF export');
+    agentIds.set('s-lead', 7);
+    vi.advanceTimersByTime(1_100);
+    crews.onReply(7, 'I will do the UI myself; @backend can wait.');
+    crews.onReply(8, '@backend from a stranger');
+    expect(started.map((s) => s.name)).toEqual(['lead']);
+    crews.onReply(7, '@backend add GET /api/pdf returning the file.\n\nUser: all good?');
+    expect(started.map((s) => s.name)).toEqual(['lead', 'backend']);
+    expect(started[1].firstMessage).toContain('@lead called you in: @backend add GET /api/pdf');
+    crews.onReply(7, '@backend also add tests');
+    expect(started).toHaveLength(2);
+    agentIds.set('s-backend', 8);
+    vi.advanceTimersByTime(1_100);
+    expect(crews.snapshot().runs[0].members[1]).toMatchObject({ agentId: 8 });
+    expect(crews.snapshot().runs[0].members[1].benched).toBeUndefined();
   });
 
   it('refuses without a goal or without a way to start agents', () => {
     expect(crews.start(TEAM, '/repo', '  ').ok).toBe(false);
     const none = new TeamRuns(store, () => undefined, {
+      workflowIntro: () => undefined,
       attachWorkflow: () => {},
       setRelay: () => {},
     });

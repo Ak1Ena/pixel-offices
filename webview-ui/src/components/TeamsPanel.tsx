@@ -370,6 +370,7 @@ function StartDialog({
               <span>
                 {m.lead ? '★ ' : ''}
                 {m.name}
+                {!m.lead && <span className="text-text-muted"> · on call</span>}
               </span>
               <code className="text-2xs text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
                 {m.command || 'claude'}
@@ -378,7 +379,8 @@ function StartDialog({
           ))}
         </div>
         <span className="text-2xs text-text-muted font-reading">
-          The lead gets your goal; the others wait for the lead's first message. Each member counts
+          Only the lead starts now, with your goal. It calls in the teammates the task needs by
+          writing @name; each starts then, with the lead's message. Each running member counts
           toward the office's limit of agents it runs.
         </span>
       </div>
@@ -393,7 +395,7 @@ function StartDialog({
           onClick={() => onStart(folder.trim(), goal.trim())}
           data-testid="team-start-go"
         >
-          Start {team.members.length} agents
+          Start the lead
         </Button>
       </div>
     </div>
@@ -860,13 +862,22 @@ function RunningTeams({
                 disabled={m.agentId === undefined}
                 onClick={() => m.agentId !== undefined && onOpenAgent(m.agentId)}
                 className="flex items-center gap-4 px-6 py-2 bg-bg border-2 border-border text-xs text-text cursor-pointer disabled:cursor-default"
-                title={m.error}
+                title={
+                  m.error ??
+                  (m.benched ? 'Not started yet: starts when the lead calls @' + m.name : undefined)
+                }
               >
                 <CharacterPortrait palette={m.palette ?? 0} zoom={1} />
                 {m.lead ? '★ ' : ''}
                 {m.agentId !== undefined ? labelOf(m.agentId) : m.name}
                 <span className="text-2xs text-text-muted">
-                  {m.error ? `· ${m.error}` : m.agentId === undefined ? '· starting' : ''}
+                  {m.error
+                    ? `· ${m.error}`
+                    : m.benched
+                      ? '· on call'
+                      : m.agentId === undefined
+                        ? '· starting'
+                        : ''}
                 </span>
               </button>
             ))}

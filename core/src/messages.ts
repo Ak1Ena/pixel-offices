@@ -540,6 +540,8 @@ export interface TeamRunMember {
   palette?: number;
   agentId?: number;
   error?: string;
+  benched?: boolean;
+  startedAt?: string;
 }
 
 export type TeamRunState = 'running' | 'stopped';

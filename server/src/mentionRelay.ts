@@ -1,3 +1,4 @@
+import { addressedParts } from './addressedParts.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import {
   RELAY_MAX_CHARS,
@@ -8,8 +9,9 @@ import {
 import type { AgentState } from './types.js';
 
 /**
- * Agent-to-agent messages: when an agent's reply mentions another agent as
- * `@Name`, the reply is passed to that agent as a prompt.
+ * Agent-to-agent messages: when a paragraph of an agent's reply opens with
+ * `@Name`, that part (not the whole reply) is passed to that agent as a
+ * prompt — one conversation per pair (see addressedParts.ts).
  *
  * Every pass starts a turn (and spends tokens) in the receiving session, and
  * two agents can answer each other forever, so this is OFF by default and
@@ -89,15 +91,18 @@ export class MentionRelay {
     const from = agentAliases(senderId, sender)[0];
     while (this.passes.length > 0 && this.passes[0].at < now - RELAY_WINDOW_MS) this.passes.shift();
 
-    for (const targetId of mentionedAgents(text, senderId, this.store)) {
+    const others = [...this.store]
+      .filter(([id]) => id !== senderId)
+      .map(([id, agent]) => ({ key: id, aliases: agentAliases(id, agent) }));
+    for (const [targetId, part] of addressedParts(text, others)) {
       const pair = `${senderId}>${targetId}`;
       if (this.passes.length >= RELAY_TOTAL_LIMIT) return;
       if (this.passes.filter((p) => p.pair === pair).length >= RELAY_PAIR_LIMIT) continue;
       this.passes.push({ at: now, pair });
-      const body = text.length > RELAY_MAX_CHARS ? `${text.slice(0, RELAY_MAX_CHARS)}…` : text;
+      const body = part.length > RELAY_MAX_CHARS ? `${part.slice(0, RELAY_MAX_CHARS)}…` : part;
       this.deliver(
         targetId,
-        `Message from ${from} (teammate, via the office): ${body}\n(To answer, write @${from} in your reply.)`,
+        `Message from ${from} (teammate, via the office): ${body}\n(To answer, start a paragraph with @${from}.)`,
       );
     }
   }

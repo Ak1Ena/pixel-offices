@@ -79,30 +79,56 @@ export function fillGoal(template: string | undefined, goal: string): string {
 }
 
 /**
- * The first message each member starts with (it rides the command line). The
- * lead gets the goal; everyone gets their role, the roster, and how to reach
- * a teammate (@name in a reply — the office passes it on when relay is on).
+ * The first message each member starts with (it rides the command line). Only
+ * the lead starts with the team: it gets the goal and the roster, and calls
+ * in the teammates the task needs by writing `@name` and what to do. A called
+ * member starts with its role, the roster and the lead's words.
  */
-export function firstMessage(team: TeamPreset, member: TeamMember, goal: string): string {
+export function firstMessage(
+  team: TeamPreset,
+  member: TeamMember,
+  goal: string,
+  calledWith?: string,
+): string {
   const lead = leadOf(team);
   const roster = team.members.map((m) => `@${m.name} (${m.role})`).join(', ');
+  const role = member.instructions
+    ? `Your role: ${member.instructions}`
+    : `Your role: ${member.role}.`;
+  if (member === lead) {
+    const others = team.members
+      .filter((m) => m !== lead)
+      .map((m) => `@${m.name} (${m.role})`)
+      .join(', ');
+    const talk = team.relay
+      ? 'Once a teammate is running, a paragraph of your reply that starts with @their-name reaches them (only that paragraph), and they answer you the same way. Talk to one teammate at a time.'
+      : 'Once running, teammates cannot hear you directly; the user passes messages on.';
+    return [
+      fillGoal(team.goalTemplate, goal),
+      '',
+      `You lead the team "${team.title}" in the Pixel Office.`,
+      role,
+      ...(others
+        ? [
+            `Teammates you can call in: ${others}. They are not running yet.`,
+            'Decide who this task needs and call only them: start a paragraph with @name and what they should do; the office starts that teammate with that paragraph. Mentioning a name mid-sentence does nothing. Do small tasks yourself.',
+            talk,
+          ]
+        : []),
+    ].join('\n');
+  }
   const talk = team.relay
-    ? 'To message a teammate, write @their-name in your reply; the Pixel Office passes it on.'
+    ? 'To message a teammate, start a paragraph of your reply with @their-name; the Pixel Office passes that paragraph on.'
     : 'Teammates cannot hear you directly; the user passes messages on.';
-  const lines =
-    member === lead
-      ? [
-          fillGoal(team.goalTemplate, goal),
-          '',
-          `You lead the team "${team.title}" in the Pixel Office: ${roster}.`,
-          member.instructions ? `Your role: ${member.instructions}` : `Your role: ${member.role}.`,
-          talk,
-        ]
-      : [
-          `You are @${member.name}, the ${member.role} in the team "${team.title}", led by @${lead.name}.`,
-          member.instructions ? `Your role: ${member.instructions}` : '',
-          `Team: ${roster}.`,
-          `Wait for instructions from @${lead.name} before you start. ${talk}`,
-        ];
-  return lines.filter((l, i) => l || i === 1).join('\n');
+  return [
+    `You are @${member.name}, the ${member.role} in the team "${team.title}", led by @${lead.name}.`,
+    member.instructions ? role : '',
+    `Team: ${roster}.`,
+    calledWith
+      ? `@${lead.name} called you in: ${calledWith}`
+      : `Wait for instructions from @${lead.name} before you start.`,
+    talk,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }

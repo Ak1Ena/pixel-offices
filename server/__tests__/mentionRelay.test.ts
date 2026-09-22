@@ -49,7 +49,7 @@ describe('agent-to-agent mentions', () => {
     expect(sent).toEqual([
       [
         2,
-        'Message from Backend Bob (teammate, via the office): @Pat use amount_cents\n(To answer, write @Backend Bob in your reply.)',
+        'Message from Backend Bob (teammate, via the office): @Pat use amount_cents\n(To answer, start a paragraph with @Backend Bob.)',
       ],
     ]);
   });
@@ -59,5 +59,20 @@ describe('agent-to-agent mentions', () => {
     relay.setEnabled(true);
     for (let i = 0; i < RELAY_PAIR_LIMIT + 3; i++) relay.onReply(1, '@Pat again');
     expect(sent).toHaveLength(RELAY_PAIR_LIMIT);
+  });
+});
+
+describe('relay sends one conversation per pair', () => {
+  it('passes each agent only its part', () => {
+    const { relay, sent } = setup();
+    relay.setEnabled(true);
+    relay.onReply(
+      1,
+      '@Pat use cents.\n\nUser: shall I go on? @Patrick is idle.\n\n@Patrick write tests.',
+    );
+    expect(sent.map(([id, text]) => [id, text.split('\n')[0]])).toEqual([
+      [2, 'Message from Backend Bob (teammate, via the office): @Pat use cents.'],
+      [3, 'Message from Backend Bob (teammate, via the office): @Patrick write tests.'],
+    ]);
   });
 });

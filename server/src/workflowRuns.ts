@@ -24,13 +24,17 @@ export type RunReply =
 const NO_SUCH_RUN = 'No such workflow run in this office.';
 
 /** The message typed to the agent when it is given a workflow: the path, never the steps. */
-export function attachMessage(run: WorkflowRun, filePath: string): string {
+export function attachMessage(run: Pick<WorkflowRun, 'runId'>, filePath: string): string {
   return [
     `Follow the workflow in @${filePath} (run ${run.runId}). Read it first.`,
     `After you finish each step, run: ${WORKFLOW_CLI_COMMAND} step ${run.runId} <step number>`,
     `At a [gate] step, run: ${WORKFLOW_CLI_COMMAND} gate ${run.runId} <step number> and do what it prints.`,
     `At a [show] step, run: ${SHOW_CLI_COMMAND} <file> --why "..." --wait, then mark the step.`,
   ].join('\n');
+}
+
+export function newRunId(): string {
+  return `w${crypto.randomBytes(3).toString('hex')}`;
 }
 
 export class WorkflowRuns {
@@ -46,13 +50,16 @@ export class WorkflowRuns {
     return { type: 'workflowRuns', runs: structuredClone(this.runs) };
   }
 
-  /** A new run of `workflow` for `agentId`; any run the agent still had is stopped. */
-  start(agentId: number, workflow: Workflow): WorkflowRun {
+  /**
+   * A new run of `workflow` for `agentId`; any run the agent still had is stopped.
+   * `runId` is given when the agent was told about the run before it existed.
+   */
+  start(agentId: number, workflow: Workflow, runId = newRunId()): WorkflowRun {
     for (const old of this.runs.filter((r) => r.agentId === agentId && r.state === 'running')) {
       this.finish(old, 'stopped');
     }
     const run: WorkflowRun = {
-      runId: `w${crypto.randomBytes(3).toString('hex')}`,
+      runId,
       workflowId: workflow.id,
       title: workflow.title,
       agentId,

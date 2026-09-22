@@ -212,8 +212,35 @@ export function defaultRecipients(channel: ChatChannel, reachable: number[]): nu
 
 export function groupNote(teammates: string[], relayEnabled: boolean): string {
   const others = teammates.length > 0 ? ` Teammates: ${teammates.join(', ')}.` : '';
-  const mention = relayEnabled ? ' To message a teammate, write @Name in your reply.' : '';
+  const mention = relayEnabled
+    ? ' To message a teammate, start a paragraph of your reply with @Name.'
+    : '';
   return ` (Team chat via Pixel Office.${others} Shared docs and notes: ~/.pixel-agents/board.md. To post one yourself: ${BOARD_POST_COMMAND} "text".${mention})`;
+}
+
+export interface TeamUsage {
+  totalTokens: number;
+  burnPerMinute: number;
+  /** Members that have reported usage, biggest spender first. */
+  members: Array<{ id: number; totalTokens: number; burnPerMinute: number }>;
+}
+
+/** Token use summed over a team's members; null when none has reported yet. */
+export function teamUsage(
+  memberIds: number[],
+  usage: Record<number, { totalTokens: number; burnPerMinute: number } | undefined>,
+): TeamUsage | null {
+  const members = memberIds.flatMap((id) => {
+    const u = usage[id];
+    return u ? [{ id, totalTokens: u.totalTokens, burnPerMinute: u.burnPerMinute }] : [];
+  });
+  if (members.length === 0) return null;
+  members.sort((a, b) => b.totalTokens - a.totalTokens);
+  return {
+    totalTokens: members.reduce((n, m) => n + m.totalTokens, 0),
+    burnPerMinute: members.reduce((n, m) => n + m.burnPerMinute, 0),
+    members,
+  };
 }
 
 export interface TimelineItem {

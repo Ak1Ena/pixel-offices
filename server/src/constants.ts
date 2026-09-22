@@ -132,9 +132,9 @@ export const BOARD_PINS_API_PATH = '/api/board/pins';
 /** DELETE answer for an unknown pin id — tells the CLI the route exists (vs. Fastify's own 404). */
 export const BOARD_NO_SUCH_PIN_ERROR = 'No such pin.';
 /** How agents are told to post to the whiteboard (board.md header). */
-export const BOARD_CLI_COMMAND = 'npx @ak1ena/pixel-office board';
+export const BOARD_CLI_COMMAND = 'pixel-office board';
 /** How agents are told to point the user at part of a file (board.md header). */
-export const SHOW_CLI_COMMAND = 'npx @ak1ena/pixel-office show';
+export const SHOW_CLI_COMMAND = 'pixel-office show';
 /** Longest wait for a live server to answer `pixel-office board`. */
 export const BOARD_CLI_REQUEST_TIMEOUT_MS = 3_000;
 
@@ -160,7 +160,7 @@ export const FOCUS_FIND_MAX_BYTES = 8 * 1024 * 1024;
 /** Saved workflows live here, one markdown file each. */
 export const WORKFLOW_DIR_NAME = 'workflows';
 /** How agents are told to report workflow steps (the message typed on attach). */
-export const WORKFLOW_CLI_COMMAND = 'npx @ak1ena/pixel-office workflow';
+export const WORKFLOW_CLI_COMMAND = 'pixel-office workflow';
 /** Agents report steps and wait at gates here. */
 export const WORKFLOWS_API_PATH = '/api/workflows';
 /** One long-poll at a gate; `workflow gate` polls again until it is answered. */
@@ -182,6 +182,8 @@ export const TEAM_TEXT_MAX_CHARS = 2_000;
 export const TEAM_COMMAND_MAX_CHARS = 300;
 /** How long a started team waits for each member's session to be adopted. */
 export const TEAM_ADOPT_WAIT_MS = 10 * 60_000;
+/** A called-in teammate's first prompt carries at most this much of the lead's reply. */
+export const TEAM_CALL_MAX_CHARS = 4_000;
 export const TEAM_MAX_RUNS = 20;
 /** Command and model the AI drafter runs (`claude -p`, non-interactive). */
 export const AI_DRAFT_COMMAND = 'claude';
@@ -193,7 +195,7 @@ export const AI_DRAFT_MAX_OUTPUT_BYTES = 1024 * 1024;
 // ── Review changes (proposals.ts, proposeCli.ts) ──
 export const PROPOSALS_API_PATH = '/api/proposals';
 /** How agents are told to suggest a change instead of writing it. */
-export const PROPOSE_CLI_COMMAND = 'npx @ak1ena/pixel-office propose';
+export const PROPOSE_CLI_COMMAND = 'pixel-office propose';
 /** Text files up to this size can be reviewed line by line. */
 export const PROPOSAL_MAX_BYTES = 1024 * 1024;
 export const PROPOSAL_MAX_OPEN = 30;

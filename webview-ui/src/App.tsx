@@ -893,7 +893,7 @@ function App() {
                       room: officeState.getTeamRoom(id),
                     };
                   }),
-              ).map((c) => ({ id: c.id, name: c.name }))}
+              ).map((c) => ({ id: c.id, name: c.name, members: c.members }))}
               selectedId={messengerAgentId}
               onSelect={(id) => {
                 setMessengerAgentId(id);
@@ -978,6 +978,7 @@ function App() {
               )}
               chats={chat.chats}
               labelOf={agentLabel}
+              usage={chat.usage}
               sendable={chat.sendable}
               relayEnabled={chat.relayEnabled}
               onSetRelay={chat.privileged || !isBrowserRuntime ? chat.setRelay : undefined}

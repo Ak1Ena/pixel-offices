@@ -31,7 +31,7 @@ import {
   readPrefs,
   stepCounts,
 } from '../messenger.js';
-import { formatTokens } from '../officeChat.js';
+import { formatTokens, teamUsage } from '../officeChat.js';
 import {
   AttachFileButton,
   FileChips,
@@ -53,6 +53,7 @@ export interface MessengerAgent {
 export interface MessengerRoom {
   id: string;
   name: string;
+  members: number[];
 }
 
 interface MessengerPanelProps {
@@ -456,6 +457,11 @@ export function MessengerPanel(props: MessengerPanelProps) {
   const queued = selectedId !== null ? (queues[selectedId]?.queued ?? []) : [];
   const ctx = selectedId !== null ? props.contextOf(selectedId) : null;
   const use = selectedId !== null ? usage[selectedId] : undefined;
+  const team = rooms.find(
+    (r) => r.id !== 'everyone' && selectedId !== null && r.members.includes(selectedId),
+  );
+  const teamUse = team ? teamUsage(team.members, usage) : null;
+  const labelOf = (id: number) => agents.find((a) => a.id === id)?.label ?? `#${id}`;
   const files = props.requests.filter((r) => r.agentId === selectedId);
   const textSize = prefs.size === 'large' ? 'text-[18px]' : 'text-[15px]';
   const bodyFont = prefs.font === 'pixel' ? 'font-pixel' : 'font-reading';
@@ -525,7 +531,12 @@ export function MessengerPanel(props: MessengerPanelProps) {
             className="flex gap-8 items-center text-left px-6 py-4 border-2 border-transparent rounded-none cursor-pointer bg-transparent text-text text-sm hover:bg-bg-thumb"
           >
             <span className="text-text-muted">#</span>
-            {r.name}
+            <span className="flex-1 min-w-0 truncate">{r.name}</span>
+            {r.id !== 'everyone' && teamUsage(r.members, usage) && (
+              <span className="text-2xs text-text-muted" title="Tokens the team used this session">
+                {formatTokens(teamUsage(r.members, usage)!.totalTokens)}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -962,6 +973,33 @@ export function MessengerPanel(props: MessengerPanelProps) {
                 <span className="text-text-muted">
                   {formatTokens(use.burnPerMinute)} / min lately
                 </span>
+              </section>
+            )}
+            {team && teamUse && (
+              <section className="flex flex-col gap-2 text-xs" data-testid="messenger-team-usage">
+                <span className="text-2xs text-text-muted uppercase">Team # {team.name}</span>
+                <span>{formatTokens(teamUse.totalTokens)} total</span>
+                <span className="text-text-muted">
+                  {formatTokens(teamUse.burnPerMinute)} / min lately
+                </span>
+                {teamUse.members.map((m) => (
+                  <div key={m.id} className="flex flex-col gap-2 pt-2">
+                    <div className="flex justify-between text-2xs">
+                      <span className={m.id === selectedId ? 'text-text' : 'text-text-muted'}>
+                        {labelOf(m.id)}
+                      </span>
+                      <span className="text-text-muted">{formatTokens(m.totalTokens)}</span>
+                    </div>
+                    <div className="h-6 bg-bg-thumb">
+                      <div
+                        className="h-full bg-accent"
+                        style={{
+                          width: `${Math.round((m.totalTokens / teamUse.totalTokens) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </section>
             )}
             {outline.length > 0 && (
