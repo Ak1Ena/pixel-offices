@@ -26,6 +26,11 @@ describe('agent-to-agent mentions', () => {
     expect(mentionedAgents('no mention here', 1, store)).toEqual([]);
   });
 
+  it('takes a spaced name written as one word', () => {
+    const { store } = setup();
+    expect(mentionedAgents('@backend-bob see this', 2, store)).toEqual([1]);
+  });
+
   it('reaches unnamed agents by the label the office shows', () => {
     const { store } = setup();
     store.set(5, { id: 5, folderName: 'api' } as unknown as AgentState);

@@ -5,7 +5,15 @@ import { GROUP_CHAT_WIDTH_PX } from '../constants.js';
 import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatChannel } from '../officeChat.js';
-import { addressedMembers, groupNote, mergeTimeline } from '../officeChat.js';
+import {
+  addressedMembers,
+  completeMention,
+  defaultRecipients,
+  groupNote,
+  mentionHandle,
+  mentionQuery,
+  mergeTimeline,
+} from '../officeChat.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { Button } from './ui/Button.js';
 
@@ -30,8 +38,8 @@ const introduced = new Set<number>();
 
 /**
  * Group chat: `# everyone` and one channel per team. The conversation is the
- * members' own chats merged by time; a message you send goes to each member
- * you ticked (queued per agent like any office message).
+ * members' own chats merged by time. A message goes to the members it
+ * @mentions, else to the ticked ones — a team channel ticks only its lead.
  */
 export function GroupChatPanel({
   channels,
@@ -48,7 +56,9 @@ export function GroupChatPanel({
 }: GroupChatPanelProps) {
   const [channelId, setChannelId] = useState(initialChannelId ?? 'everyone');
   const [draft, setDraft] = useState('');
-  const [skipped, setSkipped] = useState<Record<number, boolean>>({});
+  /** Ticks the user changed in this channel; the rest follow `defaultRecipients`. */
+  const [picked, setPicked] = useState<Record<number, boolean>>({});
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isFileDropTarget, setIsFileDropTarget] = useState(false);
   const attachments = useFileAttachments();
   const filesEnabled = canSendChatFiles();
@@ -69,7 +79,21 @@ export function GroupChatPanel({
   const reachable = channel.members.filter((id) => sendable[id]);
   // `@Name` in the draft sends to just those agents, whatever is ticked.
   const addressed = addressedMembers(draft, reachable, labelOf);
-  const targets = addressed.length > 0 ? addressed : reachable.filter((id) => !skipped[id]);
+  const defaults = defaultRecipients(channel, reachable);
+  const isTicked = (id: number) => picked[id] ?? defaults.includes(id);
+  const targets = addressed.length > 0 ? addressed : reachable.filter(isTicked);
+  const query = mentionQuery(draft)?.toLowerCase();
+  const suggestions =
+    query === undefined
+      ? []
+      : channel.members.filter((id) => {
+          const label = labelOf(id).toLowerCase();
+          return label.startsWith(query) || mentionHandle(label).startsWith(query);
+        });
+  const pickMention = (id: number) => {
+    setDraft((d) => completeMention(d, labelOf(id)));
+    inputRef.current?.focus();
+  };
 
   const hasContent = draft.trim().length > 0 || attachments.files.length > 0;
   const canSubmit = hasContent && targets.length > 0 && !attachments.uploading;
@@ -114,7 +138,10 @@ export function GroupChatPanel({
               key={c.id}
               role="tab"
               aria-selected={c.id === channel.id}
-              onClick={() => setChannelId(c.id)}
+              onClick={() => {
+                setChannelId(c.id);
+                setPicked({});
+              }}
               className={`px-10 py-6 text-sm whitespace-nowrap border-0 border-b-4 rounded-none cursor-pointer ${
                 c.id === channel.id
                   ? 'bg-bg text-text border-accent'
@@ -226,13 +253,30 @@ export function GroupChatPanel({
                   <label key={id} className="flex items-center gap-4">
                     <input
                       type="checkbox"
-                      checked={!skipped[id]}
-                      onChange={(e) => setSkipped((p) => ({ ...p, [id]: !e.target.checked }))}
+                      checked={isTicked(id)}
+                      onChange={(e) => setPicked((p) => ({ ...p, [id]: e.target.checked }))}
                     />
                     {labelOf(id)}
                   </label>
                 ))}
             </div>
+            {addressed.length === 0 && reachable.length > 1 && (
+              <div className="text-2xs text-text-muted">Type @ to call one agent by name.</div>
+            )}
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap gap-4" data-testid="group-mention-suggestions">
+                {suggestions.map((id) => (
+                  <button
+                    key={id}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickMention(id)}
+                    className="px-6 py-2 text-2xs bg-bg border-2 border-border text-text cursor-pointer rounded-none hover:border-accent"
+                  >
+                    @{mentionHandle(labelOf(id))}
+                  </button>
+                ))}
+              </div>
+            )}
             {filesEnabled && <FileChips attachments={attachments} />}
             <label htmlFor="group-input" className="sr-only">
               Message #{channel.name}
@@ -247,11 +291,17 @@ export function GroupChatPanel({
                   attachments.add(pasted);
                 }}
                 id="group-input"
+                ref={inputRef}
                 rows={2}
                 value={draft}
                 placeholder={`Message #${channel.name}`}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={(e) => {
+                  if (e.key === 'Tab' && suggestions.length > 0) {
+                    e.preventDefault();
+                    pickMention(suggestions[0]);
+                    return;
+                  }
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     void send();

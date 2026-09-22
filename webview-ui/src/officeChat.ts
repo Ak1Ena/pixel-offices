@@ -126,6 +126,8 @@ export interface ChatChannel {
   id: string;
   name: string;
   members: number[];
+  /** A team channel's lead; undefined for `# everyone`. */
+  leadId?: number;
 }
 
 /** `# everyone` plus one channel per team (named after its room, else its lead). */
@@ -146,6 +148,7 @@ export function buildChannels(members: ChannelMember[]): ChatChannel[] {
       id: `team-${leadId}`,
       name: room ?? `${lead?.label ?? `#${leadId}`}'s team`,
       members: team.map((m) => m.id),
+      leadId,
     });
   }
   return channels;
@@ -176,7 +179,35 @@ export function addressedMembers(
     }
     return false;
   };
-  return members.filter((id) => [labelOf(id), `agent${id}`, `agent-${id}`].some(says));
+  return members.filter((id) => {
+    const label = labelOf(id);
+    return [label, mentionHandle(label), `agent${id}`, `agent-${id}`].some(says);
+  });
+}
+
+/** How to write a member as one `@word`: the label with its spaces turned into dashes. */
+export function mentionHandle(label: string): string {
+  return label.trim().replace(/\s+/g, '-');
+}
+
+/** The `@name` being typed at the end of a draft (without the `@`), else null. */
+export function mentionQuery(draft: string): string | null {
+  const m = /(?:^|\s)@([^\s@]*)$/.exec(draft);
+  return m ? m[1] : null;
+}
+
+/** Replaces the `@name` being typed at the end of a draft with a member's handle. */
+export function completeMention(draft: string, label: string): string {
+  return draft.replace(/@[^\s@]*$/, `@${mentionHandle(label)} `);
+}
+
+/**
+ * Who a message with no `@Name` goes to: a team channel talks to its lead (who
+ * hands work out), `# everyone` to everyone. The lead unreachable = everyone.
+ */
+export function defaultRecipients(channel: ChatChannel, reachable: number[]): number[] {
+  if (channel.leadId !== undefined && reachable.includes(channel.leadId)) return [channel.leadId];
+  return reachable;
 }
 
 export function groupNote(teammates: string[], relayEnabled: boolean): string {

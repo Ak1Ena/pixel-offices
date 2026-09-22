@@ -29,6 +29,11 @@ export function agentAliases(id: number, agent: AgentState): string[] {
   const aliases = [agent.displayName, agent.agentName].filter(
     (name): name is string => typeof name === 'string' && name.trim().length > 0,
   );
+  // The office writes a spaced name as one word (`@Frontend-Dev`), so accept that too.
+  for (const name of [...aliases]) {
+    const dashed = name.trim().replace(/\s+/g, '-');
+    if (dashed !== name) aliases.push(dashed);
+  }
   if (agent.folderName) aliases.push(`${agent.folderName} #${id}`, `${agent.folderName}#${id}`);
   aliases.push(`Agent #${id}`, `Agent#${id}`, `agent${id}`, `agent-${id}`, `#${id}`);
   return aliases;

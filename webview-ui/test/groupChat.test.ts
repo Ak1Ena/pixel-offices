@@ -2,7 +2,15 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { addressedMembers, buildChannels, groupNote, mergeTimeline } from '../src/officeChat.js';
+import {
+  addressedMembers,
+  buildChannels,
+  completeMention,
+  defaultRecipients,
+  groupNote,
+  mentionQuery,
+  mergeTimeline,
+} from '../src/officeChat.js';
 
 test('channels: everyone, plus one per team named after its room', () => {
   const channels = buildChannels([
@@ -61,4 +69,29 @@ test('@Name in a group message picks just those agents', () => {
   assert.deepEqual(addressedMembers('@agent2 ping', [1, 2, 3], labelOf), [2]);
   assert.deepEqual(addressedMembers('@Patrick is not Pat', [1, 2, 3], labelOf), []);
   assert.deepEqual(addressedMembers('everyone please', [1, 2, 3], labelOf), []);
+});
+
+test('a label with spaces is called with dashes', () => {
+  const labelOf = (id: number) => (id === 1 ? 'Frontend Dev' : 'Pat');
+  assert.deepEqual(addressedMembers('@frontend-dev fix the nav', [1, 2], labelOf), [1]);
+  assert.deepEqual(addressedMembers('@Frontend Dev fix the nav', [1, 2], labelOf), [1]);
+});
+
+test('typing @ offers names and completes them', () => {
+  assert.equal(mentionQuery('ask @fro'), 'fro');
+  assert.equal(mentionQuery('@'), '');
+  assert.equal(mentionQuery('mail a@b'), null);
+  assert.equal(mentionQuery('@pat done'), null);
+  assert.equal(completeMention('ask @fro', 'Frontend Dev'), 'ask @Frontend-Dev ');
+});
+
+test('a team channel with no @Name talks to its lead; everyone talks to all', () => {
+  const [everyone, team] = buildChannels([
+    { id: 1, label: 'Bob', leadId: 1 },
+    { id: 2, label: 'Pat', leadId: 1 },
+    { id: 3, label: 'Ivy' },
+  ]);
+  assert.deepEqual(defaultRecipients(team, [1, 2]), [1]);
+  assert.deepEqual(defaultRecipients(team, [2]), [2]);
+  assert.deepEqual(defaultRecipients(everyone, [1, 2, 3]), [1, 2, 3]);
 });
