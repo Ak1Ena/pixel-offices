@@ -287,14 +287,15 @@ function EditCard({ entry }: { entry: ChatEntry }) {
             </div>
           ),
         )}
-        {(rows.length > shown.length || edit.clipped) && (
+        {(rows.length > MESSENGER_EDIT_PREVIEW_ROWS || edit.clipped) && (
           <div className="flex gap-8 px-8 py-2 text-2xs text-text-muted border-t border-bg-thumb font-reading">
-            {rows.length > shown.length && (
+            {rows.length > MESSENGER_EDIT_PREVIEW_ROWS && (
               <button
                 className="bg-transparent border-0 p-0 underline text-2xs text-text-muted cursor-pointer"
-                onClick={() => setShowAll(true)}
+                onClick={() => setShowAll((v) => !v)}
+                data-testid="messenger-edit-toggle"
               >
-                Show all {rows.length} lines
+                {showAll ? 'Show less' : `Show all ${rows.length} lines`}
               </button>
             )}
             {edit.clipped && <span>Long change, cut short here.</span>}
