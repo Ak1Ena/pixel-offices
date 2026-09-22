@@ -30,6 +30,8 @@ import {
   BOARD_PINS_API_PATH,
   CHAT_FILE_API_PREFIX,
   CHAT_FILE_NAME_PATTERN,
+  FOCUS_API_PATH,
+  FOCUS_POLL_MS,
   HOOK_API_PREFIX,
   LAUNCHER_API_PREFIX,
   LAUNCHER_POLL_TIMEOUT_MS,
@@ -139,6 +141,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   );
   registerBoardUploadRoute(app, options);
   registerBoardPinRoutes(app, options);
+  registerFocusRoutes(app, options);
   registerTaskRoutes(app, options);
   registerChatFileRoute(app, options);
   registerWebSocketRoute(app, options);
@@ -525,6 +528,41 @@ function registerBoardPinRoutes(app: FastifyInstance, options: HttpServerOptions
         return reply.code(400).send({ error: 'Detail rejected (too long).' });
       return { pin: getBoardPins().find((p) => p.id === pin.id) ?? next };
     },
+  );
+}
+
+/**
+ * "Show me" for AGENTS (`pixel-office show`): open a request pointing the user
+ * at part of a file, then long-poll for the answer. Same gate as the board
+ * routes — Bearer token, and any request carrying an Origin is refused.
+ */
+function registerFocusRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const runtime = options.runtime;
+  if (!runtime) return;
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  const preHandler = [noBrowsers, bearerAuth(options.token)];
+
+  app.post<{ Body: unknown }>(FOCUS_API_PATH, { preHandler }, async (request, reply) => {
+    const result = runtime.focus.open(request.body);
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    return { request: result.request };
+  });
+
+  app.get<{ Params: { requestId: string } }>(
+    `${FOCUS_API_PATH}/:requestId`,
+    {
+      preHandler,
+      schema: {
+        params: {
+          type: 'object',
+          properties: { requestId: { type: 'string', pattern: '^focus_[a-f0-9]{32}$' } },
+          required: ['requestId'],
+        },
+      },
+    },
+    async (request) => runtime.focus.wait(request.params.requestId, FOCUS_POLL_MS),
   );
 }
 

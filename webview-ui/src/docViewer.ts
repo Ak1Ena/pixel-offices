@@ -15,6 +15,42 @@ const KIND_BY_EXT: Record<string, ViewerKind> = {
   md: 'text',
   log: 'text',
   json: 'text',
+  ts: 'text',
+  tsx: 'text',
+  js: 'text',
+  jsx: 'text',
+  mjs: 'text',
+  cjs: 'text',
+  py: 'text',
+  rb: 'text',
+  go: 'text',
+  rs: 'text',
+  java: 'text',
+  kt: 'text',
+  swift: 'text',
+  c: 'text',
+  h: 'text',
+  cpp: 'text',
+  hpp: 'text',
+  cs: 'text',
+  php: 'text',
+  sh: 'text',
+  zsh: 'text',
+  bash: 'text',
+  yaml: 'text',
+  yml: 'text',
+  toml: 'text',
+  ini: 'text',
+  sql: 'text',
+  css: 'text',
+  scss: 'text',
+  graphql: 'text',
+  vue: 'text',
+  svelte: 'text',
+  lua: 'text',
+  dart: 'text',
+  scala: 'text',
+  r: 'text',
   png: 'image',
   jpg: 'image',
   jpeg: 'image',
@@ -103,4 +139,56 @@ export function columnLetter(index: number): string {
     n = Math.floor(n / 26) - 1;
   } while (n >= 0);
   return label;
+}
+
+/** A cell or range in a sheet, 0-based and inclusive. */
+export interface CellRange {
+  sheet?: string;
+  c0: number;
+  r0: number;
+  c1: number;
+  r1: number;
+}
+
+function columnIndex(letters: string): number {
+  let n = 0;
+  for (const ch of letters.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
+}
+
+/** "Q3!B4", "B4:D6", "'My sheet'!A1" → a range, or null when it isn't one. */
+export function parseCellRef(ref: string): CellRange | null {
+  const m =
+    /^(?:(?:'([^']+)'|([^!]+))!)?\$?([A-Za-z]{1,3})\$?(\d+)(?::\$?([A-Za-z]{1,3})\$?(\d+))?$/.exec(
+      ref.trim(),
+    );
+  if (!m) return null;
+  const sheet = m[1] ?? m[2];
+  const a = { c: columnIndex(m[3]), r: Number(m[4]) - 1 };
+  const b = m[5] ? { c: columnIndex(m[5]), r: Number(m[6]) - 1 } : a;
+  if (a.r < 0 || b.r < 0) return null;
+  return {
+    ...(sheet ? { sheet } : {}),
+    c0: Math.min(a.c, b.c),
+    r0: Math.min(a.r, b.r),
+    c1: Math.max(a.c, b.c),
+    r1: Math.max(a.r, b.r),
+  };
+}
+
+/** Where in a file a "show me" request points, for labels: "lines 40–58", "page 3". */
+export function spotLabel(spot: {
+  lineStart?: number;
+  lineEnd?: number;
+  page?: number;
+  cell?: string;
+}): string {
+  if (spot.lineStart) {
+    return spot.lineEnd && spot.lineEnd !== spot.lineStart
+      ? `lines ${spot.lineStart}–${spot.lineEnd}`
+      : `line ${spot.lineStart}`;
+  }
+  if (spot.page) return `page ${spot.page}`;
+  if (spot.cell) return spot.cell;
+  return '';
 }

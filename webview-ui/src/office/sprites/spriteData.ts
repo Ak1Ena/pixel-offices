@@ -3,6 +3,7 @@ import { PALETTE_COUNT } from '../../constants.js';
 import { adjustSprite } from '../colorize.js';
 import type { Direction, SpriteData } from '../types.js';
 import { Direction as Dir } from '../types.js';
+import bubbleDocData from './bubble-doc.json';
 import bubblePermissionData from './bubble-permission.json';
 import bubblePetData from './bubble-pet.json';
 import bubbleWaitingData from './bubble-waiting.json';
@@ -21,6 +22,9 @@ interface BubbleSpriteJson {
 function resolveBubbleSprite(data: BubbleSpriteJson): SpriteData {
   return data.pixels.map((row) => row.map((key) => data.palette[key] ?? key));
 }
+
+/** Show-me bubble: an agent points the user at a file (11x13) */
+export const BUBBLE_DOC_SPRITE: SpriteData = resolveBubbleSprite(bubbleDocData);
 
 /** Permission bubble: white square with "..." in amber, and a tail pointer (11x13) */
 export const BUBBLE_PERMISSION_SPRITE: SpriteData = resolveBubbleSprite(bubblePermissionData);

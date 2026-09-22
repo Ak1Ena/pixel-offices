@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import type { BoardPin } from '../../../core/src/messages.js';
-import { BOARD_FILE_API, DOCX_FRAME_CSS } from '../constants.js';
-import type { SheetView } from '../docViewer.js';
+import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
+import { BOARD_FILE_API, DOC_NUMBERED_MAX_LINES, DOCX_FRAME_CSS } from '../constants.js';
+import type { CellRange, SheetView } from '../docViewer.js';
 import {
   columnLetter,
   fileBaseName,
   fileExtension,
+  parseCellRef,
   parseCsv,
+  spotLabel,
   toSheetView,
   viewerKind,
 } from '../docViewer.js';
@@ -21,6 +23,15 @@ interface DocViewerProps {
   onClose: () => void;
   /** Attach the open file to the chat that is open; absent when none can take it. */
   onAttach?: () => void;
+  /** The "show me" request this file was opened for: where to jump, and why. */
+  focus?: FocusRequest;
+  /** Label of the agent that asked. */
+  focusAgent?: string;
+  /** Answer the request ("Got it", or a reply); absent for view-only links. */
+  onAnswerFocus?: (reply?: string) => void;
+  /** Requests from agents, listed above the board's files. */
+  requests?: Array<{ request: FocusRequest; agent: string }>;
+  onSelectRequest?: (requestId: string) => void;
 }
 
 type Loaded =
@@ -93,8 +104,14 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
   return { status: 'ready', blob, doc: { kind: 'text', text } };
 }
 
-function SheetTable({ sheet }: { sheet: SheetView }) {
+function SheetTable({ sheet, mark }: { sheet: SheetView; mark?: CellRange | null }) {
   const columns = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const firstMarked = useRef<HTMLTableCellElement | null>(null);
+  useEffect(() => {
+    firstMarked.current?.scrollIntoView({ block: 'center', inline: 'center' });
+  }, [sheet, mark]);
+  const inMark = (r: number, c: number) =>
+    !!mark && r >= mark.r0 && r <= mark.r1 && c >= mark.c0 && c <= mark.c1;
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="flex-1 min-h-0 overflow-auto bg-board">
@@ -118,11 +135,20 @@ function SheetTable({ sheet }: { sheet: SheetView }) {
                 <th className="sticky left-0 bg-board border border-board-edge px-6 text-right font-normal">
                   {r + 1}
                 </th>
-                {Array.from({ length: columns }, (_, c) => (
-                  <td key={c} className="border border-board-edge px-8 py-2 whitespace-nowrap">
-                    {row[c] ?? ''}
-                  </td>
-                ))}
+                {Array.from({ length: columns }, (_, c) => {
+                  const marked = inMark(r, c);
+                  return (
+                    <td
+                      key={c}
+                      ref={marked && r === mark?.r0 && c === mark.c0 ? firstMarked : undefined}
+                      className={`border px-8 py-2 whitespace-nowrap ${
+                        marked ? 'bg-doc-mark border-accent' : 'border-board-edge'
+                      }`}
+                    >
+                      {row[c] ?? ''}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
@@ -138,13 +164,150 @@ function SheetTable({ sheet }: { sheet: SheetView }) {
   );
 }
 
+/** Text with line numbers; the marked lines are highlighted and scrolled to. */
+function NumberedText({ text, from, to }: { text: string; from?: number; to?: number }) {
+  const lines = text.split(/\r?\n/);
+  const firstMarked = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    firstMarked.current?.scrollIntoView({ block: 'center' });
+  }, [text, from]);
+  if (lines.length > DOC_NUMBERED_MAX_LINES && from === undefined) {
+    return (
+      <pre className="flex-1 min-h-0 overflow-auto m-0 p-16 bg-board text-board-ink text-xs whitespace-pre-wrap break-words">
+        {text}
+      </pre>
+    );
+  }
+  // A huge file shows a window around the marked lines instead of every line.
+  const start = lines.length > DOC_NUMBERED_MAX_LINES && from ? Math.max(1, from - 200) : 1;
+  const end = Math.min(lines.length, start + DOC_NUMBERED_MAX_LINES - 1);
+  const shown = lines.slice(start - 1, end);
+  return (
+    <div
+      className="flex-1 min-h-0 overflow-auto bg-board text-board-ink text-xs py-8"
+      data-testid="doc-text"
+    >
+      {start > 1 && (
+        <div className="px-16 text-2xs text-board-ink-muted">Lines before {start} not shown</div>
+      )}
+      {shown.map((line, i) => {
+        const n = start + i;
+        const marked = from !== undefined && n >= from && n <= (to ?? from);
+        return (
+          <div
+            key={n}
+            ref={marked && n === from ? firstMarked : undefined}
+            className={`grid grid-cols-[52px_1fr] pr-16 border-l-4 ${marked ? 'bg-doc-mark border-accent' : 'border-transparent'}`}
+            data-marked={marked || undefined}
+          >
+            <span className="text-right pr-12 text-board-ink-muted select-none">{n}</span>
+            <span className="whitespace-pre-wrap break-words">{line || ' '}</span>
+          </div>
+        );
+      })}
+      {end < lines.length && (
+        <div className="px-16 text-2xs text-board-ink-muted">Lines after {end} not shown</div>
+      )}
+    </div>
+  );
+}
+
+/** Why the agent wants the user to look, with "Got it" / "Reply". */
+function FocusBanner({
+  focus,
+  agent,
+  onAnswer,
+}: {
+  focus: FocusRequest;
+  agent: string;
+  onAnswer?: (reply?: string) => void;
+}) {
+  const [replying, setReplying] = useState(false);
+  const [text, setText] = useState('');
+  useEffect(() => {
+    setReplying(false);
+    setText('');
+  }, [focus.requestId]);
+  const waiting = focus.state === 'waiting';
+  const spot = spotLabel(focus);
+  return (
+    <div
+      className={`flex flex-col gap-6 px-12 py-8 border-b-2 ${
+        waiting ? 'bg-chat-permission border-status-permission' : 'bg-bg border-border'
+      }`}
+      data-testid="doc-focus"
+    >
+      <div className="text-sm">
+        <span className="text-status-success">{agent}</span>
+        {spot && <span className="text-text-muted"> · {spot}</span>}
+        {focus.why ? (
+          <span>: {focus.why}</span>
+        ) : (
+          <span className="text-text-muted"> wants you to look</span>
+        )}
+      </div>
+      {!waiting && (
+        <span className="text-2xs text-status-success">
+          ✓ Seen{focus.reply ? ` · you replied: ${focus.reply}` : ''}
+        </span>
+      )}
+      {waiting && onAnswer && !replying && (
+        <div className="flex gap-6">
+          <Button variant="accent" size="sm" onClick={() => onAnswer()} data-testid="doc-focus-ack">
+            Got it
+          </Button>
+          <Button size="sm" onClick={() => setReplying(true)}>
+            Reply…
+          </Button>
+        </div>
+      )}
+      {waiting && onAnswer && replying && (
+        <form
+          className="flex gap-6"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (text.trim()) onAnswer(text.trim());
+          }}
+        >
+          <input
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Escape') setReplying(false);
+            }}
+            placeholder={`Answer ${agent}`}
+            className="flex-1 min-w-0 bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text"
+            data-testid="doc-focus-reply"
+          />
+          <Button variant="accent" size="sm" type="submit">
+            Send
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 /**
  * Opens a whiteboard file pin inside the office: PDF and images natively,
  * Word via mammoth (rendered in a sandboxed frame — document HTML never runs
  * in the office page), Excel/CSV as a table, text as text. Libraries load
  * only when a document of that type is opened.
  */
-export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocViewerProps) {
+export function DocViewer({
+  pin,
+  filePins,
+  onSelect,
+  onClose,
+  onAttach,
+  focus,
+  focusAgent,
+  onAnswerFocus,
+  requests = [],
+  onSelectRequest,
+}: DocViewerProps) {
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   const [sheetIndex, setSheetIndex] = useState(0);
 
@@ -181,6 +344,16 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
   };
 
   const doc = state.status === 'ready' ? state.doc : null;
+  const mark = focus?.cell ? parseCellRef(focus.cell) : null;
+
+  // A request naming a sheet opens on that sheet.
+  useEffect(() => {
+    if (doc?.kind !== 'table' || !mark?.sheet) return;
+    const wanted = mark.sheet.toLowerCase();
+    const index = doc.sheets.findIndex((sheet) => sheet.name.toLowerCase() === wanted);
+    if (index !== -1) setSheetIndex(index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per document / request
+  }, [doc, focus?.requestId]);
 
   return (
     <div
@@ -217,11 +390,39 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
       </div>
 
       <div className="flex-1 min-h-0 flex">
-        {filePins.length > 1 && (
+        {(filePins.length > 1 || requests.length > 0) && (
           <nav
             aria-label="Files on the board"
             className="hidden sm:flex flex-col gap-4 w-260 p-8 bg-bg-dark border-r-2 border-border overflow-y-auto"
           >
+            {requests.length > 0 && (
+              <>
+                <span className="text-sm">Asked by agents</span>
+                {requests.map(({ request, agent }) => (
+                  <button
+                    key={request.requestId}
+                    onClick={() => onSelectRequest?.(request.requestId)}
+                    className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-xs text-text ${
+                      request.requestId === focus?.requestId
+                        ? 'bg-active-bg border-accent'
+                        : 'bg-btn-bg border-transparent'
+                    }`}
+                    data-testid="doc-request"
+                  >
+                    <span className="block overflow-hidden text-ellipsis whitespace-nowrap">
+                      {request.state === 'waiting' && (
+                        <span className="text-status-permission mr-4">●</span>
+                      )}
+                      {fileBaseName(request.path)}
+                    </span>
+                    <span className="block text-2xs text-text-muted">
+                      {agent}
+                      {spotLabel(request) ? ` · ${spotLabel(request)}` : ''}
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
             <span className="text-sm">Files on the board</span>
             {filePins.map((p) => (
               <button
@@ -241,6 +442,9 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
         )}
 
         <div className="flex-1 min-w-0 min-h-0 flex flex-col">
+          {focus && (
+            <FocusBanner focus={focus} agent={focusAgent ?? 'An agent'} onAnswer={onAnswerFocus} />
+          )}
           {state.status === 'loading' && (
             <div className="m-auto text-sm text-text-muted">Opening…</div>
           )}
@@ -250,7 +454,11 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
             </div>
           )}
           {doc?.kind === 'pdf' && (
-            <iframe title={pin.title} src={doc.url} className="flex-1 w-full border-0 bg-board" />
+            <iframe
+              title={pin.title}
+              src={focus?.page ? `${doc.url}#page=${focus.page}` : doc.url}
+              className="flex-1 w-full border-0 bg-board"
+            />
           )}
           {doc?.kind === 'image' && (
             <div className="flex-1 min-h-0 overflow-auto flex bg-bg-dark">
@@ -266,9 +474,7 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
             />
           )}
           {doc?.kind === 'text' && (
-            <pre className="flex-1 min-h-0 overflow-auto m-0 p-16 bg-board text-board-ink text-xs whitespace-pre-wrap break-words">
-              {doc.text}
-            </pre>
+            <NumberedText text={doc.text} from={focus?.lineStart} to={focus?.lineEnd} />
           )}
           {doc?.kind === 'table' && (
             <>
@@ -291,7 +497,18 @@ export function DocViewer({ pin, filePins, onSelect, onClose, onAttach }: DocVie
                   ))}
                 </div>
               )}
-              {doc.sheets[sheetIndex] && <SheetTable sheet={doc.sheets[sheetIndex]} />}
+              {doc.sheets[sheetIndex] && (
+                <SheetTable
+                  sheet={doc.sheets[sheetIndex]}
+                  mark={
+                    mark &&
+                    (!mark.sheet ||
+                      mark.sheet.toLowerCase() === doc.sheets[sheetIndex].name.toLowerCase())
+                      ? mark
+                      : null
+                  }
+                />
+              )}
             </>
           )}
         </div>

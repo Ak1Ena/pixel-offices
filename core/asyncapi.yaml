@@ -118,6 +118,7 @@ components:
         - $ref: '#/components/schemas/FolderListing'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
+        - $ref: '#/components/schemas/FocusRequests'
         # Task desk
         - $ref: '#/components/schemas/TaskDeskLoaded'
         - $ref: '#/components/schemas/TaskDeskNotice'
@@ -169,6 +170,7 @@ components:
         - $ref: '#/components/schemas/CancelChatMessage'
         - $ref: '#/components/schemas/SaveBoardPin'
         - $ref: '#/components/schemas/RemoveBoardPin'
+        - $ref: '#/components/schemas/AnswerFocus'
         # Task desk
         - $ref: '#/components/schemas/SaveDeskTask'
         - $ref: '#/components/schemas/RemoveDeskTask'
@@ -1470,6 +1472,76 @@ components:
         id:
           type: integer
         queueId:
+          type: string
+
+    FocusRequests:
+      description: |
+        Every open or recently answered "show me" request: an agent pointing
+        the user at part of a file (`pixel-office show`). Sent on each change
+        and in the handshake. Only the PATH travels — the viewer loads the file
+        through its board pin (`pinId`), exactly like any file pin.
+      type: object
+      additionalProperties: false
+      required: [type, requests]
+      properties:
+        type:
+          const: focusRequests
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/FocusRequest'
+
+    FocusRequest:
+      type: object
+      additionalProperties: false
+      required: [requestId, pinId, path, state, createdAt]
+      properties:
+        requestId:
+          type: string
+        pinId:
+          type: string
+          description: The file pin the viewer opens.
+        path:
+          type: string
+        agentId:
+          type: integer
+          description: The agent that asked, when the office could tell.
+        why:
+          type: string
+        lineStart:
+          type: integer
+        lineEnd:
+          type: integer
+        page:
+          type: integer
+        cell:
+          type: string
+          description: A spreadsheet cell or range, e.g. "Q3!B4" or "B4:D6".
+        state:
+          $ref: '#/components/schemas/FocusState'
+        reply:
+          type: string
+        createdAt:
+          type: string
+
+    FocusState:
+      type: string
+      enum: [waiting, seen]
+
+    AnswerFocus:
+      description: |
+        Answer a "show me" request: without `reply` it is "Got it"; with one,
+        the text goes back to an agent waiting on `pixel-office show --wait`.
+        Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, requestId]
+      properties:
+        type:
+          const: answerFocus
+        requestId:
+          type: string
+        reply:
           type: string
 
     SaveBoardPin:

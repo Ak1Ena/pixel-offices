@@ -62,6 +62,7 @@ import {
 import { getPetSprites } from '../sprites/petSpriteData.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import {
+  BUBBLE_DOC_SPRITE,
   BUBBLE_HEART_SPRITE,
   BUBBLE_PERMISSION_SPRITE,
   BUBBLE_WAITING_SPRITE,
@@ -878,18 +879,23 @@ function renderBubbles(
   zoom: number,
 ): void {
   for (const ch of characters) {
-    if (!ch.bubbleType) continue;
     // The green checkmark bubble only represents "done" (turn finished). The
     // idle "Waiting for input" state communicates via its overlay label, not a
     // bubble, so skip the bubble for it.
-    if (ch.bubbleType === 'waiting' && ch.waitingAwaitingInput) continue;
+    const waitingLabelOnly = ch.bubbleType === 'waiting' && ch.waitingAwaitingInput;
+    const shown = ch.bubbleType && !waitingLabelOnly ? ch.bubbleType : null;
+    if (!shown && !ch.docBubble) continue;
 
     const sprite =
-      ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE;
+      shown === 'permission'
+        ? BUBBLE_PERMISSION_SPRITE
+        : shown === 'waiting'
+          ? BUBBLE_WAITING_SPRITE
+          : BUBBLE_DOC_SPRITE;
 
     // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0;
-    if (ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
+    if (shown === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC;
     }
 

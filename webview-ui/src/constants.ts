@@ -402,6 +402,11 @@ export const PERMISSION_PROMPTS_MAX_SHOWN = 3;
 export const PERMISSION_PROMPTS_Z_INDEX = 60;
 /** A screen-question click that didn't move the screen on can be retried after this. */
 export const SCREEN_QUESTION_RETRY_MS = 4_000;
+/** Text files up to this many lines get line numbers in the viewer (a bigger one
+ *  shows a window around the lines an agent pointed at). */
+export const DOC_NUMBERED_MAX_LINES = 20_000;
+/** "Show me" notices shown at once; more wait in the viewer's list. */
+export const FOCUS_NOTICES_MAX_SHOWN = 3;
 
 // ── Task desk ────────────────────────────────────────────────
 export const TASK_DESK_WIDTH_PX = 420;

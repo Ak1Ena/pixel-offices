@@ -126,8 +126,28 @@ export const BOARD_PINS_API_PATH = '/api/board/pins';
 export const BOARD_NO_SUCH_PIN_ERROR = 'No such pin.';
 /** How agents are told to post to the whiteboard (board.md header). */
 export const BOARD_CLI_COMMAND = 'npx @ak1ena/pixel-office board';
+/** How agents are told to point the user at part of a file (board.md header). */
+export const SHOW_CLI_COMMAND = 'npx @ak1ena/pixel-office show';
 /** Longest wait for a live server to answer `pixel-office board`. */
 export const BOARD_CLI_REQUEST_TIMEOUT_MS = 3_000;
+
+// ── "Show me" requests (focusRequests.ts, showCli.ts) ──
+/** Agents point the user at part of a file here. */
+export const FOCUS_API_PATH = '/api/focus';
+/** One long-poll for an answer; `show --wait` polls again until FOCUS_WAIT_MS. */
+export const FOCUS_POLL_MS = 25_000;
+/** How long `pixel-office show --wait` waits for the user before giving up. */
+export const FOCUS_WAIT_MS = 10 * 60_000;
+/** An unanswered request expires after this; an answered one is kept this long for late polls. */
+export const FOCUS_REQUEST_MAX_AGE_MS = 24 * 60 * 60_000;
+export const FOCUS_ANSWERED_KEEP_MS = 60 * 60_000;
+/** Bounds on what a request carries. */
+export const FOCUS_MAX_REQUESTS = 50;
+export const FOCUS_WHY_MAX_CHARS = 280;
+export const FOCUS_REPLY_MAX_CHARS = 2_000;
+export const FOCUS_CELL_MAX_CHARS = 64;
+/** `--find` reads at most this much of a text file to turn a phrase into a line. */
+export const FOCUS_FIND_MAX_BYTES = 8 * 1024 * 1024;
 
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before

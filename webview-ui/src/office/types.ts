@@ -210,6 +210,9 @@ export interface Character {
    *  false/undefined when the agent simply finished its turn (checkmark only,
    *  label falls through to idle). */
   waitingAwaitingInput?: boolean;
+  /** An agent's "show me" request is waiting on the user. Drawn only when no
+   *  other bubble is showing — permission and turn-done outrank it. */
+  docBubble?: boolean;
   /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
   bubbleTimer: number;
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */

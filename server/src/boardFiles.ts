@@ -19,9 +19,10 @@ import {
  * The client names a PIN, never a path: the path comes from board.json, so a
  * request can only reach files someone pinned. Only document types the viewer
  * renders are served, and never anything a browser would execute in the
- * office's origin (no html, svg, js). The route itself requires the server
- * token — a token holder can already type into Claude sessions, so reading a
- * pinned file adds no new power, while an untokened LAN viewer gets nothing.
+ * office's origin: no html or svg, and source code only ever as text/plain.
+ * The route itself requires the server token — a token holder can already
+ * type into Claude sessions, so reading a pinned file adds no new power,
+ * while an untokened LAN viewer gets nothing.
  */
 
 /** Extension → content type the viewer is sent. Text formats go out as text/plain. */
@@ -34,6 +35,44 @@ const SERVABLE: Record<string, string> = {
   '.md': 'text/plain; charset=utf-8',
   '.log': 'text/plain; charset=utf-8',
   '.json': 'text/plain; charset=utf-8',
+  // Source code, shown as text so agents can point at lines of it. Sent as
+  // text/plain with nosniff, so even a .js file is never run by the browser.
+  '.ts': 'text/plain; charset=utf-8',
+  '.tsx': 'text/plain; charset=utf-8',
+  '.js': 'text/plain; charset=utf-8',
+  '.jsx': 'text/plain; charset=utf-8',
+  '.mjs': 'text/plain; charset=utf-8',
+  '.cjs': 'text/plain; charset=utf-8',
+  '.py': 'text/plain; charset=utf-8',
+  '.rb': 'text/plain; charset=utf-8',
+  '.go': 'text/plain; charset=utf-8',
+  '.rs': 'text/plain; charset=utf-8',
+  '.java': 'text/plain; charset=utf-8',
+  '.kt': 'text/plain; charset=utf-8',
+  '.swift': 'text/plain; charset=utf-8',
+  '.c': 'text/plain; charset=utf-8',
+  '.h': 'text/plain; charset=utf-8',
+  '.cpp': 'text/plain; charset=utf-8',
+  '.hpp': 'text/plain; charset=utf-8',
+  '.cs': 'text/plain; charset=utf-8',
+  '.php': 'text/plain; charset=utf-8',
+  '.sh': 'text/plain; charset=utf-8',
+  '.zsh': 'text/plain; charset=utf-8',
+  '.bash': 'text/plain; charset=utf-8',
+  '.yaml': 'text/plain; charset=utf-8',
+  '.yml': 'text/plain; charset=utf-8',
+  '.toml': 'text/plain; charset=utf-8',
+  '.ini': 'text/plain; charset=utf-8',
+  '.sql': 'text/plain; charset=utf-8',
+  '.css': 'text/plain; charset=utf-8',
+  '.scss': 'text/plain; charset=utf-8',
+  '.graphql': 'text/plain; charset=utf-8',
+  '.vue': 'text/plain; charset=utf-8',
+  '.svelte': 'text/plain; charset=utf-8',
+  '.lua': 'text/plain; charset=utf-8',
+  '.dart': 'text/plain; charset=utf-8',
+  '.scala': 'text/plain; charset=utf-8',
+  '.r': 'text/plain; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',

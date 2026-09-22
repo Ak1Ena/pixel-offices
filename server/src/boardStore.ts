@@ -14,6 +14,7 @@ import {
   BOARD_PIN_VALUE_MAX_CHARS,
   LAYOUT_FILE_DIR,
   LAYOUT_FILE_POLL_INTERVAL_MS,
+  SHOW_CLI_COMMAND,
 } from './constants.js';
 
 /**
@@ -265,6 +266,10 @@ export class BoardStore {
       `- snippet: ${BOARD_CLI_COMMAND} add --snippet "code" (or pipe it on stdin)`,
       `- detail (notes on any pin): ${BOARD_CLI_COMMAND} detail <id> "text"`,
       `- list / remove: ${BOARD_CLI_COMMAND} list, ${BOARD_CLI_COMMAND} rm <id>`,
+      '',
+      'To make the user look at part of a file (the office opens it at that spot;',
+      'only the path is sent):',
+      `- ${SHOW_CLI_COMMAND} PATH [--lines 40-58 | --page 3 | --cell "Q3!B4" | --find "text"] --why "why" [--wait]`,
       '',
     ];
     for (const pin of this.pins) {

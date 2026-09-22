@@ -41,6 +41,7 @@ import {
   startFileWatching,
   startStaleExternalAgentCheck,
 } from './fileWatcher.js';
+import { FocusRequests } from './focusRequests.js';
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
@@ -103,6 +104,7 @@ export class AgentRuntime {
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
   private boardStore: BoardStore | null = null;
+  private focusRequests: FocusRequests | null = null;
   private taskDesk: TaskDesk | null = null;
   /** Which agents pick up task desk cards without being asked to (the host knows which it started). */
   deskDefaultPickup: (agentId: number) => boolean = () => false;
@@ -726,6 +728,16 @@ export class AgentRuntime {
     return this.boardStore;
   }
 
+  /** "Show me" requests from agents (`pixel-office show`); created on first use. */
+  get focus(): FocusRequests {
+    this.focusRequests ??= new FocusRequests(
+      this.store,
+      () => this.board,
+      (id, text) => this.chatSender.send(id, text),
+    );
+    return this.focusRequests;
+  }
+
   // ── Task desk ──
 
   /** The task desk. Like the whiteboard, created on first use: a runtime that
@@ -750,6 +762,7 @@ export class AgentRuntime {
     clearInterval(this.tokenBurnTimer);
     this.launchers.dispose();
     this.boardStore?.dispose();
+    this.focusRequests?.dispose();
     this.taskDesk?.dispose();
 
     if (this.projectScanTimer.current) {

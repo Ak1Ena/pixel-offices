@@ -946,6 +946,12 @@ export class OfficeState {
     }
   }
 
+  /** Show or hide the "show me" bubble (an agent pointed the user at a file). */
+  setDocBubble(id: number, on: boolean): void {
+    const ch = this.characters.get(id);
+    if (ch) ch.docBubble = on;
+  }
+
   showWaitingBubble(id: number, awaitingInput = false): void {
     const ch = this.characters.get(id);
     if (ch) {

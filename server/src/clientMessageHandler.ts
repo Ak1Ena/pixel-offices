@@ -332,6 +332,10 @@ export function handleClientMessage(
       if (ctx.privileged) ctx.officeSessions?.keys(msg.id, msg.keys);
       break;
 
+    case 'answerFocus':
+      if (ctx.privileged) runtime?.focus.answer(msg.requestId, msg.reply);
+      break;
+
     case 'answerScreenQuestion':
       if (ctx.privileged) ctx.officeSessions?.answerQuestion(msg.id, msg.key, msg.option);
       break;

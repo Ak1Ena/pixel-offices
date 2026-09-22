@@ -10,6 +10,7 @@ import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
 import { DocViewer } from './components/DocViewer.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { FocusNotices } from './components/FocusNotices.js';
 import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
@@ -26,6 +27,7 @@ import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES } from './constants.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
+import { useFocusRequests } from './hooks/useFocusRequests.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
@@ -140,6 +142,9 @@ function App() {
   const desk = useTaskDesk();
   const [isDeskOpen, setIsDeskOpen] = useState(false);
   const permissionAsks = usePermissionAsks();
+  const focus = useFocusRequests();
+  const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
+  const [focusLater, setFocusLater] = useState<ReadonlySet<string>>(() => new Set());
 
   const {
     agents,
@@ -340,6 +345,15 @@ function App() {
       os.setBurnLevel(id, burnLevelFor(chat.usage[id]?.burnPerMinute ?? 0));
     }
   }, [agents, chat.names, chat.usage]);
+
+  // An agent's open "show me" request puts a file bubble over its head.
+  useEffect(() => {
+    const os = getOfficeState();
+    const asking = new Set(
+      focus.requests.filter((r) => r.state === 'waiting').map((r) => r.agentId),
+    );
+    for (const id of agents) os.setDocBubble(id, asking.has(id));
+  }, [agents, focus.requests]);
 
   // A closed agent takes its chat card with it.
   useEffect(() => {
@@ -632,6 +646,24 @@ function App() {
                 />
               );
             })()}
+
+          {!editor.isEditMode && (
+            <FocusNotices
+              requests={focus.requests.filter(
+                (r) => r.state === 'waiting' && !focusLater.has(r.requestId),
+              )}
+              labelOf={agentLabel}
+              onOpen={
+                isBrowserRuntime
+                  ? (r) => {
+                      setViewedPinId(r.pinId);
+                      setViewedFocusId(r.requestId);
+                    }
+                  : undefined
+              }
+              onLater={(r) => setFocusLater((prev) => new Set(prev).add(r.requestId))}
+            />
+          )}
 
           {!editor.isEditMode && (
             <PermissionPrompts
@@ -938,12 +970,39 @@ function App() {
         const viewed = viewedPinId ? chat.pins.find((p) => p.id === viewedPinId) : undefined;
         if (!viewed) return null;
         const canAttach = chatAgentId !== null && chat.sendable[chatAgentId] === true;
+        const viewedFocus = focus.requests.find(
+          (r) => r.requestId === viewedFocusId && r.pinId === viewed.id,
+        );
+        const labelOfRequest = (agentId?: number) =>
+          agentId !== undefined ? agentLabel(agentId) : 'An agent';
         return (
           <DocViewer
             pin={viewed}
             filePins={chat.pins.filter((p) => p.kind === 'file')}
-            onSelect={setViewedPinId}
-            onClose={() => setViewedPinId(null)}
+            onSelect={(pinId) => {
+              setViewedPinId(pinId);
+              setViewedFocusId(null);
+            }}
+            onClose={() => {
+              setViewedPinId(null);
+              setViewedFocusId(null);
+            }}
+            focus={viewedFocus}
+            focusAgent={labelOfRequest(viewedFocus?.agentId)}
+            onAnswerFocus={
+              viewedFocus && chat.privileged
+                ? (reply) => focus.answer(viewedFocus.requestId, reply)
+                : undefined
+            }
+            requests={[...focus.requests]
+              .reverse()
+              .map((request) => ({ request, agent: labelOfRequest(request.agentId) }))}
+            onSelectRequest={(requestId) => {
+              const request = focus.requests.find((r) => r.requestId === requestId);
+              if (!request) return;
+              setViewedPinId(request.pinId);
+              setViewedFocusId(requestId);
+            }}
             onAttach={
               canAttach
                 ? () => {

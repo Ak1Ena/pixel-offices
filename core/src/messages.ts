@@ -39,6 +39,7 @@ export type ServerMessage =
   | AgentPermissionAnswered
   | FolderListing
   | BoardLoaded
+  | FocusRequests
   | TaskDeskLoaded
   | TaskDeskNotice
   | LayoutLoaded
@@ -83,6 +84,7 @@ export type ClientMessage =
   | CancelChatMessage
   | SaveBoardPin
   | RemoveBoardPin
+  | AnswerFocus
   | SaveDeskTask
   | RemoveDeskTask
   | DeskTaskAction
@@ -373,6 +375,28 @@ export interface BoardPin {
 }
 
 export type BoardPinKind = 'link' | 'file' | 'snippet' | 'note';
+
+export interface FocusRequests {
+  type: 'focusRequests';
+  requests: FocusRequest[];
+}
+
+export interface FocusRequest {
+  requestId: string;
+  pinId: string;
+  path: string;
+  agentId?: number;
+  why?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  page?: number;
+  cell?: string;
+  state: FocusState;
+  reply?: string;
+  createdAt: string;
+}
+
+export type FocusState = 'waiting' | 'seen';
 
 export interface TaskDeskLoaded {
   type: 'taskDeskLoaded';
@@ -734,6 +758,12 @@ export interface SaveBoardPin {
 export interface RemoveBoardPin {
   type: 'removeBoardPin';
   pinId: string;
+}
+
+export interface AnswerFocus {
+  type: 'answerFocus';
+  requestId: string;
+  reply?: string;
 }
 
 export interface SaveDeskTask {

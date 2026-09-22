@@ -91,7 +91,7 @@ describe('board file routes', () => {
       expect(path.dirname(created.value)).toBe(path.join(os.homedir(), '.pixel-agents', 'files'));
       expect(fs.readFileSync(created.value, 'utf-8')).toBe('hello');
 
-      const bad = await fetch(`${base}?name=run.sh`, {
+      const bad = await fetch(`${base}?name=run.exe`, {
         method: 'POST',
         headers: { ...auth, 'Content-Type': 'application/octet-stream' },
         body: 'x',
