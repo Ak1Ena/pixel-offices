@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { asFilePath, splitFilePaths } from '../src/fileLinks.js';
 import { pastedFiles, splitUploadMentions, uploadDisplayName } from '../src/fileUpload.js';
 
 const dir = '/Users/me/.pixel-agents/files';
@@ -33,5 +34,31 @@ describe('files sent from the chat', () => {
     const names = pastedFiles(data, Date.UTC(2026, 8, 22, 13, 5, 7)).map((f) => f.name);
     expect(names).toEqual(['pasted-2026-09-22T13-05-07.png', 'notes.txt']);
     expect(pastedFiles(null)).toEqual([]);
+  });
+});
+
+describe('file paths in chat text', () => {
+  it('links absolute and home paths, with or without @', () => {
+    expect(splitFilePaths('I made a copy called @~/docs/test.docx, see /tmp/a b.')).toEqual([
+      { kind: 'text', text: 'I made a copy called ' },
+      { kind: 'file', text: '@~/docs/test.docx', path: '~/docs/test.docx' },
+      { kind: 'text', text: ', see /tmp/a b.' },
+    ]);
+    expect(splitFilePaths('(/Users/me/plan.pdf)')).toEqual([
+      { kind: 'text', text: '(' },
+      { kind: 'file', text: '/Users/me/plan.pdf', path: '/Users/me/plan.pdf' },
+      { kind: 'text', text: ')' },
+    ]);
+  });
+
+  it('leaves relative paths, urls and plain words alone', () => {
+    for (const text of ['see src/app.ts', 'https://example.com/a.html', 'and/or', '1/2.5']) {
+      expect(splitFilePaths(text)).toEqual([{ kind: 'text', text }]);
+    }
+  });
+
+  it('reads a code span that is exactly a path', () => {
+    expect(asFilePath('~/docs/test.docx')).toBe('~/docs/test.docx');
+    expect(asFilePath('npm run build')).toBeNull();
   });
 });

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 
+import { OpenFileContext, splitFilePaths } from '../fileLinks.js';
 import {
   canSendChatFiles,
   chatImageUrl,
@@ -118,7 +119,7 @@ function ChatFileCard({ name }: { name: string }) {
 export function MessageText({ text }: { text: string }) {
   if (!canSendChatFiles()) return <>{text}</>;
   const { images, files, text: rest } = splitUploadMentions(text);
-  if (images.length === 0 && files.length === 0) return <>{text}</>;
+  if (images.length === 0 && files.length === 0) return <LinkedText text={text} />;
   return (
     <span className="flex flex-col gap-4">
       {images.map((name, i) => (
@@ -127,8 +128,49 @@ export function MessageText({ text }: { text: string }) {
       {files.map((name, i) => (
         <ChatFileCard key={`${name}-${i}`} name={name} />
       ))}
-      {rest && <span>{rest}</span>}
+      {rest && (
+        <span>
+          <LinkedText text={rest} />
+        </span>
+      )}
     </span>
+  );
+}
+
+/** A path the viewer can open, as a link; plain text where files can't be viewed. */
+export function FileLink({ path, text }: { path: string; text?: string }) {
+  const open = useContext(OpenFileContext);
+  if (!open) return <>{text ?? path}</>;
+  return (
+    <button
+      type="button"
+      className="inline bg-transparent border-0 p-0 [font:inherit] text-accent-bright underline cursor-pointer break-all text-left"
+      title={`Open ${path}`}
+      onClick={(e) => {
+        // Inside an edit card's <summary>: open the file, don't fold the card.
+        e.preventDefault();
+        e.stopPropagation();
+        open(path);
+      }}
+      data-testid="chat-file-link"
+    >
+      {text ?? path}
+    </button>
+  );
+}
+
+/** Text with its absolute and ~ file paths as links. */
+export function LinkedText({ text }: { text: string }) {
+  return (
+    <>
+      {splitFilePaths(text).map((part, i) =>
+        part.kind === 'file' ? (
+          <FileLink key={i} path={part.path} text={part.text} />
+        ) : (
+          <span key={i}>{part.text}</span>
+        ),
+      )}
+    </>
   );
 }
 

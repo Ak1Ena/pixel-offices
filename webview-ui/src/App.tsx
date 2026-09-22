@@ -32,6 +32,7 @@ import { ZoomControls } from './components/ZoomControls.js';
 import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constants.js';
 import type { DocRef } from './docViewer.js';
 import { refText, withRefs } from './docViewer.js';
+import { canSendChatFiles } from './fileUpload.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
@@ -167,6 +168,28 @@ function App() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
+  // A file named in the chat opens in the viewer through a board file pin —
+  // the viewer's only route to a file. An existing pin for the path is reused.
+  const { pins: boardPins, savePin } = chat;
+  const openFileInViewer = useCallback(
+    (path: string) => {
+      const existing = boardPins.find((p) => p.kind === 'file' && p.value === path);
+      const id = existing?.id ?? newPinId();
+      if (!existing) {
+        savePin({
+          id,
+          kind: 'file',
+          title: path.split('/').pop() || path,
+          value: path,
+          scope: [],
+          createdAt: new Date().toISOString(),
+        });
+      }
+      setViewedFocusId(null);
+      setViewedPinId(id);
+    },
+    [boardPins, savePin],
+  );
   /** Places picked in the viewer, waiting to be sent (the tray), and those attached per agent. */
   const [docTray, setDocTray] = useState<DocRef[]>([]);
   const [docRefsFor, setDocRefsFor] = useState<Record<number, DocRef[]>>({});
@@ -923,6 +946,14 @@ function App() {
               onOpenTerminal={
                 isBrowserRuntime ? undefined : (id) => transport.send({ type: 'focusAgent', id })
               }
+              onOpenFile={canSendChatFiles() ? openFileInViewer : undefined}
+              docRefs={(id) => docRefsFor[id] ?? []}
+              onRemoveDocRef={(id, i) =>
+                setDocRefsFor((prev) => ({
+                  ...prev,
+                  [id]: (prev[id] ?? []).filter((_, j) => j !== i),
+                }))
+              }
               docked={messengerDocked}
               onToggleDock={() => setMessengerDocked((v) => !v)}
               onClose={() => setIsMessengerOpen(false)}
@@ -1286,8 +1317,15 @@ function App() {
         const viewedFocus = focus.requests.find(
           (r) => r.requestId === viewedFocusId && r.pinId === viewed.id,
         );
-        // "Ask about this" goes to the open chat, else the agent that asked to look.
+        // "Ask about this" goes to the chat on screen — Messages when it is open
+        // (it covers the chat card), else the chat card — else the agent that
+        // asked to look.
+        const messengerTarget =
+          isMessengerOpen && messengerAgentId !== null && agents.includes(messengerAgentId)
+            ? messengerAgentId
+            : null;
         const askTarget =
+          messengerTarget ??
           chatAgentId ??
           viewedFocus?.agentId ??
           (messengerAgentId !== null && agents.includes(messengerAgentId)
@@ -1340,7 +1378,8 @@ function App() {
                     setDocTray([]);
                     setViewedPinId(null);
                     setViewedFocusId(null);
-                    openChat(target);
+                    if (isMessengerOpen) openMessenger(target);
+                    else openChat(target);
                   }
                 : undefined
             }

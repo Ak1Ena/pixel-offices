@@ -15,7 +15,9 @@ import {
   MESSENGER_EDIT_PREVIEW_ROWS,
   MESSENGER_PREFS_KEY,
 } from '../constants.js';
-import { fileBaseName, spotLabel } from '../docViewer.js';
+import type { DocRef } from '../docViewer.js';
+import { fileBaseName, refLabel, spotLabel } from '../docViewer.js';
+import { asFilePath, OpenFileContext } from '../fileLinks.js';
 import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatQueueState } from '../hooks/useOfficeChat.js';
@@ -30,7 +32,13 @@ import {
   stepCounts,
 } from '../messenger.js';
 import { formatTokens } from '../officeChat.js';
-import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
+import {
+  AttachFileButton,
+  FileChips,
+  FileLink,
+  LinkedText,
+  MessageText,
+} from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
 
@@ -70,6 +78,11 @@ interface MessengerPanelProps {
   onOpenRequest?: (request: FocusRequest) => void;
   onOpenRoom: (roomId: string) => void;
   onOpenTerminal?: (agentId: number) => void;
+  /** Open a file named in the chat in the document viewer; absent where it can't be viewed. */
+  onOpenFile?: (path: string) => void;
+  /** Places picked in the document viewer, waiting to go out with the next message. */
+  docRefs: (agentId: number) => DocRef[];
+  onRemoveDocRef: (agentId: number, index: number) => void;
   docked: boolean;
   onToggleDock: () => void;
   onClose: () => void;
@@ -144,16 +157,24 @@ function Inline({ parts }: { parts: MdInline[] }) {
             key={i}
             className="[font:inherit] px-3 bg-bg-dark border border-bg-thumb text-status-success"
           >
-            {p.text}
+            <CodeText text={p.text} />
           </code>
         ) : p.kind === 'bold' ? (
-          <strong key={i}>{p.text}</strong>
+          <strong key={i}>
+            <LinkedText text={p.text} />
+          </strong>
         ) : (
-          <Fragment key={i}>{p.text}</Fragment>
+          <LinkedText key={i} text={p.text} />
         ),
       )}
     </>
   );
+}
+
+/** An inline code span; one that names a file opens it. */
+function CodeText({ text }: { text: string }) {
+  const path = asFilePath(text);
+  return path ? <FileLink path={path} text={text} /> : <>{text}</>;
 }
 
 function CodeBlock({ text }: { text: string }) {
@@ -243,7 +264,7 @@ function EditCard({ entry }: { entry: ChatEntry }) {
           className="font-mono overflow-hidden text-ellipsis whitespace-nowrap"
           title={edit.path}
         >
-          {fileBaseName(edit.path)}
+          <FileLink path={edit.path} text={fileBaseName(edit.path)} />
         </span>
         <span className="ml-auto flex gap-6 font-mono text-2xs shrink-0">
           {counts.added > 0 && <span className="text-status-success">+{counts.added}</span>}
@@ -420,7 +441,11 @@ export function MessengerPanel(props: MessengerPanelProps) {
     if (selectedId === null || attachments.uploading) return;
     const agentId = selectedId;
     const text = (draft[agentId] ?? '').trim();
-    if (!text && props.attachedPins(agentId).length === 0 && attachments.files.length === 0) return;
+    const hasExtras =
+      props.attachedPins(agentId).length > 0 ||
+      props.docRefs(agentId).length > 0 ||
+      attachments.files.length > 0;
+    if (!text && !hasExtras) return;
     const paths = await attachments.upload();
     if (!paths) return; // error shown; draft and files kept
     props.onSend(agentId, withFileMentions(paths, text));
@@ -509,454 +534,477 @@ export function MessengerPanel(props: MessengerPanelProps) {
   );
 
   return (
-    <div
-      role="dialog"
-      aria-label="Messages"
-      ref={panelRef}
-      className={`absolute z-58 flex bg-bg border-border ${
-        docked ? 'top-0 right-0 bottom-0 max-w-full border-l-2' : 'inset-0'
-      }`}
-      style={docked ? { width: dockWidth } : undefined}
-      data-testid="messenger"
-      onMouseDown={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === 'Escape') props.onClose();
-      }}
-    >
-      {docked && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize Messages"
-          aria-valuenow={Math.round(dockWidth)}
-          aria-valuemin={MESSENGER_DOCK_MIN_PX}
-          tabIndex={0}
-          title="Drag to resize · double-click to reset"
-          className="absolute -left-4 top-0 bottom-0 w-8 z-10 cursor-col-resize touch-none hover:bg-accent focus-visible:bg-accent outline-none max-sm:hidden"
-          onPointerDown={startDockDrag}
-          onDoubleClick={() => resizeDock(MESSENGER_DOCK_DEFAULT_PX)}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowLeft') resizeDock(dockWidth + MESSENGER_DOCK_KEY_STEP_PX);
-            else if (e.key === 'ArrowRight') resizeDock(dockWidth - MESSENGER_DOCK_KEY_STEP_PX);
-            else return;
-            e.preventDefault();
-          }}
-          data-testid="messenger-dock-resize"
-        />
-      )}
-
-      {list}
-
+    <OpenFileContext.Provider value={props.onOpenFile ?? null}>
       <div
-        className={`${listOnPhone && !docked ? 'max-sm:hidden' : ''} flex-1 min-w-0 flex flex-col min-h-0`}
+        role="dialog"
+        aria-label="Messages"
+        ref={panelRef}
+        className={`absolute z-58 flex bg-bg border-border ${
+          docked ? 'top-0 right-0 bottom-0 max-w-full border-l-2' : 'inset-0'
+        }`}
+        style={docked ? { width: dockWidth } : undefined}
+        data-testid="messenger"
+        onMouseDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') props.onClose();
+        }}
       >
-        {agent ? (
-          <>
-            <div className="flex items-center gap-8 px-12 py-6 border-b-2 border-border relative">
-              <Button
-                size="sm"
-                className="sm:hidden"
-                onClick={() => setListOnPhone(true)}
-                aria-label="Back to the list"
-              >
-                ‹
-              </Button>
-              <span className={`w-12 h-12 ${STATUS_DOT[agent.status]}`} />
-              <div className="min-w-0">
-                <div className="text-base overflow-hidden text-ellipsis whitespace-nowrap">
-                  {agent.label}
-                </div>
-                <div className="text-2xs text-text-muted">{STATUS_TEXT[agent.status]}</div>
-              </div>
-              <span className="flex-1" />
-              <Button
-                size="sm"
-                onClick={() => setShowPrefs((v) => !v)}
-                title="Reading settings"
-                data-testid="messenger-prefs-toggle"
-              >
-                Aa
-              </Button>
-              {props.onOpenTerminal && (
-                <Button size="sm" onClick={() => props.onOpenTerminal?.(agent.id)}>
-                  Terminal
-                </Button>
-              )}
-              <Button
-                size="sm"
-                onClick={props.onToggleDock}
-                title={docked ? 'Full window' : 'Dock beside the office'}
-              >
-                {docked ? '⤢ Full' : '⇲ Dock'}
-              </Button>
-              {docked && (
+        {docked && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize Messages"
+            aria-valuenow={Math.round(dockWidth)}
+            aria-valuemin={MESSENGER_DOCK_MIN_PX}
+            tabIndex={0}
+            title="Drag to resize · double-click to reset"
+            className="absolute -left-4 top-0 bottom-0 w-8 z-10 cursor-col-resize touch-none hover:bg-accent focus-visible:bg-accent outline-none max-sm:hidden"
+            onPointerDown={startDockDrag}
+            onDoubleClick={() => resizeDock(MESSENGER_DOCK_DEFAULT_PX)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowLeft') resizeDock(dockWidth + MESSENGER_DOCK_KEY_STEP_PX);
+              else if (e.key === 'ArrowRight') resizeDock(dockWidth - MESSENGER_DOCK_KEY_STEP_PX);
+              else return;
+              e.preventDefault();
+            }}
+            data-testid="messenger-dock-resize"
+          />
+        )}
+
+        {list}
+
+        <div
+          className={`${listOnPhone && !docked ? 'max-sm:hidden' : ''} flex-1 min-w-0 flex flex-col min-h-0`}
+        >
+          {agent ? (
+            <>
+              <div className="flex items-center gap-8 px-12 py-6 border-b-2 border-border relative">
                 <Button
                   size="sm"
-                  variant="ghost"
-                  onClick={props.onClose}
-                  aria-label="Close Messages"
+                  className="sm:hidden"
+                  onClick={() => setListOnPhone(true)}
+                  aria-label="Back to the list"
                 >
-                  ×
+                  ‹
                 </Button>
-              )}
-              {showPrefs && (
-                <div
-                  className="absolute right-12 top-full mt-4 z-10 w-240 pixel-panel p-10 flex flex-col gap-8 text-sm"
-                  data-testid="messenger-prefs"
-                >
-                  <span>Reading</span>
-                  <label className="flex flex-col gap-2 text-xs text-text-muted">
-                    Message font
-                    <span className="flex">
-                      {(['readable', 'pixel'] as const).map((f) => (
-                        <Button
-                          key={f}
-                          size="sm"
-                          variant={prefs.font === f ? 'active' : 'default'}
-                          className="flex-1"
-                          onClick={() => update({ font: f })}
-                        >
-                          {f === 'readable' ? 'Readable' : 'Pixel'}
-                        </Button>
-                      ))}
-                    </span>
-                  </label>
-                  <label className="flex flex-col gap-2 text-xs text-text-muted">
-                    Text size
-                    <span className="flex">
-                      {(['normal', 'large'] as const).map((sz) => (
-                        <Button
-                          key={sz}
-                          size="sm"
-                          variant={prefs.size === sz ? 'active' : 'default'}
-                          className="flex-1"
-                          onClick={() => update({ size: sz })}
-                        >
-                          {sz === 'normal' ? 'Normal' : 'Large'}
-                        </Button>
-                      ))}
-                    </span>
-                  </label>
-                  <label className="flex items-center justify-between text-xs cursor-pointer">
-                    Fold tool steps
-                    <input
-                      type="checkbox"
-                      checked={prefs.foldSteps}
-                      onChange={(e) => update({ foldSteps: e.target.checked })}
-                    />
-                  </label>
-                  <label className="flex items-center justify-between text-xs cursor-pointer">
-                    Show times
-                    <input
-                      type="checkbox"
-                      checked={prefs.timestamps}
-                      onChange={(e) => update({ timestamps: e.target.checked })}
-                    />
-                  </label>
+                <span className={`w-12 h-12 ${STATUS_DOT[agent.status]}`} />
+                <div className="min-w-0">
+                  <div className="text-base overflow-hidden text-ellipsis whitespace-nowrap">
+                    {agent.label}
+                  </div>
+                  <div className="text-2xs text-text-muted">{STATUS_TEXT[agent.status]}</div>
                 </div>
-              )}
-            </div>
-
-            <div className="relative flex-1 min-h-0">
-              <div
-                ref={readRef}
-                className="absolute inset-0 overflow-y-auto py-16"
-                onScroll={(e) => {
-                  const el = e.currentTarget;
-                  setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
-                }}
-                data-testid="messenger-read"
-              >
-                <div
-                  className={`max-w-680 mx-auto px-16 flex flex-col gap-14 ${bodyFont} ${textSize} leading-relaxed`}
+                <span className="flex-1" />
+                <Button
+                  size="sm"
+                  onClick={() => setShowPrefs((v) => !v)}
+                  title="Reading settings"
+                  data-testid="messenger-prefs-toggle"
                 >
-                  {entries.length === 0 && (
-                    <div className="m-auto text-sm text-text-muted font-pixel">
-                      No messages yet.
-                    </div>
-                  )}
-                  {blocks.map((b) => {
-                    if (b.kind === 'steps') {
-                      return <Steps key={b.id} entries={b.entries} open={!prefs.foldSteps} />;
-                    }
-                    if (b.kind === 'edit') {
-                      return <EditCard key={b.entry.entryId} entry={b.entry} />;
-                    }
-                    const e = b.entry;
-                    const isUser = e.role === 'user';
-                    return (
-                      <div
-                        key={e.entryId}
-                        id={`msg-${e.entryId}`}
-                        className={isUser ? 'self-end max-w-[80%]' : 'self-stretch'}
-                        data-testid={isUser ? 'messenger-user' : 'messenger-assistant'}
-                      >
-                        <div
-                          className={`flex gap-8 text-2xs text-text-muted font-pixel mb-2 ${isUser ? 'justify-end' : ''}`}
-                        >
-                          <span className="text-text">
-                            {isUser
-                              ? e.source === 'office'
-                                ? 'you · office'
-                                : 'you'
-                              : agent.label}
-                          </span>
-                          {prefs.timestamps && <span>{timeLabel(e.timestamp)}</span>}
-                          {e.usage && (
-                            <span>
-                              {formatTokens(
-                                e.usage.input +
-                                  e.usage.cacheCreation +
-                                  e.usage.cacheRead +
-                                  e.usage.output,
-                              )}{' '}
-                              tokens
-                            </span>
-                          )}
-                        </div>
-                        {isUser ? (
-                          <div className="px-10 py-6 bg-chat-office border-2 border-accent whitespace-pre-wrap break-words">
-                            <MessageText text={e.text} />
-                          </div>
-                        ) : (
-                          <Markdown blocks={parseMarkdown(e.text)} />
-                        )}
-                      </div>
-                    );
-                  })}
-                  {queued.map((q) => (
-                    <div
-                      key={q.queueId}
-                      className="self-end max-w-[80%] px-10 py-6 border-2 border-dashed border-accent text-text-muted whitespace-pre-wrap"
-                    >
-                      {q.text}
-                      <div className="flex gap-8 mt-4 text-2xs font-pixel">
-                        <span>waiting for the turn to end</span>
-                        <button
-                          className="bg-transparent border-0 p-0 underline text-text-muted cursor-pointer"
-                          onClick={() => props.onCancel(agent.id, q.queueId)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              {!atBottom && (
-                <button
-                  className="absolute left-1/2 -translate-x-1/2 bottom-10 px-10 py-2 bg-accent border-2 border-accent-bright text-sm text-white cursor-pointer"
-                  onClick={() => {
-                    const el = readRef.current;
-                    if (el) el.scrollTop = el.scrollHeight;
-                    setAtBottom(true);
-                  }}
+                  Aa
+                </Button>
+                {props.onOpenTerminal && (
+                  <Button size="sm" onClick={() => props.onOpenTerminal?.(agent.id)}>
+                    Terminal
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={props.onToggleDock}
+                  title={docked ? 'Full window' : 'Dock beside the office'}
                 >
-                  ↓ Latest
-                </button>
-              )}
-            </div>
-
-            <div
-              className="relative border-t-2 border-border px-12 py-8"
-              onDragOver={(e) => {
-                if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
-                e.preventDefault();
-                setIsFileDropTarget(true);
-              }}
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                  setIsFileDropTarget(false);
-              }}
-              onDrop={(e) => {
-                setIsFileDropTarget(false);
-                if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
-                e.preventDefault();
-                attachments.add(e.dataTransfer.files);
-              }}
-            >
-              {isFileDropTarget && (
-                <div
-                  className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
-                  data-testid="messenger-file-drop"
-                >
-                  Drop files to send them to {agent.label}
-                </div>
-              )}
-              <div className="max-w-680 mx-auto flex flex-col gap-6">
-                {readOnly ? (
-                  <div className="text-xs text-text-muted">{readOnly}</div>
-                ) : (
-                  <>
-                    {props.attachedPins(agent.id).length > 0 && (
-                      <div className="flex gap-4 flex-wrap">
-                        {props.attachedPins(agent.id).map((pin) => (
-                          <span
-                            key={pin.id}
-                            className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs"
+                  {docked ? '⤢ Full' : '⇲ Dock'}
+                </Button>
+                {docked && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={props.onClose}
+                    aria-label="Close Messages"
+                  >
+                    ×
+                  </Button>
+                )}
+                {showPrefs && (
+                  <div
+                    className="absolute right-12 top-full mt-4 z-10 w-240 pixel-panel p-10 flex flex-col gap-8 text-sm"
+                    data-testid="messenger-prefs"
+                  >
+                    <span>Reading</span>
+                    <label className="flex flex-col gap-2 text-xs text-text-muted">
+                      Message font
+                      <span className="flex">
+                        {(['readable', 'pixel'] as const).map((f) => (
+                          <Button
+                            key={f}
+                            size="sm"
+                            variant={prefs.font === f ? 'active' : 'default'}
+                            className="flex-1"
+                            onClick={() => update({ font: f })}
                           >
-                            <PinKindTag kind={pin.kind} />
-                            {pin.title}
-                            <button
-                              className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
-                              onClick={() => props.onDetachPin(agent.id, pin.id)}
-                              aria-label={`Remove ${pin.title}`}
-                            >
-                              ✕
-                            </button>
-                          </span>
+                            {f === 'readable' ? 'Readable' : 'Pixel'}
+                          </Button>
                         ))}
+                      </span>
+                    </label>
+                    <label className="flex flex-col gap-2 text-xs text-text-muted">
+                      Text size
+                      <span className="flex">
+                        {(['normal', 'large'] as const).map((sz) => (
+                          <Button
+                            key={sz}
+                            size="sm"
+                            variant={prefs.size === sz ? 'active' : 'default'}
+                            className="flex-1"
+                            onClick={() => update({ size: sz })}
+                          >
+                            {sz === 'normal' ? 'Normal' : 'Large'}
+                          </Button>
+                        ))}
+                      </span>
+                    </label>
+                    <label className="flex items-center justify-between text-xs cursor-pointer">
+                      Fold tool steps
+                      <input
+                        type="checkbox"
+                        checked={prefs.foldSteps}
+                        onChange={(e) => update({ foldSteps: e.target.checked })}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between text-xs cursor-pointer">
+                      Show times
+                      <input
+                        type="checkbox"
+                        checked={prefs.timestamps}
+                        onChange={(e) => update({ timestamps: e.target.checked })}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative flex-1 min-h-0">
+                <div
+                  ref={readRef}
+                  className="absolute inset-0 overflow-y-auto py-16"
+                  onScroll={(e) => {
+                    const el = e.currentTarget;
+                    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 40);
+                  }}
+                  data-testid="messenger-read"
+                >
+                  <div
+                    className={`max-w-680 mx-auto px-16 flex flex-col gap-14 ${bodyFont} ${textSize} leading-relaxed`}
+                  >
+                    {entries.length === 0 && (
+                      <div className="m-auto text-sm text-text-muted font-pixel">
+                        No messages yet.
                       </div>
                     )}
-                    {filesEnabled && <FileChips attachments={attachments} />}
-                    <textarea
-                      value={draft[agent.id] ?? ''}
-                      onPaste={(e) => {
-                        if (!filesEnabled) return;
-                        const pasted = pastedFiles(e.clipboardData);
-                        if (pasted.length === 0) return;
-                        e.preventDefault();
-                        attachments.add(pasted);
-                      }}
-                      onChange={(e) => setDraft((d) => ({ ...d, [agent.id]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          void send();
-                        }
-                      }}
-                      rows={3}
-                      placeholder={`Message ${agent.label}…`}
-                      className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-[15px] text-text"
-                      data-testid="messenger-input"
-                    />
-                    <div className="flex items-center gap-6 relative">
-                      <Button size="sm" onClick={() => setShowPins((v) => !v)}>
-                        + Attach
-                      </Button>
-                      {filesEnabled && <AttachFileButton attachments={attachments} />}
-                      {showPins && (
-                        <div className="absolute bottom-full left-0 mb-4 w-280 max-h-240 overflow-y-auto pixel-panel p-6 flex flex-col gap-2 z-10">
-                          {props.pinsFor(agent.id).length === 0 && (
-                            <span className="text-2xs text-text-muted p-4">
-                              The whiteboard has nothing for this agent.
+                    {blocks.map((b) => {
+                      if (b.kind === 'steps') {
+                        return <Steps key={b.id} entries={b.entries} open={!prefs.foldSteps} />;
+                      }
+                      if (b.kind === 'edit') {
+                        return <EditCard key={b.entry.entryId} entry={b.entry} />;
+                      }
+                      const e = b.entry;
+                      const isUser = e.role === 'user';
+                      return (
+                        <div
+                          key={e.entryId}
+                          id={`msg-${e.entryId}`}
+                          className={isUser ? 'self-end max-w-[80%]' : 'self-stretch'}
+                          data-testid={isUser ? 'messenger-user' : 'messenger-assistant'}
+                        >
+                          <div
+                            className={`flex gap-8 text-2xs text-text-muted font-pixel mb-2 ${isUser ? 'justify-end' : ''}`}
+                          >
+                            <span className="text-text">
+                              {isUser
+                                ? e.source === 'office'
+                                  ? 'you · office'
+                                  : 'you'
+                                : agent.label}
                             </span>
+                            {prefs.timestamps && <span>{timeLabel(e.timestamp)}</span>}
+                            {e.usage && (
+                              <span>
+                                {formatTokens(
+                                  e.usage.input +
+                                    e.usage.cacheCreation +
+                                    e.usage.cacheRead +
+                                    e.usage.output,
+                                )}{' '}
+                                tokens
+                              </span>
+                            )}
+                          </div>
+                          {isUser ? (
+                            <div className="px-10 py-6 bg-chat-office border-2 border-accent whitespace-pre-wrap break-words">
+                              <MessageText text={e.text} />
+                            </div>
+                          ) : (
+                            <Markdown blocks={parseMarkdown(e.text)} />
                           )}
-                          {props.pinsFor(agent.id).map((pin) => (
-                            <button
+                        </div>
+                      );
+                    })}
+                    {queued.map((q) => (
+                      <div
+                        key={q.queueId}
+                        className="self-end max-w-[80%] px-10 py-6 border-2 border-dashed border-accent text-text-muted whitespace-pre-wrap"
+                      >
+                        {q.text}
+                        <div className="flex gap-8 mt-4 text-2xs font-pixel">
+                          <span>waiting for the turn to end</span>
+                          <button
+                            className="bg-transparent border-0 p-0 underline text-text-muted cursor-pointer"
+                            onClick={() => props.onCancel(agent.id, q.queueId)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {!atBottom && (
+                  <button
+                    className="absolute left-1/2 -translate-x-1/2 bottom-10 px-10 py-2 bg-accent border-2 border-accent-bright text-sm text-white cursor-pointer"
+                    onClick={() => {
+                      const el = readRef.current;
+                      if (el) el.scrollTop = el.scrollHeight;
+                      setAtBottom(true);
+                    }}
+                  >
+                    ↓ Latest
+                  </button>
+                )}
+              </div>
+
+              <div
+                className="relative border-t-2 border-border px-12 py-8"
+                onDragOver={(e) => {
+                  if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
+                  e.preventDefault();
+                  setIsFileDropTarget(true);
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                    setIsFileDropTarget(false);
+                }}
+                onDrop={(e) => {
+                  setIsFileDropTarget(false);
+                  if (readOnly || !filesEnabled || !dragHasFiles(e)) return;
+                  e.preventDefault();
+                  attachments.add(e.dataTransfer.files);
+                }}
+              >
+                {isFileDropTarget && (
+                  <div
+                    className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
+                    data-testid="messenger-file-drop"
+                  >
+                    Drop files to send them to {agent.label}
+                  </div>
+                )}
+                <div className="max-w-680 mx-auto flex flex-col gap-6">
+                  {readOnly ? (
+                    <div className="text-xs text-text-muted">{readOnly}</div>
+                  ) : (
+                    <>
+                      {props.attachedPins(agent.id).length > 0 && (
+                        <div className="flex gap-4 flex-wrap">
+                          {props.attachedPins(agent.id).map((pin) => (
+                            <span
                               key={pin.id}
-                              className="flex items-center gap-6 text-left px-6 py-2 bg-transparent border-0 text-xs text-text cursor-pointer hover:bg-bg-thumb"
-                              onClick={() => {
-                                props.onAttachPin(agent.id, pin.id);
-                                setShowPins(false);
-                              }}
+                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs"
                             >
                               <PinKindTag kind={pin.kind} />
-                              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-                                {pin.title}
-                              </span>
-                            </button>
+                              {pin.title}
+                              <button
+                                className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
+                                onClick={() => props.onDetachPin(agent.id, pin.id)}
+                                aria-label={`Remove ${pin.title}`}
+                              >
+                                ✕
+                              </button>
+                            </span>
                           ))}
                         </div>
                       )}
-                      <span className="flex-1 text-2xs text-text-muted max-sm:hidden">
-                        Enter sends · Shift+Enter new line
-                        {filesEnabled ? ' · paste or drop files' : ''}
-                      </span>
-                      <Button
-                        variant="accent"
-                        size="sm"
-                        disabled={attachments.uploading}
-                        onClick={() => void send()}
-                        data-testid="messenger-send"
-                      >
-                        {attachments.uploading ? 'Uploading' : 'Send'}
-                      </Button>
-                    </div>
-                  </>
-                )}
+                      {props.docRefs(agent.id).length > 0 && (
+                        <div className="flex gap-4 flex-wrap" data-testid="messenger-doc-refs">
+                          {props.docRefs(agent.id).map((ref, i) => (
+                            <span
+                              key={`${refLabel(ref)}-${i}`}
+                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs font-mono"
+                            >
+                              {refLabel(ref)}
+                              <button
+                                className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
+                                aria-label={`Remove ${refLabel(ref)}`}
+                                onClick={() => props.onRemoveDocRef(agent.id, i)}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {filesEnabled && <FileChips attachments={attachments} />}
+                      <textarea
+                        value={draft[agent.id] ?? ''}
+                        onPaste={(e) => {
+                          if (!filesEnabled) return;
+                          const pasted = pastedFiles(e.clipboardData);
+                          if (pasted.length === 0) return;
+                          e.preventDefault();
+                          attachments.add(pasted);
+                        }}
+                        onChange={(e) => setDraft((d) => ({ ...d, [agent.id]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            void send();
+                          }
+                        }}
+                        rows={3}
+                        placeholder={`Message ${agent.label}…`}
+                        className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-[15px] text-text"
+                        data-testid="messenger-input"
+                      />
+                      <div className="flex items-center gap-6 relative">
+                        <Button size="sm" onClick={() => setShowPins((v) => !v)}>
+                          + Attach
+                        </Button>
+                        {filesEnabled && <AttachFileButton attachments={attachments} />}
+                        {showPins && (
+                          <div className="absolute bottom-full left-0 mb-4 w-280 max-h-240 overflow-y-auto pixel-panel p-6 flex flex-col gap-2 z-10">
+                            {props.pinsFor(agent.id).length === 0 && (
+                              <span className="text-2xs text-text-muted p-4">
+                                The whiteboard has nothing for this agent.
+                              </span>
+                            )}
+                            {props.pinsFor(agent.id).map((pin) => (
+                              <button
+                                key={pin.id}
+                                className="flex items-center gap-6 text-left px-6 py-2 bg-transparent border-0 text-xs text-text cursor-pointer hover:bg-bg-thumb"
+                                onClick={() => {
+                                  props.onAttachPin(agent.id, pin.id);
+                                  setShowPins(false);
+                                }}
+                              >
+                                <PinKindTag kind={pin.kind} />
+                                <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                                  {pin.title}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <span className="flex-1 text-2xs text-text-muted max-sm:hidden">
+                          Enter sends · Shift+Enter new line
+                          {filesEnabled ? ' · paste or drop files' : ''}
+                        </span>
+                        <Button
+                          variant="accent"
+                          size="sm"
+                          disabled={attachments.uploading}
+                          onClick={() => void send()}
+                          data-testid="messenger-send"
+                        >
+                          {attachments.uploading ? 'Uploading' : 'Send'}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          </>
-        ) : (
-          <div className="m-auto text-sm text-text-muted">Pick an agent to read its chat.</div>
+            </>
+          ) : (
+            <div className="m-auto text-sm text-text-muted">Pick an agent to read its chat.</div>
+          )}
+        </div>
+
+        {agent && !docked && (
+          <aside className="hidden lg:flex flex-col gap-16 w-260 shrink-0 p-12 bg-bg-dark border-l-2 border-border overflow-y-auto">
+            <section className="flex flex-col gap-4">
+              <span className="text-2xs text-text-muted uppercase">Context</span>
+              {ctx ? (
+                <>
+                  <div className="h-10 bg-bg-thumb border-2 border-border relative">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-status-active"
+                      style={{
+                        width: `${Math.min(100, Math.round((ctx.tokens / ctx.max) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-2xs text-text-muted">
+                    <span>
+                      {formatTokens(ctx.tokens)} / {formatTokens(ctx.max)}
+                    </span>
+                    <span>{Math.round((ctx.tokens / ctx.max) * 100)}%</span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-2xs text-text-muted">Not known yet.</span>
+              )}
+            </section>
+            {use && (
+              <section className="flex flex-col gap-2 text-xs">
+                <span className="text-2xs text-text-muted uppercase">Tokens this session</span>
+                <span>{formatTokens(use.totalTokens)} total</span>
+                <span className="text-text-muted">
+                  {formatTokens(use.burnPerMinute)} / min lately
+                </span>
+              </section>
+            )}
+            {outline.length > 0 && (
+              <section className="flex flex-col gap-2">
+                <span className="text-2xs text-text-muted uppercase">In this chat</span>
+                {outline.map((o) => (
+                  <button
+                    key={o.entryId}
+                    className="text-left bg-transparent border-0 border-l-2 border-bg-thumb px-6 py-2 text-xs text-text font-reading cursor-pointer hover:border-accent"
+                    onClick={() =>
+                      document
+                        .getElementById(`msg-${o.entryId}`)
+                        ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+                    }
+                  >
+                    {o.label}
+                    {prefs.timestamps && o.timestamp && (
+                      <span className="text-text-muted"> · {timeLabel(o.timestamp)}</span>
+                    )}
+                  </button>
+                ))}
+              </section>
+            )}
+            {files.length > 0 && (
+              <section className="flex flex-col gap-4">
+                <span className="text-2xs text-text-muted uppercase">Files it showed you</span>
+                {files.map((r) => (
+                  <button
+                    key={r.requestId}
+                    disabled={!props.onOpenRequest}
+                    onClick={() => props.onOpenRequest?.(r)}
+                    className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border-2 border-board-ink cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+                  >
+                    {fileBaseName(r.path)}
+                    {spotLabel(r) ? ` · ${spotLabel(r)}` : ''}
+                  </button>
+                ))}
+              </section>
+            )}
+          </aside>
         )}
       </div>
-
-      {agent && !docked && (
-        <aside className="hidden lg:flex flex-col gap-16 w-260 shrink-0 p-12 bg-bg-dark border-l-2 border-border overflow-y-auto">
-          <section className="flex flex-col gap-4">
-            <span className="text-2xs text-text-muted uppercase">Context</span>
-            {ctx ? (
-              <>
-                <div className="h-10 bg-bg-thumb border-2 border-border relative">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-status-active"
-                    style={{ width: `${Math.min(100, Math.round((ctx.tokens / ctx.max) * 100))}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-2xs text-text-muted">
-                  <span>
-                    {formatTokens(ctx.tokens)} / {formatTokens(ctx.max)}
-                  </span>
-                  <span>{Math.round((ctx.tokens / ctx.max) * 100)}%</span>
-                </div>
-              </>
-            ) : (
-              <span className="text-2xs text-text-muted">Not known yet.</span>
-            )}
-          </section>
-          {use && (
-            <section className="flex flex-col gap-2 text-xs">
-              <span className="text-2xs text-text-muted uppercase">Tokens this session</span>
-              <span>{formatTokens(use.totalTokens)} total</span>
-              <span className="text-text-muted">
-                {formatTokens(use.burnPerMinute)} / min lately
-              </span>
-            </section>
-          )}
-          {outline.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <span className="text-2xs text-text-muted uppercase">In this chat</span>
-              {outline.map((o) => (
-                <button
-                  key={o.entryId}
-                  className="text-left bg-transparent border-0 border-l-2 border-bg-thumb px-6 py-2 text-xs text-text font-reading cursor-pointer hover:border-accent"
-                  onClick={() =>
-                    document
-                      .getElementById(`msg-${o.entryId}`)
-                      ?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-                  }
-                >
-                  {o.label}
-                  {prefs.timestamps && o.timestamp && (
-                    <span className="text-text-muted"> · {timeLabel(o.timestamp)}</span>
-                  )}
-                </button>
-              ))}
-            </section>
-          )}
-          {files.length > 0 && (
-            <section className="flex flex-col gap-4">
-              <span className="text-2xs text-text-muted uppercase">Files it showed you</span>
-              {files.map((r) => (
-                <button
-                  key={r.requestId}
-                  disabled={!props.onOpenRequest}
-                  onClick={() => props.onOpenRequest?.(r)}
-                  className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border-2 border-board-ink cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
-                >
-                  {fileBaseName(r.path)}
-                  {spotLabel(r) ? ` · ${spotLabel(r)}` : ''}
-                </button>
-              ))}
-            </section>
-          )}
-        </aside>
-      )}
-    </div>
+    </OpenFileContext.Provider>
   );
 }
