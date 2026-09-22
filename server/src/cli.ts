@@ -14,6 +14,7 @@ import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from './agentRuntime.js';
+import { runAgentsCommand } from './agentsCli.js';
 import { AgentStateStore } from './agentStateStore.js';
 import {
   buildAssetCache,
@@ -95,6 +96,7 @@ export function parseArgs(argv: string[]): CliArgs {
                                            (Claude sessions show up in the office and
                                            can be sent messages; other programs run as usual)
        pixel-office task <show|brief|step|done> …  Answer a task desk card (for agents)
+       pixel-office agents [--json]         List every agent in the office (any CLI)
        pixel-office board <list|add|rm> …  Read and post to the shared whiteboard
                                            (pixel-office board --help for details)
 
@@ -242,6 +244,10 @@ async function main(): Promise<void> {
   // `pixel-office board …`: agents read and post to the shared whiteboard.
   if (first === 'board') {
     process.exit(await runBoardCommand(process.argv.slice(3)));
+  }
+  // `pixel-office agents`: agents list who is in the office (any CLI).
+  if (first === 'agents') {
+    process.exit(await runAgentsCommand(process.argv.slice(3)));
   }
   // `pixel-office task …`: agents answer the task desk.
   if (first === 'task') {

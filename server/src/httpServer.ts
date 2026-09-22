@@ -24,6 +24,7 @@ import type {
 } from './clientMessageHandler.js';
 import { handleClientMessage } from './clientMessageHandler.js';
 import {
+  AGENTS_API_PATH,
   BOARD_FILE_API_PREFIX,
   BOARD_FILE_MAX_BYTES,
   BOARD_NO_SUCH_PIN_ERROR,
@@ -49,6 +50,7 @@ import {
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
 import type { LauncherHub } from './launcherHub.js';
+import { officeRoster } from './officeRoster.js';
 import type { OfficeSessions } from './officeSessions.js';
 import { isPermissionRequestId } from './permissionBroker.js';
 import { describeTask, type DeskReply, type TaskDesk } from './taskDesk.js';
@@ -152,6 +154,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerProposalRoutes(app, options);
   registerWorkflowRoutes(app, options);
   registerTaskRoutes(app, options);
+  registerRosterRoute(app, options);
   registerChatFileRoute(app, options);
   registerWebSocketRoute(app, options);
 
@@ -486,6 +489,30 @@ function registerTaskRoutes(app: FastifyInstance, options: HttpServerOptions): v
  * registry entry), and browsers are refused like the launcher routes — the
  * office UI edits the board over /ws, so an Origin header is never ours.
  */
+/**
+ * Who is in the office, for AGENTS (`pixel-office agents`): every agent
+ * whatever CLI runs it. Same gate as the task routes — Bearer token, any
+ * request carrying an Origin refused (the office UI has /ws).
+ */
+function registerRosterRoute(app: FastifyInstance, options: HttpServerOptions): void {
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  app.get<{ Querystring: { session?: string } }>(
+    AGENTS_API_PATH,
+    {
+      preHandler: [noBrowsers, bearerAuth(options.token)],
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: { session: { type: 'string', maxLength: 128 } },
+        },
+      },
+    },
+    async (request) => ({ agents: officeRoster(options.store, request.query.session) }),
+  );
+}
+
 function registerBoardPinRoutes(app: FastifyInstance, options: HttpServerOptions): void {
   const { getBoardPins, saveBoardPin, removeBoardPin } = options;
   if (!getBoardPins || !saveBoardPin || !removeBoardPin) return;

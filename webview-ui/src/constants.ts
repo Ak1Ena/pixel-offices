@@ -370,6 +370,8 @@ export const TOUCH_TAP_SLOP_PX = 8;
 export const BOARD_FILE_API = '/api/board/files';
 /** Command agents run to post a note to the whiteboard (server: BOARD_CLI_COMMAND). */
 export const BOARD_POST_COMMAND = 'pixel-office board add --note';
+/** How agents list everyone in the office (any CLI), told in the group-chat note. */
+export const AGENTS_LIST_COMMAND = 'pixel-office agents';
 /** Most table rows the viewer draws for a sheet or CSV. */
 export const DOC_TABLE_MAX_ROWS = 2_000;
 /** Largest upload the office accepts (server enforces the same). */

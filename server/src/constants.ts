@@ -354,4 +354,8 @@ export const TASK_DESK_TICK_MS = 3_000;
  *  installed from a release tarball, and npx would look for it on the npm registry. */
 export const TASK_CLI_COMMAND = 'pixel-office task';
 export const TASKS_API_PATH = '/api/tasks';
+/** Every agent in the office, for `pixel-office agents` (Bearer, no browsers). */
+export const AGENTS_API_PATH = '/api/agents';
+/** How agents are told to list who is in the office. */
+export const AGENTS_CLI_COMMAND = 'pixel-office agents';
 export const TASK_NO_SUCH_CARD_ERROR = 'No such card.';

@@ -1,5 +1,6 @@
 import type { BoardPin, ChatEntry } from '../../core/src/messages.js';
 import {
+  AGENTS_LIST_COMMAND,
   BOARD_POST_COMMAND,
   BURN_FIRE_PER_MIN,
   BURN_WARM_PER_MIN,
@@ -215,7 +216,7 @@ export function groupNote(teammates: string[], relayEnabled: boolean): string {
   const mention = relayEnabled
     ? ' To message a teammate, start a paragraph of your reply with @Name.'
     : '';
-  return ` (Team chat via Pixel Office.${others} Shared docs and notes: ~/.pixel-agents/board.md. To post one yourself: ${BOARD_POST_COMMAND} "text".${mention})`;
+  return ` (Team chat via Pixel Office.${others} Who is in the office: ${AGENTS_LIST_COMMAND}. Shared docs and notes: ~/.pixel-agents/board.md. To post one yourself: ${BOARD_POST_COMMAND} "text".${mention})`;
 }
 
 /** Per-agent usage as the office gets it (AgentTokenUsage). */

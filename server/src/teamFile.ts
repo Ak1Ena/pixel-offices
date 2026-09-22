@@ -1,5 +1,6 @@
 import type { TeamMember, TeamPreset } from '../../core/src/messages.js';
 import {
+  AGENTS_CLI_COMMAND,
   TEAM_COMMAND_MAX_CHARS,
   TEAM_MAX_MEMBERS,
   TEAM_NAME_MAX_CHARS,
@@ -108,6 +109,7 @@ export function firstMessage(
       '',
       `You lead the team "${team.title}" in the Pixel Office.`,
       role,
+      `To see every agent in the office (any CLI) and which one is you: ${AGENTS_CLI_COMMAND}.`,
       ...(others
         ? [
             `Teammates you can call in: ${others}. They are not running yet.`,
@@ -123,7 +125,7 @@ export function firstMessage(
   return [
     `You are @${member.name}, the ${member.role} in the team "${team.title}", led by @${lead.name}.`,
     member.instructions ? role : '',
-    `Team: ${roster}.`,
+    `Team: ${roster}. See everyone in the office: ${AGENTS_CLI_COMMAND}.`,
     calledWith
       ? `@${lead.name} called you in: ${calledWith}`
       : `Wait for instructions from @${lead.name} before you start.`,
