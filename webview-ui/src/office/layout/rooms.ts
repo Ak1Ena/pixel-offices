@@ -489,7 +489,7 @@ export const FILL_PRESETS: FillPreset[] = [
       { type: 'RUG', col: 0, row: 1 },
       { type: 'SOFA_FRONT', col: 0, row: 0 },
       { type: 'BEAN_BAG', col: 3, row: 1 },
-      { type: 'FLOOR_LAMP', col: 3, row: 0 },
+      { type: 'FLOOR_LAMP_OFF', col: 3, row: 0 },
     ],
   },
   {
@@ -498,7 +498,7 @@ export const FILL_PRESETS: FillPreset[] = [
     hint: 'ping-pong and an arcade',
     furniture: [
       { type: 'PING_PONG_TABLE', col: 0, row: 0 },
-      { type: 'ARCADE_CABINET', col: 3, row: 0 },
+      { type: 'ARCADE_CABINET_OFF', col: 3, row: 0 },
     ],
   },
   {

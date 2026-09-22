@@ -1,0 +1,32 @@
+{
+  "id": "WALL_TV",
+  "name": "Wall TV",
+  "category": "wall",
+  "type": "group",
+  "groupType": "state",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "members": [
+    {
+      "type": "asset",
+      "id": "WALL_TV_ON",
+      "file": "WALL_TV_ON.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "state": "on"
+    },
+    {
+      "type": "asset",
+      "id": "WALL_TV_OFF",
+      "file": "WALL_TV_OFF.png",
+      "width": 32,
+      "height": 32,
+      "footprintW": 2,
+      "footprintH": 2,
+      "state": "off"
+    }
+  ]
+}

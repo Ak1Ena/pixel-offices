@@ -522,6 +522,8 @@ Toggle via "Layout" button. Tools: SELECT (default), Floor paint, Wall paint, Er
 
 **Catalog**: `furniture-catalog.json` with `id, name, label, category, footprint, isDesk, canPlaceOnWalls, groupId?, orientation?, state?, canPlaceOnSurfaces?, backgroundTiles?`. String-based type system. Categories: desks, chairs, storage, electronics, decor, wall, misc. Wall-placeable items use the `wall` category and appear in a dedicated "Wall" tab. Asset naming convention: `{BASE}[_{ORIENTATION}][_{STATE}]` (e.g., `MONITOR_FRONT_OFF`).
 
+**Office-life set** (standing desk, bean bag, rug, floor lamp, printer, server rack, water cooler, vending machine, fridge, arcade cabinet, ping-pong table, fish tank, wall TV) is drawn by `scripts/generate-office-furniture.mjs` (pngjs rectangles → PNGs + manifests); edit the drawing there and rerun rather than hand-editing those PNGs. The room tool's `FILL_PRESETS` place these by asset id (state groups by their `_OFF` id).
+
 **Per-furniture manifests**: Each furniture item lives in its own folder under `assets/furniture/` with a `manifest.json` that declares its sprites, rotation groups, state groups (on/off), and animation frames. Floor tiles are individual PNGs in `assets/floors/`; wall tile sets in `assets/walls/`.
 
 **Rotation groups**: `buildDynamicCatalog()` builds `rotationGroups` Map from assets sharing a `groupId`. Supports 2+ orientations (e.g., front/back only). Editor palette shows 1 item per group (front orientation preferred). `getRotatedType()` cycles through available orientations.

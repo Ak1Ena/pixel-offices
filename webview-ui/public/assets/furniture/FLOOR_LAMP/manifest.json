@@ -1,0 +1,32 @@
+{
+  "id": "FLOOR_LAMP",
+  "name": "Floor Lamp",
+  "category": "decor",
+  "type": "group",
+  "groupType": "state",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "members": [
+    {
+      "type": "asset",
+      "id": "FLOOR_LAMP_ON",
+      "file": "FLOOR_LAMP_ON.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "state": "on"
+    },
+    {
+      "type": "asset",
+      "id": "FLOOR_LAMP_OFF",
+      "file": "FLOOR_LAMP_OFF.png",
+      "width": 16,
+      "height": 32,
+      "footprintW": 1,
+      "footprintH": 2,
+      "state": "off"
+    }
+  ]
+}

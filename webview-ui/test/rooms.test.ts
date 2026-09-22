@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
+import { TEAM_ROOM_AREA_COLOR } from '../src/constants.js';
 import {
   addPortal,
   blockedEdges,
@@ -35,7 +36,12 @@ function floor(cols: number, rows: number): OfficeLayout {
 const anywhere = () => true;
 
 test('drawing a rectangle makes a team room with a door on its bottom wall', () => {
-  const layout = createRectRoom(floor(12, 10), { col: 2, row: 2, w: 4, h: 3 }, 'Room 1', '#000000');
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   const area = layout.areas?.[0];
   assert.equal(area?.teamRoom, true);
   assert.deepEqual(area?.rect, { col: 2, row: 2, w: 4, h: 3 });
@@ -45,7 +51,12 @@ test('drawing a rectangle makes a team room with a door on its bottom wall', () 
 });
 
 test('walls block every edge but the door', () => {
-  const layout = createRectRoom(floor(12, 10), { col: 2, row: 2, w: 4, h: 3 }, 'Room 1', '#000000');
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   const door = layout.areas![0].door!;
   const blocked = blockedEdges(layout);
   assert.equal(blocked.has(edgeKey(door.col, door.row, door.col, door.row + 1)), false);
@@ -59,7 +70,7 @@ test('a room with no floor around it is out of reach until a portal joins it', (
   // A column of void splits the map into a left and a right part.
   for (let r = 0; r < 6; r++) base.tiles[r * 12 + 6] = TileType.VOID;
   // The right part becomes a room that fills it completely: no outside floor for a door.
-  const layout = createRectRoom(base, { col: 7, row: 0, w: 5, h: 6 }, 'Lab', '#000000');
+  const layout = createRectRoom(base, { col: 7, row: 0, w: 5, h: 6 }, 'Lab', TEAM_ROOM_AREA_COLOR);
   assert.equal(layout.areas![0].door, undefined);
   assert.deepEqual(unreachableRooms(layout, new Set()), ['Lab']);
   const joined = addPortal(layout, { col: 2, row: 2 }, { col: 9, row: 3 });
@@ -68,7 +79,12 @@ test('a room with no floor around it is out of reach until a portal joins it', (
 });
 
 test('rectangles must fit the grid and not cover another room', () => {
-  const layout = createRectRoom(floor(12, 10), { col: 2, row: 2, w: 4, h: 3 }, 'Room 1', '#000000');
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   assert.equal(canPlaceRect(layout, { col: 8, row: 2, w: 3, h: 3 }), true);
   assert.equal(canPlaceRect(layout, { col: 4, row: 3, w: 3, h: 3 }), false);
   assert.equal(canPlaceRect(layout, { col: 10, row: 8, w: 3, h: 3 }), false);
@@ -91,7 +107,12 @@ test('a rectangle can be drawn in any direction, and square', () => {
 });
 
 test('moving a room takes its furniture and door along; resizing keeps a valid door', () => {
-  let layout = createRectRoom(floor(14, 10), { col: 1, row: 1, w: 4, h: 3 }, 'Room 1', '#000000');
+  let layout = createRectRoom(
+    floor(14, 10),
+    { col: 1, row: 1, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   layout = {
     ...layout,
     furniture: [
@@ -115,10 +136,20 @@ test('moving a room takes its furniture and door along; resizing keeps a valid d
 });
 
 test('older rooms without a door get one when the layout loads', () => {
-  const layout = createRectRoom(floor(12, 10), { col: 2, row: 2, w: 4, h: 3 }, 'Room 1', '#000000');
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   const old: OfficeLayout = {
     ...layout,
-    areas: layout.areas!.map(({ door: _door, rect: _rect, ...rest }) => rest),
+    areas: layout.areas!.map((a) => {
+      const bare = { ...a };
+      delete bare.door;
+      delete bare.rect;
+      return bare;
+    }),
   };
   const fixed = ensureRoomDoors(old);
   assert.deepEqual(fixed.areas![0].door, defaultDoor(old, 'Room 1'));
@@ -126,7 +157,12 @@ test('older rooms without a door get one when the layout loads', () => {
 });
 
 test('a dragged door snaps to the nearest wall', () => {
-  const layout = createRectRoom(floor(12, 10), { col: 2, row: 2, w: 4, h: 3 }, 'Room 1', '#000000');
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room 1',
+    TEAM_ROOM_AREA_COLOR,
+  );
   assert.deepEqual(nearestDoorEdge(layout, 'Room 1', 6.4, 3), { col: 5, row: 3, side: 'E' });
 });
 
@@ -137,16 +173,21 @@ test('ready-made rooms and fill presets place everything or nothing', () => {
     squad,
     { col: 1, row: 1 },
     'Squad',
-    '#000000',
+    TEAM_ROOM_AREA_COLOR,
     anywhere,
   );
   assert.ok(placed);
   assert.equal(placed.furniture.length, squad.furniture.length);
   assert.equal(
-    placeTemplate(floor(6, 6), squad, { col: 0, row: 0 }, 'Squad', '#000000', anywhere),
+    placeTemplate(floor(6, 6), squad, { col: 0, row: 0 }, 'Squad', TEAM_ROOM_AREA_COLOR, anywhere),
     null,
   );
-  const room = createRectRoom(floor(14, 10), { col: 1, row: 1, w: 8, h: 4 }, 'R', '#000000');
+  const room = createRectRoom(
+    floor(14, 10),
+    { col: 1, row: 1, w: 8, h: 4 },
+    'R',
+    TEAM_ROOM_AREA_COLOR,
+  );
   const filled = fillRoom(
     room,
     'R',
