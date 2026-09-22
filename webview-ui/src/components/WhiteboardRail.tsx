@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import type { BoardPin, BoardPinKind } from '../../../core/src/messages.js';
 import {
@@ -7,6 +7,7 @@ import {
   PIN_DRAG_MIME,
   WHITEBOARD_RAIL_WIDTH_PX,
 } from '../constants.js';
+import { dragHasFiles, pastedFiles } from '../fileUpload.js';
 import { newPinId } from '../officeChat.js';
 import { PIN_KIND_LABEL, PIN_KIND_PAPER } from './pinKinds.js';
 
@@ -39,6 +40,18 @@ const VALUE_LABEL: Record<BoardPinKind, string> = {
   snippet: 'Code',
   note: 'Text',
 };
+
+/** Upload files one by one as file pins; resolves with the first error, if any. */
+async function uploadAll(
+  files: File[],
+  onUpload: (file: File) => Promise<string | null>,
+): Promise<string | null> {
+  for (const file of files) {
+    const error = await onUpload(file);
+    if (error) return error;
+  }
+  return null;
+}
 
 const boardButton =
   'border-2 border-board-ink rounded-none cursor-pointer text-board-ink bg-board shadow-pixel';
@@ -150,6 +163,19 @@ function PinForm({
   const multiline = kind === 'snippet' || kind === 'note';
   const canSave = title.trim().length > 0 && (kind === 'note' || value.trim().length > 0);
 
+  const [dropping, setDropping] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const upload = (files: File[]) => {
+    if (!onUpload || files.length === 0 || uploading) return;
+    setUploading(true);
+    setUploadError(null);
+    void uploadAll(files, onUpload).then((error) => {
+      setUploading(false);
+      if (error) setUploadError(error);
+      else onCancel(); // pinned by the server; close the form
+    });
+  };
+
   const toggleScope = (id: number) =>
     setScope((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
@@ -173,6 +199,15 @@ function PinForm({
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') onCancel();
+      }}
+      onPaste={(e) => {
+        // A pasted file or screenshot becomes a file pin; pasted text stays text.
+        if (!onUpload) return;
+        const files = pastedFiles(e.clipboardData);
+        if (files.length === 0) return;
+        e.preventDefault();
+        setKind('file');
+        upload(files);
       }}
     >
       <div role="radiogroup" aria-label="Pin type" className="grid grid-cols-4 gap-4">
@@ -235,30 +270,57 @@ function PinForm({
         />
       </label>
       {kind === 'file' && onUpload && (
-        <label className="flex flex-col gap-2 text-2xs">
-          Or upload from this device (PDF, Word, Excel, CSV, text, image · up to 25 MB)
+        <div
+          className={`flex flex-col items-center gap-4 p-10 text-2xs text-center border-2 border-dashed ${
+            dropping ? 'border-board-ink bg-board-ink text-board' : 'border-board-ink'
+          }`}
+          onDragOver={(e) => {
+            if (!dragHasFiles(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDropping(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+          }}
+          onDrop={(e) => {
+            setDropping(false);
+            if (!dragHasFiles(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            upload(Array.from(e.dataTransfer.files));
+          }}
+          data-testid="pin-drop"
+        >
+          <span>Or drop a file here, or paste one (⌘V / Ctrl+V)</span>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className={`px-8 py-2 text-2xs ${boardButton}`}
+          >
+            Choose a file…
+          </button>
+          <span className="text-board-ink-muted">
+            PDF, Word, Excel, CSV, text, image · up to 25 MB
+          </span>
           <input
+            ref={fileInputRef}
             type="file"
+            multiple
             accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.log,.json,.png,.jpg,.jpeg,.gif,.webp"
             disabled={uploading}
-            className="text-2xs"
+            className="hidden"
             data-testid="pin-upload"
             onChange={(e) => {
-              const file = e.target.files?.[0];
+              const files = Array.from(e.target.files ?? []);
               e.target.value = '';
-              if (!file) return;
-              setUploading(true);
-              setUploadError(null);
-              void onUpload(file).then((error) => {
-                setUploading(false);
-                if (error) setUploadError(error);
-                else onCancel(); // pinned by the server; close the form
-              });
+              upload(files);
             }}
           />
           {uploading && <span>Uploading…</span>}
           {uploadError && <span className="text-danger">{uploadError}</span>}
-        </label>
+        </div>
       )}
       {agents.length > 0 && (
         <fieldset className="flex flex-wrap gap-8 items-center border-0 p-0 m-0 text-2xs">
@@ -316,6 +378,9 @@ export function WhiteboardRail({
   onUpload,
 }: WhiteboardRailProps) {
   const [isAdding, setIsAdding] = useState(false);
+  const [railDrop, setRailDrop] = useState(false);
+  const [railUploading, setRailUploading] = useState(false);
+  const [railError, setRailError] = useState<string | null>(null);
   const labelFor = (id: number) => agents.find((a) => a.id === id)?.label ?? `#${id}`;
 
   if (!isOpen) {
@@ -340,12 +405,41 @@ export function WhiteboardRail({
       data-testid="board-rail"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
+      onDragOver={(e) => {
+        if (!onUpload || !dragHasFiles(e)) return;
+        e.preventDefault();
+        setRailDrop(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setRailDrop(false);
+      }}
+      onDrop={(e) => {
+        setRailDrop(false);
+        if (!onUpload || !dragHasFiles(e)) return;
+        e.preventDefault();
+        const files = Array.from(e.dataTransfer.files);
+        setRailError(null);
+        setRailUploading(true);
+        void uploadAll(files, onUpload).then((error) => {
+          setRailUploading(false);
+          setRailError(error);
+        });
+      }}
     >
+      {railDrop && (
+        <div
+          className="absolute inset-0 z-10 flex items-center justify-center bg-board border-4 border-dashed border-board-ink text-sm pointer-events-none"
+          data-testid="board-drop"
+        >
+          Drop to pin these files
+        </div>
+      )}
       <div className="flex items-start gap-8 p-10 border-b-2 border-board-edge">
         <div className="flex flex-col gap-2 flex-1">
           <span className="text-lg leading-none">WHITEBOARD</span>
           <span className="text-2xs text-board-ink-muted">
             Drag a pin onto a character or its chat
+            {onUpload ? ' · drop files here to pin them' : ''}
           </span>
         </div>
         <button
@@ -357,6 +451,22 @@ export function WhiteboardRail({
         </button>
       </div>
 
+      {(railUploading || railError) && (
+        <div className="flex gap-6 px-10 py-4 border-b-2 border-board-edge text-2xs">
+          <span className={`flex-1 ${railError ? 'text-danger' : ''}`}>
+            {railError ?? 'Uploading…'}
+          </span>
+          {railError && (
+            <button
+              className="bg-transparent border-0 p-0 text-board-ink cursor-pointer"
+              onClick={() => setRailError(null)}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      )}
       {isAdding && (
         <PinForm
           agents={agents}
