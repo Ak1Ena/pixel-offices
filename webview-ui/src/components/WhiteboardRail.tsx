@@ -8,7 +8,7 @@ import {
   WHITEBOARD_RAIL_WIDTH_PX,
 } from '../constants.js';
 import { dragHasFiles, pastedFiles } from '../fileUpload.js';
-import { newPinId } from '../officeChat.js';
+import { filterPins, newPinId } from '../officeChat.js';
 import { PIN_KIND_LABEL, PIN_KIND_PAPER } from './pinKinds.js';
 
 interface AgentOption {
@@ -147,19 +147,22 @@ function PinForm({
   onSave,
   onCancel,
   onUpload,
+  initial,
 }: {
   agents: AgentOption[];
   onSave: (pin: BoardPin) => void;
   onCancel: () => void;
   onUpload?: (file: File) => Promise<string | null>;
+  /** Editing this pin: the form starts from it and saves over it (same id). */
+  initial?: BoardPin;
 }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [kind, setKind] = useState<BoardPinKind>('link');
-  const [title, setTitle] = useState('');
-  const [value, setValue] = useState('');
-  const [detail, setDetail] = useState('');
-  const [scope, setScope] = useState<number[]>([]);
+  const [kind, setKind] = useState<BoardPinKind>(initial?.kind ?? 'link');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [value, setValue] = useState(initial?.value ?? '');
+  const [detail, setDetail] = useState(initial?.detail ?? '');
+  const [scope, setScope] = useState<number[]>(initial?.scope ?? []);
   const multiline = kind === 'snippet' || kind === 'note';
   const canSave = title.trim().length > 0 && (kind === 'note' || value.trim().length > 0);
 
@@ -181,19 +184,22 @@ function PinForm({
 
   return (
     <form
-      aria-label="New pin"
-      className="flex flex-col gap-6 p-10 border-b-2 border-board-edge"
+      aria-label={initial ? `Edit pin ${initial.title}` : 'New pin'}
+      className={`flex flex-col gap-6 p-10 ${
+        initial ? 'border-2 border-board-ink bg-board shadow-pixel' : 'border-b-2 border-board-edge'
+      }`}
+      data-testid={initial ? 'pin-edit-form' : undefined}
       onSubmit={(e) => {
         e.preventDefault();
         if (!canSave) return;
         onSave({
-          id: newPinId(),
+          id: initial?.id ?? newPinId(),
           kind,
           title: title.trim(),
           value: kind === 'snippet' ? value : value.trim(),
           ...(detail.trim() ? { detail: detail.trim() } : {}),
           scope,
-          createdAt: new Date().toISOString(),
+          createdAt: initial?.createdAt ?? new Date().toISOString(),
         });
       }}
       onKeyDown={(e) => {
@@ -202,7 +208,7 @@ function PinForm({
       }}
       onPaste={(e) => {
         // A pasted file or screenshot becomes a file pin; pasted text stays text.
-        if (!onUpload) return;
+        if (!onUpload || initial) return;
         const files = pastedFiles(e.clipboardData);
         if (files.length === 0) return;
         e.preventDefault();
@@ -269,7 +275,7 @@ function PinForm({
           data-testid="pin-detail"
         />
       </label>
-      {kind === 'file' && onUpload && (
+      {kind === 'file' && onUpload && !initial && (
         <div
           className={`flex flex-col items-center gap-4 p-10 text-2xs text-center border-2 border-dashed ${
             dropping ? 'border-board-ink bg-board-ink text-board' : 'border-board-ink'
@@ -350,7 +356,7 @@ function PinForm({
           }`}
           data-testid="pin-save"
         >
-          Pin it
+          {initial ? 'Save' : 'Pin it'}
         </button>
         <button type="button" onClick={onCancel} className={`px-10 py-2 text-xs ${boardButton}`}>
           Cancel
@@ -381,7 +387,11 @@ export function WhiteboardRail({
   const [railDrop, setRailDrop] = useState(false);
   const [railUploading, setRailUploading] = useState(false);
   const [railError, setRailError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [full, setFull] = useState(false);
   const labelFor = (id: number) => agents.find((a) => a.id === id)?.label ?? `#${id}`;
+  const shown = filterPins(pins, query, labelFor);
 
   if (!isOpen) {
     return (
@@ -400,8 +410,11 @@ export function WhiteboardRail({
   return (
     <aside
       aria-label="Whiteboard"
-      className="absolute right-0 top-0 bottom-0 z-30 flex flex-col bg-board text-board-ink border-l-4 border-board-edge"
-      style={{ width: `min(${WHITEBOARD_RAIL_WIDTH_PX}px, 100%)` }}
+      className={`absolute flex flex-col bg-board text-board-ink ${
+        full ? 'inset-0 z-58' : 'right-0 top-0 bottom-0 z-30 border-l-4 border-board-edge'
+      }`}
+      style={full ? undefined : { width: `min(${WHITEBOARD_RAIL_WIDTH_PX}px, 100%)` }}
+      data-full={full || undefined}
       data-testid="board-rail"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
@@ -443,13 +456,48 @@ export function WhiteboardRail({
           </span>
         </div>
         <button
-          onClick={onToggle}
+          onClick={() => setFull((v) => !v)}
+          aria-label={full ? 'Back to the side rail' : 'Open the whiteboard as a full page'}
+          title={full ? 'Back to the side rail' : 'Full page'}
+          className="bg-transparent border-0 text-board-ink cursor-pointer text-lg leading-none p-0"
+          data-testid="board-full"
+        >
+          {full ? '⇲' : '⤢'}
+        </button>
+        <button
+          onClick={() => {
+            setFull(false);
+            onToggle();
+          }}
           aria-label="Close whiteboard"
           className="bg-transparent border-0 text-board-ink cursor-pointer text-lg leading-none p-0"
         >
           ×
         </button>
       </div>
+      {pins.length > 0 && (
+        <div className="flex gap-6 items-center px-10 py-6 border-b-2 border-board-edge">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Escape') setQuery('');
+            }}
+            placeholder="Search pins…"
+            aria-label="Search pins"
+            className={`flex-1 min-w-0 p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none ${
+              full ? 'max-w-480' : ''
+            }`}
+            data-testid="board-search"
+          />
+          {query && (
+            <span className="text-2xs text-board-ink-muted whitespace-nowrap">
+              {shown.length} of {pins.length}
+            </span>
+          )}
+        </div>
+      )}
 
       {(railUploading || railError) && (
         <div className="flex gap-6 px-10 py-4 border-b-2 border-board-edge text-2xs">
@@ -468,83 +516,123 @@ export function WhiteboardRail({
         </div>
       )}
       {isAdding && (
-        <PinForm
-          agents={agents}
-          onSave={(pin) => {
-            onSave(pin);
-            setIsAdding(false);
-          }}
-          onCancel={() => setIsAdding(false)}
-          onUpload={onUpload}
-        />
+        <div className={full ? 'w-full max-w-560 self-center' : ''}>
+          <PinForm
+            agents={agents}
+            onSave={(pin) => {
+              onSave(pin);
+              setIsAdding(false);
+            }}
+            onCancel={() => setIsAdding(false)}
+            onUpload={onUpload}
+          />
+        </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-8 p-10">
+      <div
+        className={`flex-1 min-h-0 overflow-y-auto p-10 ${
+          full
+            ? 'grid gap-10 content-start items-start grid-cols-[repeat(auto-fill,minmax(260px,1fr))]'
+            : 'flex flex-col gap-8'
+        }`}
+      >
         {pins.length === 0 && !isAdding && (
           <span className="text-xs text-board-ink-muted">
             Nothing pinned yet. Pin the links, files, snippets and decisions your sessions share.
           </span>
         )}
-        {pins.map((pin) => (
-          <div
-            key={pin.id}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(PIN_DRAG_MIME, pin.id);
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-            className={`flex flex-col gap-2 p-8 border-2 border-board-ink shadow-pixel cursor-grab ${PIN_KIND_PAPER[pin.kind]}`}
-            data-testid="board-pin"
-          >
-            <div className="flex justify-between gap-6 text-2xs">
-              <span>{PIN_KIND_LABEL[pin.kind]}</span>
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
-                {pin.scope.length === 0 ? 'ALL' : pin.scope.map(labelFor).join(', ')}
-              </span>
-            </div>
-            <span className="text-sm leading-tight break-words">{pin.title}</span>
-            {pin.value && (
-              <span className="text-2xs text-board-ink-muted overflow-hidden text-ellipsis whitespace-nowrap">
-                {pin.value}
-              </span>
-            )}
-            <PinDetail pin={pin} onSave={onSave} />
-            <div className="flex gap-6 justify-end">
-              {pin.kind === 'file' && onView && (
-                <button
-                  onClick={() => onView(pin.id)}
-                  className={`px-6 text-2xs ${boardButton}`}
-                  data-testid="pin-view"
+        {pins.length > 0 && shown.length === 0 && (
+          <span className="text-xs text-board-ink-muted">No pin matches “{query.trim()}”.</span>
+        )}
+        {shown.map((pin) =>
+          editingId === pin.id ? (
+            <PinForm
+              key={pin.id}
+              agents={agents}
+              initial={pin}
+              onSave={(next) => {
+                onSave(next);
+                setEditingId(null);
+              }}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <div
+              key={pin.id}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(PIN_DRAG_MIME, pin.id);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+              className={`flex flex-col gap-2 p-8 border-2 border-board-ink shadow-pixel cursor-grab ${PIN_KIND_PAPER[pin.kind]}`}
+              data-testid="board-pin"
+            >
+              <div className="flex justify-between gap-6 text-2xs">
+                <span>{PIN_KIND_LABEL[pin.kind]}</span>
+                <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                  {pin.scope.length === 0 ? 'ALL' : pin.scope.map(labelFor).join(', ')}
+                </span>
+              </div>
+              <span className="text-sm leading-tight break-words">{pin.title}</span>
+              {pin.value && (
+                <span
+                  className={`text-2xs text-board-ink-muted ${
+                    full
+                      ? 'whitespace-pre-wrap break-words max-h-160 overflow-y-auto'
+                      : 'overflow-hidden text-ellipsis whitespace-nowrap'
+                  }`}
                 >
-                  View
-                </button>
+                  {pin.value}
+                </span>
               )}
-              {chatAgentLabel && (
+              <PinDetail pin={pin} onSave={onSave} />
+              <div className="flex gap-6 justify-end">
+                {pin.kind === 'file' && onView && (
+                  <button
+                    onClick={() => onView(pin.id)}
+                    className={`px-6 text-2xs ${boardButton}`}
+                    data-testid="pin-view"
+                  >
+                    View
+                  </button>
+                )}
+                {chatAgentLabel && (
+                  <button
+                    onClick={() => onAttach(pin.id)}
+                    className={`px-6 text-2xs ${boardButton}`}
+                    title={`Attach to the message for ${chatAgentLabel}`}
+                  >
+                    Attach
+                  </button>
+                )}
                 <button
-                  onClick={() => onAttach(pin.id)}
+                  onClick={() => setEditingId(pin.id)}
                   className={`px-6 text-2xs ${boardButton}`}
-                  title={`Attach to the message for ${chatAgentLabel}`}
+                  aria-label={`Edit pin ${pin.title}`}
+                  data-testid="pin-edit"
                 >
-                  Attach
+                  Edit
                 </button>
-              )}
-              <button
-                onClick={() => onRemove(pin.id)}
-                className={`px-6 text-2xs ${boardButton}`}
-                aria-label={`Remove pin ${pin.title}`}
-              >
-                Remove
-              </button>
+                <button
+                  onClick={() => onRemove(pin.id)}
+                  className={`px-6 text-2xs ${boardButton}`}
+                  aria-label={`Remove pin ${pin.title}`}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
       </div>
 
       {!isAdding && (
-        <div className="p-10 border-t-2 border-board-edge">
+        <div className={`p-10 border-t-2 border-board-edge ${full ? 'flex justify-center' : ''}`}>
           <button
             onClick={() => setIsAdding(true)}
-            className="w-full py-4 text-sm border-2 border-board-ink rounded-none cursor-pointer bg-board-ink text-board shadow-pixel"
+            className={`py-4 text-sm border-2 border-board-ink rounded-none cursor-pointer bg-board-ink text-board shadow-pixel ${
+              full ? 'w-full max-w-560' : 'w-full'
+            }`}
             data-testid="board-add"
           >
             + Pin resource

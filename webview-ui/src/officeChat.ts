@@ -69,6 +69,25 @@ export function pinsForAgent(pins: BoardPin[], agentId: number | null): BoardPin
   );
 }
 
+/**
+ * Whiteboard search: every word of the query must appear somewhere in the pin
+ * (title, value, detail, type, or the names of the agents it is for).
+ */
+export function filterPins(
+  pins: BoardPin[],
+  query: string,
+  labelOf: (agentId: number) => string = () => '',
+): BoardPin[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return pins;
+  return pins.filter((pin) => {
+    const hay = [pin.title, pin.value, pin.detail ?? '', pin.kind, ...pin.scope.map(labelOf)]
+      .join('\n')
+      .toLowerCase();
+    return words.every((w) => hay.includes(w));
+  });
+}
+
 /** A fresh pin id (matches the server's [A-Za-z0-9_-]{1,64} rule). */
 export function newPinId(): string {
   const random =
