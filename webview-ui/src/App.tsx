@@ -191,6 +191,17 @@ function App() {
   const [chatAgentId, setChatAgentId] = useState<number | null>(null);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
+  // Screen questions the user hid (agentId → question key). Kept here, not in the
+  // card, so the agent's chat card can bring a hidden question back.
+  const [hiddenQuestions, setHiddenQuestions] = useState<Record<number, string>>({});
+  const hideQuestion = (agentId: number, key: string, hidden: boolean) =>
+    setHiddenQuestions((prev) => {
+      if (hidden) return { ...prev, [agentId]: key };
+      if (!(agentId in prev)) return prev;
+      const next = { ...prev };
+      delete next[agentId];
+      return next;
+    });
   const [viewedFile, setViewedFile] = useState<ViewerFile | null>(null);
   const files = useFiles();
   const [isFilesOpen, setIsFilesOpen] = useState(false);
@@ -852,6 +863,12 @@ function App() {
                       : undefined
                   }
                   clearRequest={chat.clearRequests.find((r) => r.agentId === id)}
+                  question={chat.questions[id]}
+                  onShowQuestion={
+                    chat.privileged && chat.questions[id]
+                      ? () => hideQuestion(id, chat.questions[id].key, false)
+                      : undefined
+                  }
                   docEditMode={chat.prefs[id]?.docEditMode}
                   docEditDefault={docEdits.defaultMode}
                   onSetDocEditMode={
@@ -947,6 +964,8 @@ function App() {
               onAnswerClear={
                 chat.privileged || !isBrowserRuntime ? chat.answerClearRequest : undefined
               }
+              hiddenQuestions={hiddenQuestions}
+              onHideQuestion={hideQuestion}
               onChooseQuestion={
                 chat.privileged
                   ? (agentId, key, option, followUp) => {

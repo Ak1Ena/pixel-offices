@@ -24,6 +24,9 @@ interface PermissionPromptsProps {
   /** Questions on office-run agents' screens, shown as dialogs (privileged clients only). */
   questions?: Array<{ agentId: number; question: ScreenQuestion }>;
   onChooseQuestion?: (agentId: number, key: string, option: number, followUp?: string) => void;
+  /** Which question each agent has hidden (agentId → question key). */
+  hiddenQuestions?: Record<number, string>;
+  onHideQuestion?: (agentId: number, key: string, hidden: boolean) => void;
   /** Workflow gates waiting on the user (privileged clients only). */
   gates?: Array<{ run: WorkflowRun; step: number }>;
   onAnswerGate?: (runId: string, step: number, decision: GateDecision) => void;
@@ -53,6 +56,8 @@ export function PermissionPrompts({
   onOpenAgent,
   questions = [],
   onChooseQuestion,
+  hiddenQuestions = {},
+  onHideQuestion,
   gates = [],
   onAnswerGate,
   clearRequests = [],
@@ -221,6 +226,8 @@ export function PermissionPrompts({
             onChooseQuestion?.(agentId, question.key, option, followUp)
           }
           onOpenAgent={() => onOpenAgent(agentId)}
+          collapsed={hiddenQuestions[agentId] === question.key}
+          onCollapse={(hidden) => onHideQuestion?.(agentId, question.key, hidden)}
         />
       ))}
       {shown.map((ask) => {

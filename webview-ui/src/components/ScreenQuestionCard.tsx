@@ -10,10 +10,16 @@ interface ScreenQuestionCardProps {
   /** Pick an option; `followUp` is typed to the agent once the question is gone. */
   onChoose: (option: number, followUp?: string) => void;
   onOpenAgent: () => void;
+  /** Hidden to a one-line bar. Kept by the parent, so the agent's chat card can reopen it. */
+  collapsed: boolean;
+  onCollapse: (collapsed: boolean) => void;
 }
 
-/** "No, and tell Claude what to do differently": the answer goes on in words. */
-const TELL_RE = /tell claude/i;
+/**
+ * Options answered in words: "No, and tell Claude what to do differently", and
+ * AskUserQuestion's own "Type something." The text is typed once the menu is gone.
+ */
+const TELL_RE = /tell claude|^type something/i;
 
 /**
  * A question an office-run agent shows on its terminal (trust this folder,
@@ -25,12 +31,12 @@ export function ScreenQuestionCard({
   question,
   onChoose,
   onOpenAgent,
+  collapsed,
+  onCollapse,
 }: ScreenQuestionCardProps) {
   const [sent, setSent] = useState<number | null>(null);
   const [telling, setTelling] = useState<number | null>(null);
   const [text, setText] = useState('');
-  // Hidden to a one-line bar, not dismissed: the agent still waits on it.
-  const [collapsed, setCollapsed] = useState(false);
 
   // A click that didn't take (the screen never moved on) can be tried again.
   useEffect(() => {
@@ -59,15 +65,16 @@ export function ScreenQuestionCard({
       <div
         role="alert"
         aria-label={`${agentLabel} is asking: ${heading ?? 'a question'}`}
-        className="pixel-panel flex items-center gap-6 px-8 py-4 border-status-permission text-sm"
+        className="pixel-panel flex items-center gap-6 px-8 py-4 border-status-permission text-sm cursor-pointer"
         data-testid="screen-question-collapsed"
+        onClick={() => onCollapse(false)}
       >
         <span className="text-text shrink-0">{agentLabel}</span>
         <span className="text-text-muted truncate">is asking{heading ? `: ${heading}` : ''}</span>
         <Button
           size="sm"
           className="ml-auto shrink-0"
-          onClick={() => setCollapsed(false)}
+          onClick={() => onCollapse(false)}
           data-testid="screen-question-show"
         >
           Show
@@ -85,7 +92,7 @@ export function ScreenQuestionCard({
       onKeyDown={(e) => {
         if (e.key === 'Escape' && telling === null) {
           e.preventDefault();
-          setCollapsed(true);
+          onCollapse(true);
           return;
         }
         if (telling !== null || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -106,7 +113,7 @@ export function ScreenQuestionCard({
         </button>
         <span className="text-text-muted">is asking</span>
         <button
-          onClick={() => setCollapsed(true)}
+          onClick={() => onCollapse(true)}
           className="ml-auto bg-transparent border-0 p-0 text-text-muted cursor-pointer text-sm"
           title="Hide (the agent still waits for an answer)"
           aria-label="Hide question"

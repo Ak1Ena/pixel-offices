@@ -114,6 +114,17 @@ describe('Claude describePermissionRequest', () => {
       }),
     ).toEqual({ toolName: 'Bash', detail: 'npm test' });
   });
+
+  it('never holds AskUserQuestion: it is a question, Allow/Deny cannot answer it', () => {
+    expect(
+      describePermissionRequest({
+        hook_event_name: 'PermissionRequest',
+        pixel_request_id: REQ,
+        tool_name: 'AskUserQuestion',
+        tool_input: { questions: [{ question: 'Which one?', options: [] }] },
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('permission routes', () => {

@@ -18,6 +18,7 @@ import { claudeTeamProvider } from './claudeTeamProvider.js';
 import { CONSENT_DISCLOSURE, CONSENT_INSTALL_HEADLINE } from './consentCopy.js';
 import {
   CLAUDE_LARGE_CONTEXT_WINDOW,
+  CLAUDE_QUESTION_TOOL,
   CLAUDE_SMALL_CONTEXT_MODEL_PATTERN,
   CLAUDE_SMALL_CONTEXT_WINDOW,
   CLAUDE_TERMINAL_NAME_PREFIX,
@@ -337,6 +338,10 @@ export function describePermissionRequest(
   if (raw.hook_event_name !== 'PermissionRequest') return null;
   if (typeof raw.pixel_request_id !== 'string') return null;
   const toolName = typeof raw.tool_name === 'string' ? raw.tool_name : 'Tool';
+  // A question for the user, not a permission: Allow/Deny can't answer it, and
+  // holding it showed a raw-JSON prompt beside the real question. Claude shows it
+  // in its terminal (an office-run agent's screen question card).
+  if (toolName === CLAUDE_QUESTION_TOOL) return null;
   const input =
     raw.tool_input && typeof raw.tool_input === 'object'
       ? (raw.tool_input as Record<string, unknown>)

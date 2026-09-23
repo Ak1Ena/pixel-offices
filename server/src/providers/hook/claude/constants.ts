@@ -69,3 +69,6 @@ export const CLAUDE_SMALL_CONTEXT_WINDOW = 200_000;
  *  guessing small for a large model pins every gauge in the red, while the
  *  reverse is a quiet under-read that the runtime's widening still corrects. */
 export const CLAUDE_SMALL_CONTEXT_MODEL_PATTERN = /haiku|claude-[123]|-4-[01]\b/i;
+
+/** Claude's tool for asking the user a multiple-choice question (not a permission). */
+export const CLAUDE_QUESTION_TOOL = 'AskUserQuestion';

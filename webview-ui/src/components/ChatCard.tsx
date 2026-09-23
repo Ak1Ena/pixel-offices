@@ -9,6 +9,7 @@ import type {
   ChatEntry,
   ClearMode,
   DocEditMode,
+  ScreenQuestion,
   WorkflowRun,
 } from '../../../core/src/messages.js';
 import {
@@ -85,6 +86,9 @@ interface ChatCardProps {
   docEditMode?: DocEditMode;
   docEditDefault?: DocEditMode;
   onSetDocEditMode?: (mode: DocEditMode) => void;
+  /** A question on this agent's screen, and how to bring its dialog back (it may be hidden). */
+  question?: ScreenQuestion;
+  onShowQuestion?: () => void;
 }
 
 const DOC_EDIT_LABEL: Record<DocEditMode, string> = {
@@ -213,6 +217,8 @@ export function ChatCard({
   docEditMode,
   docEditDefault = 'ask',
   onSetDocEditMode,
+  question,
+  onShowQuestion,
 }: ChatCardProps) {
   const [showWorkflows, setShowWorkflows] = useState(false);
   const [showScreen, setShowScreen] = useState(false);
@@ -577,6 +583,22 @@ export function ChatCard({
           ×
         </Button>
       </div>
+
+      {question && onShowQuestion && (
+        <div
+          role="alert"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-status-permission text-xs"
+          data-testid="chat-question"
+        >
+          <span className="flex-1 min-w-0 truncate">
+            <span className="text-status-permission">Asking you:</span>{' '}
+            {question.prompt[0] ?? 'a question'}
+          </span>
+          <Button size="sm" onClick={onShowQuestion} data-testid="chat-question-show">
+            Answer
+          </Button>
+        </div>
+      )}
 
       {clearRequest && onAnswerClear && (
         <div
