@@ -16,6 +16,7 @@
 	},
 	"include": [
 		"adapters/vscode",
+		"adapters/electron",
 		"server/src",
 		"core/src"
 	],

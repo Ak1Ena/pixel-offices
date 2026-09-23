@@ -1,0 +1,38 @@
+# Desktop app (Electron shell around the standalone office).
+# Build: npm run package && npx electron-builder
+# Releases: .github/workflows/publish-desktop.yml uploads to the GitHub release,
+# which is also the auto-update feed (adapters/electron/updater.ts).
+appId: com.ak1ena.pixeloffice
+productName: Pixel Office
+directories:
+  output: release
+  buildResources: build
+extraMetadata:
+  main: dist/electron.js
+files:
+  - dist/electron.js
+  - dist/cli.js
+  - dist/assets/**
+  - dist/hooks/**
+  - dist/webview/**
+  - package.json
+  - icon.png
+# The shell runs dist/cli.js with the user's `node`, which can't read an asar
+# archive, and node-pty must stay built for that Node, not Electron's.
+asar: false
+npmRebuild: false
+publish:
+  provider: github
+  owner: Ak1Ena
+  repo: pixel-offices
+  releaseType: release
+mac:
+  category: public.app-category.developer-tools
+  target: [dmg, zip] # zip is what the updater downloads
+win:
+  target: nsis
+nsis:
+  oneClick: true
+linux:
+  target: AppImage
+  category: Development

@@ -110,7 +110,24 @@ async function main() {
     buildHooks();
     await buildCli();
     await buildUninstall();
+    await buildElectron();
   }
+}
+
+/** Bundle the Electron shell. It only spawns dist/cli.js, so it sits next to it. */
+async function buildElectron() {
+  await esbuild.build({
+    entryPoints: ['adapters/electron/main.ts'],
+    bundle: true,
+    format: 'cjs',
+    minify: production,
+    sourcemap: !production,
+    platform: 'node',
+    outfile: 'dist/electron.js',
+    external: ['electron'],
+    define: versionDefine,
+    logLevel: 'silent',
+  });
 }
 
 /** Bundle the vscode:uninstall hook — plain Node, runs after extension removal. */
