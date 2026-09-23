@@ -228,6 +228,9 @@ export const OFFICE_FILE_API_PREFIX = '/api/docs/files';
 /** Backups kept per file (newest first), and for how long. */
 export const BACKUPS_KEEP_PER_FILE = 5;
 export const BACKUPS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Transcripts of agents that ended with the office (not re-adopted by the next one). */
+export const ENDED_SESSIONS_FILE_NAME = 'ended-sessions.json';
+export const ENDED_SESSIONS_MAX = 50;
 
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before

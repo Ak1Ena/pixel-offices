@@ -179,6 +179,7 @@ export class AgentStateStore {
         launchKey: agent.launchKey,
         clearPolicy: agent.clearPolicy,
         docEditMode: agent.docEditMode,
+        officeRun: agent.officeRun,
       });
     }
     this.adapter.saveAgents(persisted);

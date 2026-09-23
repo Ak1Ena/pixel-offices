@@ -111,6 +111,27 @@ describe('AgentRuntime -- restore preserves palette/hueShift', () => {
     expect(agent?.hueShift).toBe(90);
   });
 
+  it('never restores an agent that ran in the old office’s own pty, and keeps the scanner off it', () => {
+    const store = new AgentStateStore();
+    store.setAdapter(
+      createMockAdapter([
+        {
+          id: 8,
+          sessionId: 'sess-office',
+          terminalName: '',
+          isExternal: true,
+          jsonlFile: jsonlPath,
+          projectDir: tmpDir,
+          officeRun: true,
+        },
+      ]),
+    );
+    runtime = new AgentRuntime(store, claudeProvider);
+    runtime.restoreExternalAgents();
+    expect(store.get(8)).toBeUndefined();
+    expect(runtime.dismissalTracker.isDismissed(jsonlPath)).toBe(true);
+  });
+
   it('persist() writes palette/hueShift onto the record that restoreExternalAgents copies back', () => {
     // Phase 1: persist an agent with palette/hueShift and capture the
     // record the adapter received.

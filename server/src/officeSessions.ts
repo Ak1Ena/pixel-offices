@@ -522,7 +522,20 @@ export class OfficeSessions {
     this.sessions.clear();
   }
 
+  /** Transcripts of the agents this office runs (they end when it stops). */
+  ownedTranscripts(): string[] {
+    const out: string[] = [];
+    for (const session of this.sessions.values()) {
+      const agent = this.agentFor(session.sessionId);
+      if (agent?.jsonlFile) out.push(agent.jsonlFile);
+    }
+    return out;
+  }
+
   private adopted(session: OwnedSession, agent: AgentState): void {
+    // Dies with this office: never restored by the next one (see restoreExternalAgents).
+    agent.officeRun = true;
+    this.store.persist();
     if (session.name) this.host.renameAgent(agent.id, session.name);
     this.host.refreshSendable();
     this.broadcastScreen(session);

@@ -47,6 +47,8 @@ export interface PersistedAgent {
   clearPolicy?: 'ask' | 'allow' | 'never';
   /** Whether the agent's document edits wait for review; absent = the office default. */
   docEditMode?: 'ask' | 'auto' | 'off';
+  /** Ran in a pty the office owned: it dies with the office, so it is never restored. */
+  officeRun?: boolean;
 }
 
 /** Agent seat assignment with visual identity

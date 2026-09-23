@@ -33,6 +33,7 @@ import {
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { runDocCommand } from './docCli.js';
+import { readEndedSessions, recordEndedSessions } from './endedSessions.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { runLauncher } from './launcher.js';
 import { OfficeSessions } from './officeSessions.js';
@@ -319,6 +320,7 @@ async function main(): Promise<void> {
   // ── Create server ──
   const server = new PixelAgentsServer();
   let disposeOfficeSessions = (): void => {};
+  let ownedTranscripts = (): string[] => [];
 
   try {
     // Create runtime first (before server.start, so we can pass it in)
@@ -422,6 +424,7 @@ async function main(): Promise<void> {
     runtime.deskDefaultPickup = (agentId) => officeSessions.owns(agentId);
     runtime.agentStarter = officeSessions;
     disposeOfficeSessions = () => officeSessions.dispose();
+    ownedTranscripts = () => officeSessions.ownedTranscripts();
 
     const config = await server.start({
       store,
@@ -473,6 +476,9 @@ async function main(): Promise<void> {
       await installHooksAtStartup(provider, packageRoot, config.port, config.token);
     }
 
+    // Agents the previous office ran ended with it: keep them from coming back as ghosts.
+    runtime.dismissEndedSessions(readEndedSessions());
+
     // Start scanning for external sessions (Claude running in user's terminal)
     const cwd = process.cwd();
     const dirs = claudeProvider.getSessionDirs?.(cwd);
@@ -516,6 +522,8 @@ async function main(): Promise<void> {
     // ── Graceful shutdown ──
     function shutdown(): void {
       console.log('\nShutting down...');
+      // Agents this office runs die with it: the next office must not re-adopt them.
+      recordEndedSessions(ownedTranscripts());
       disposeOfficeSessions();
       runtime.dispose();
       server.stop();
@@ -524,6 +532,8 @@ async function main(): Promise<void> {
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+    // Closing the terminal window: without this the office died without cleaning up.
+    process.on('SIGHUP', shutdown);
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);

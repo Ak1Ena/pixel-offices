@@ -618,6 +618,12 @@ export class AgentRuntime {
 
     for (const p of persisted) {
       if (!p.isExternal) continue;
+      // Its pty died with the office that ran it (an unclean stop left it saved):
+      // restoring it would show a character nobody can reach. Keep the scanner off it too.
+      if (p.officeRun) {
+        this.dismissalTracker.dismiss(p.jsonlFile);
+        continue;
+      }
       // Background-spawn children (a leadAgentId but no teamName) are derived
       // state: the 1s scan re-materializes them from sidecars while their spawn
       // is live. Restoring them directly would resurrect immortal characters
@@ -917,6 +923,14 @@ export class AgentRuntime {
       () => this.board.getPins(),
     );
     return this.officeFiles;
+  }
+
+  /**
+   * Transcripts of sessions that ended with the previous office: kept from
+   * being re-adopted as external sessions (see endedSessions.ts).
+   */
+  dismissEndedSessions(sessions: Array<{ file: string; at: number }>): void {
+    for (const s of sessions) this.dismissalTracker.dismiss(s.file, s.at);
   }
 
   /** Broadcast Files (filesLoaded) — after anything that changes it outside the store. */

@@ -42,6 +42,8 @@ export interface AgentState {
   clearPolicy?: 'ask' | 'allow' | 'never';
   /** Whether the agent's document edits wait for review; absent = the office default. */
   docEditMode?: 'ask' | 'auto' | 'off';
+  /** Ran in a pty the office owned: it dies with the office, so it is never restored. */
+  officeRun?: boolean;
   /** Provider that created this agent (defaults to 'claude') */
   providerId?: string;
   /** Set when SessionEnd(reason=clear) fires; cleared when SessionStart(source=clear) reassigns */
@@ -162,4 +164,6 @@ export interface PersistedAgent {
   clearPolicy?: 'ask' | 'allow' | 'never';
   /** Whether the agent's document edits wait for review; absent = the office default. */
   docEditMode?: 'ask' | 'auto' | 'off';
+  /** Ran in a pty the office owned: it dies with the office, so it is never restored. */
+  officeRun?: boolean;
 }
