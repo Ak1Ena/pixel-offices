@@ -8,9 +8,14 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build and upload to (e.g. v3.0.0). Empty = build only.'
+        type: string
+        default: ''
 
 concurrency:
-  group: publish-desktop-${{ github.ref }}
+  group: publish-desktop-${{ github.event.release.tag_name || inputs.release_tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -44,6 +49,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
           # Optional signing. Without these the app is unsigned: it runs, but
           # macOS will not install auto-updates for an unsigned app.
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
@@ -53,6 +59,17 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; unset CSC_LINK CSC_KEY_PASSWORD; fi
-          # Manual runs build without publishing (a dry run of the release build).
-          if [ "${{ github.event_name }}" = "release" ]; then PUBLISH=always; else PUBLISH=never; fi
-          npx electron-builder --publish "$PUBLISH"
+          # The app version (and so the release electron-builder uploads to, v<version>)
+          # comes from the release tag, not package.json: a tag ahead of package.json
+          # would otherwise upload into the OLD release under the old version.
+          if [ -n "$RELEASE_TAG" ]; then
+            VERSION="${RELEASE_TAG#v}"
+            if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::Release tag '$RELEASE_TAG' is not v<semver>."
+              exit 1
+            fi
+            npx electron-builder --publish always -c.extraMetadata.version="$VERSION"
+          else
+            # Manual run without a tag: build only (a dry run of the release build).
+            npx electron-builder --publish never
+          fi
