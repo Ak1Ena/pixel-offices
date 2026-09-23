@@ -11,5 +11,5 @@ export const ELECTRON_WINDOW_HEIGHT = 900;
 /** The CLI's startup line (server/src/cli.ts keeps its wording for tests; so does this). */
 export const OFFICE_URL_PATTERN = /Pixel Agents server running at (http\S+)/;
 
-/** How often a packaged app looks for a new GitHub release. */
-export const ELECTRON_UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+/** Remembers "Skip this version", in Electron's userData folder. */
+export const ELECTRON_UPDATE_PREFS_FILE = 'update-prefs.json';

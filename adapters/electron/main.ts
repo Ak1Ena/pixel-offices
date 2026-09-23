@@ -8,7 +8,7 @@
  * its ptys) and node-pty never has to be rebuilt for Electron's ABI.
  */
 import { type ChildProcess, spawn } from 'child_process';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, type MenuItemConstructorOptions, shell } from 'electron';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -19,7 +19,7 @@ import {
   ELECTRON_WINDOW_WIDTH,
   OFFICE_URL_PATTERN,
 } from './constants.js';
-import { startAutoUpdates } from './updater.js';
+import { createUpdates, type Updates } from './updater.js';
 
 const CLI_PATH = path.join(__dirname, 'cli.js');
 
@@ -165,6 +165,39 @@ function createWindow(url: string): void {
   void win.loadURL(url);
 }
 
+/** The standard menus, plus Check for Updates… (app menu on macOS, Help elsewhere). */
+function installMenu(updates: Updates): void {
+  const checkItem: MenuItemConstructorOptions = {
+    label: 'Check for Updates…',
+    click: () => updates.check(true),
+  };
+  const isMac = process.platform === 'darwin';
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            role: 'appMenu' as const,
+            submenu: [
+              { role: 'about' as const },
+              checkItem,
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const },
+            ],
+          },
+        ]
+      : [{ role: 'fileMenu' as const }]),
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    ...(isMac ? [] : [{ role: 'help' as const, submenu: [checkItem] }]),
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 async function start(): Promise<void> {
   try {
     officeUrl = await launchServer();
@@ -180,13 +213,14 @@ async function start(): Promise<void> {
   }
   if (server) watchServerExit(server);
   createWindow(officeUrl);
-  startAutoUpdates(
+  const updates = createUpdates(
     () => mainWindow,
     async () => {
       quitting = true;
       await stopServer();
     },
   );
+  installMenu(updates);
 }
 
 if (!app.requestSingleInstanceLock()) {
