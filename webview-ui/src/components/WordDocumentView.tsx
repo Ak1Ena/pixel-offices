@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DocParagraph } from '../../../core/src/docModel.js';
+import type { HunkDecision, ProposalHunk } from '../../../core/src/messages.js';
 import { DOCX_FRAME_CSS } from '../constants.js';
+import type { PlacedSuggestions } from '../docSuggestions.js';
+import { hunkTexts } from '../docSuggestions.js';
 import { matchParagraphs } from '../docViewer.js';
 import { drawnTexts } from '../wordDom.js';
 
@@ -13,6 +16,42 @@ interface WordDocumentViewProps {
   mark?: { from: number; to: number } | null;
   picked?: { a: number; b: number } | null;
   onPick?: (n: number, extend: boolean) => void;
+  /** An agent's suggested changes, shown where they land. */
+  suggestions?: PlacedSuggestions;
+  canDecide?: boolean;
+  onDecide?: (hunkId: string, decision: HunkDecision) => void;
+  /** How many suggested changes could not be placed on the drawn page. */
+  onUnplaced?: (count: number) => void;
+}
+
+/** One suggestion card in the frame: the new text and Accept / Reject (handled by the office page). */
+function suggestionNode(doc: Document, hunk: ProposalHunk, canDecide: boolean): HTMLElement {
+  const { after } = hunkTexts(hunk);
+  const box = doc.createElement('div');
+  box.className = 'pa-sugg';
+  box.setAttribute('data-state', hunk.decision);
+  box.textContent = after || '(removed)';
+  const actions = doc.createElement('div');
+  actions.className = 'pa-sugg-actions';
+  const label = doc.createElement('span');
+  label.textContent = `Suggested · ${hunk.where}${hunk.decision !== 'pending' ? ` · ${hunk.decision}` : ''}`;
+  actions.appendChild(label);
+  const button = (text: string, decision: HunkDecision) => {
+    const b = doc.createElement('button');
+    b.type = 'button';
+    b.textContent = text;
+    b.setAttribute('data-hunk', hunk.hunkId);
+    b.setAttribute('data-decision', decision);
+    actions.appendChild(b);
+  };
+  if (canDecide) {
+    if (hunk.decision === 'pending') {
+      button('✗ Reject', 'rejected');
+      button('✓ Accept', 'accepted');
+    } else button('Undo', 'pending');
+  }
+  box.appendChild(actions);
+  return box;
 }
 
 const BASE_DOC = '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>';
@@ -33,7 +72,14 @@ export function WordDocumentView({
   mark,
   picked,
   onPick,
+  suggestions,
+  canDecide = false,
+  onDecide,
+  onUnplaced,
 }: WordDocumentViewProps) {
+  const onDecideRef = useRef(onDecide);
+  onDecideRef.current = onDecide;
+  const scrolledFor = useRef('');
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [status, setStatus] = useState<'rendering' | 'ready' | 'error'>('rendering');
   const onPickRef = useRef(onPick);
@@ -89,6 +135,15 @@ export function WordDocumentView({
           'click',
           (e) => {
             const target = e.target as Element | null;
+            const choice = target?.closest('[data-decision]');
+            if (choice) {
+              e.preventDefault();
+              onDecideRef.current?.(
+                choice.getAttribute('data-hunk') ?? '',
+                choice.getAttribute('data-decision') as HunkDecision,
+              );
+              return;
+            }
             // Links never navigate the frame; web links open outside the office.
             const link = target?.closest('a');
             if (link) {
@@ -113,6 +168,60 @@ export function WordDocumentView({
       cancelled = true;
     };
   }, [blob, paragraphs]);
+
+  // Place the agent's suggested changes in the page, again whenever they change.
+  const suggestionKey = JSON.stringify([
+    [...(suggestions?.para ?? [])].map(([n, h]) => [n, h.hunkId, h.decision]),
+    [...(suggestions?.after ?? [])].map(([n, hs]) => [n, hs.map((h) => [h.hunkId, h.decision])]),
+    canDecide,
+  ]);
+  useEffect(() => {
+    const doc = frameRef.current?.contentDocument;
+    if (!doc || status !== 'ready') return;
+    doc.querySelectorAll('.pa-sugg').forEach((el) => el.remove());
+    doc.querySelectorAll('.pa-sugg-old').forEach((el) => el.classList.remove('pa-sugg-old'));
+    if (!suggestions) return;
+    let unplaced = 0;
+    for (const [n, hunk] of suggestions.para) {
+      const el = doc.querySelector(`[data-para="${n}"]`);
+      if (!el) {
+        unplaced++;
+        continue;
+      }
+      if (hunk.decision !== 'rejected') el.classList.add('pa-sugg-old');
+      el.after(suggestionNode(doc, hunk, canDecide));
+    }
+    for (const [n, hunks] of suggestions.after) {
+      const anchor =
+        n === 0 ? doc.querySelector('[data-para]') : doc.querySelector(`[data-para="${n}"]`);
+      if (!anchor) {
+        unplaced += hunks.length;
+        continue;
+      }
+      // After the paragraph (and its own suggestion card, if any), in order.
+      let at: Element = anchor;
+      while (n !== 0 && at.nextElementSibling?.classList.contains('pa-sugg'))
+        at = at.nextElementSibling;
+      for (const hunk of hunks) {
+        const node = suggestionNode(doc, hunk, canDecide);
+        if (n === 0) anchor.before(node);
+        else {
+          at.after(node);
+          at = node;
+        }
+      }
+    }
+    onUnplaced?.(unplaced);
+    // Bring the first change into view once per suggestion, not on every decision.
+    const which = [...suggestions.para.values(), ...[...suggestions.after.values()].flat()]
+      .map((h) => h.hunkId)
+      .join(',');
+    if (which && which !== scrolledFor.current) {
+      scrolledFor.current = which;
+      doc.querySelector('.pa-sugg')?.scrollIntoView({ block: 'center' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on what the suggestions say
+  }, [status, suggestionKey]);
 
   // Highlight the agent's spot and the user's pick; bring the spot into view.
   useEffect(() => {

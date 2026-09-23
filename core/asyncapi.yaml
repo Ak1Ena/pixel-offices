@@ -2269,6 +2269,30 @@ components:
         where:
           type: string
           description: 'For a document suggestion, the place this change is at ("¶12", "Sheet1!C5").'
+        place:
+          $ref: '#/components/schemas/DocPlaceRef'
+
+    DocPlaceRef:
+      description: |
+        Where a document suggestion lands, so the viewer can show it in place:
+        a Word paragraph (`para`), a new paragraph after one (`insertAfter`, 0 =
+        before the first), a slide's text box (`slide` + `shape`), or a cell
+        (`cell`, with `sheet` when named).
+      type: object
+      additionalProperties: false
+      properties:
+        para:
+          type: integer
+        insertAfter:
+          type: integer
+        slide:
+          type: integer
+        shape:
+          type: string
+        sheet:
+          type: string
+        cell:
+          type: string
 
     ProposalLine:
       type: object

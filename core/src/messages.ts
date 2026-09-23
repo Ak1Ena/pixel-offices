@@ -660,6 +660,7 @@ export interface ProposalHunk {
   decision: HunkDecision;
   reason?: string;
   where?: string;
+  place?: DocPlaceRef;
 }
 
 export interface ProposalLine {
@@ -670,6 +671,15 @@ export interface ProposalLine {
 export type ProposalLineKind = 'context' | 'del' | 'add';
 
 export type HunkDecision = 'pending' | 'accepted' | 'rejected';
+
+export interface DocPlaceRef {
+  para?: number;
+  insertAfter?: number;
+  slide?: number;
+  shape?: string;
+  sheet?: string;
+  cell?: string;
+}
 
 export interface TaskDeskLoaded {
   type: 'taskDeskLoaded';

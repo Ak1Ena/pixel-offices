@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DocEdit, DocParagraph, DocSlide } from '../../../core/src/docModel.js';
+import type { HunkDecision } from '../../../core/src/messages.js';
+import type { PlacedSuggestions } from '../docSuggestions.js';
+import { shapeKey } from '../docSuggestions.js';
+import { SuggestionCard } from './DocSuggestions.js';
+
+/** An agent's suggestion shown in a view: where each change lands, and the decision buttons. */
+export interface InPlaceSuggestions {
+  placed: PlacedSuggestions;
+  canDecide: boolean;
+  onDecide: (hunkId: string, decision: HunkDecision) => void;
+}
 
 /**
  * Word and PowerPoint as the office numbers them (core/src/docModel.ts):
@@ -66,6 +77,7 @@ export function WordParagraphs({
   edits,
   onEdit,
   onReplaceEdit,
+  suggestions,
 }: {
   paragraphs: DocParagraph[];
   /** An agent's "show me" range. */
@@ -77,6 +89,7 @@ export function WordParagraphs({
   onEdit: (edit: DocEdit) => void;
   /** Change or drop a staged new paragraph (index into `edits`). */
   onReplaceEdit: (index: number, edit: DocEdit | null) => void;
+  suggestions?: InPlaceSuggestions;
 }) {
   const [active, setActive] = useState<number | null>(null);
   const firstMarked = useRef<HTMLDivElement | null>(null);
@@ -95,8 +108,20 @@ export function WordParagraphs({
       {paragraphs.length === 0 && (
         <div className="px-16 text-sm text-board-ink-muted">This document has no text.</div>
       )}
+      {suggestions?.placed.after.get(0)?.map((h) => (
+        <div key={h.hunkId} className="grid grid-cols-[52px_1fr] pr-16 py-2">
+          <span />
+          <SuggestionCard
+            hunk={h}
+            canDecide={suggestions.canDecide}
+            onDecide={suggestions.onDecide}
+          />
+        </div>
+      ))}
       {paragraphs.map((p) => {
         const marked = !!mark && p.n >= mark.from && p.n <= mark.to;
+        const suggested = suggestions?.placed.para.get(p.n);
+        const struck = !!suggested && suggested.decision !== 'rejected';
         const isPicked =
           !!picked && p.n >= Math.min(picked.a, picked.b) && p.n <= Math.max(picked.a, picked.b);
         const staged = pendingPara(edits, p.n);
@@ -143,13 +168,29 @@ export function WordParagraphs({
                       : 'text-read'
                   } ${p.table ? 'pl-12 border-l-2 border-board-edge' : ''} ${
                     p.list ? 'pl-12' : ''
-                  } ${editing ? 'cursor-text hover:bg-doc-mark' : ''}`}
+                  } ${editing ? 'cursor-text hover:bg-doc-mark' : ''} ${
+                    struck ? 'line-through decoration-danger opacity-70' : ''
+                  }`}
                 >
                   {p.list && '• '}
                   {text || ' '}
                 </span>
               )}
             </div>
+            {suggestions &&
+              [...(suggested ? [suggested] : []), ...(suggestions.placed.after.get(p.n) ?? [])].map(
+                (h) => (
+                  <div key={h.hunkId} className="grid grid-cols-[52px_1fr] pr-16 py-2">
+                    <span />
+                    <SuggestionCard
+                      hunk={h}
+                      compact={h === suggested}
+                      canDecide={suggestions.canDecide}
+                      onDecide={suggestions.onDecide}
+                    />
+                  </div>
+                ),
+              )}
             {insertedAfter(edits, p.n).map(({ index, text: added }) => (
               <div
                 key={`new-${index}`}
@@ -197,6 +238,7 @@ export function SlidesView({
   editing,
   edits,
   onEdit,
+  suggestions,
 }: {
   slides: DocSlide[];
   index: number;
@@ -208,6 +250,7 @@ export function SlidesView({
   editing: boolean;
   edits: DocEdit[];
   onEdit: (edit: DocEdit) => void;
+  suggestions?: InPlaceSuggestions;
 }) {
   const slide = slides[index];
   const staged = (shape: string): string | undefined => {
@@ -245,7 +288,12 @@ export function SlidesView({
               aria-label={`Slide ${s.n}`}
             >
               <span className="text-code-sm line-clamp-2 break-words font-reading">{title}</span>
-              <span className="text-code-sm text-board-ink-muted">{s.n}</span>
+              <span className="text-code-sm text-board-ink-muted">
+                {s.n}
+                {suggestions &&
+                  s.shapes.some((sh) => suggestions.placed.shape.has(shapeKey(s.n, sh.name))) &&
+                  ' · suggested'}
+              </span>
             </button>
           );
         })}
@@ -260,6 +308,7 @@ export function SlidesView({
           )}
           {slide.shapes.map((shape) => {
             const text = staged(shape.name) ?? shape.text;
+            const suggested = suggestions?.placed.shape.get(shapeKey(slide.n, shape.name));
             const isPicked = pickedShape === shape.name;
             return (
               <div
@@ -288,9 +337,23 @@ export function SlidesView({
                   <span
                     className={`font-reading whitespace-pre-wrap break-words ${
                       shape.title ? 'text-xl font-bold' : 'text-read'
+                    } ${
+                      suggested && suggested.decision !== 'rejected'
+                        ? 'line-through decoration-danger opacity-70'
+                        : ''
                     }`}
                   >
                     {text || ' '}
+                  </span>
+                )}
+                {suggested && suggestions && (
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <SuggestionCard
+                      hunk={suggested}
+                      compact
+                      canDecide={suggestions.canDecide}
+                      onDecide={suggestions.onDecide}
+                    />
                   </span>
                 )}
               </div>

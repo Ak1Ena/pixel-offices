@@ -154,6 +154,7 @@ describe('an agent edits a document', () => {
       ],
     );
 
+    expect(proposal.hunks.map((h) => h.place)).toEqual([{ para: 1 }, { para: 5 }]);
     t.proposals.decide(proposal.proposalId, 'd1', 'accepted');
     t.proposals.decide(proposal.proposalId, 'd2', 'rejected', 'keep it');
     const applied = await t.proposals.applyAny(proposal.proposalId);

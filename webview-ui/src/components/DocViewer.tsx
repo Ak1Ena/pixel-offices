@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DocEdit, DocModel, DocSheet, DocSlide } from '../../../core/src/docModel.js';
-import type { BoardPin, ChatEntry, FocusRequest } from '../../../core/src/messages.js';
+import type {
+  BoardPin,
+  ChatEntry,
+  FocusRequest,
+  ProposalHunk,
+} from '../../../core/src/messages.js';
 import type { AskAgent } from '../askAgent.js';
 import { BOARD_FILE_API } from '../constants.js';
+import { cellSuggestion, hunkTexts, placeSuggestions } from '../docSuggestions.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
   cellEditText,
@@ -27,6 +33,8 @@ import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
 import { DocChatPanel } from './DocChatPanel.js';
 import { SlidesView, WordParagraphs } from './DocModelViews.js';
+import type { DocSuggestionProps } from './DocSuggestions.js';
+import { SuggestionBar, SuggestionCard } from './DocSuggestions.js';
 import { Button } from './ui/Button.js';
 import { WordDocumentView } from './WordDocumentView.js';
 
@@ -61,6 +69,10 @@ interface DocViewerProps {
   onOpenFile?: () => void;
   /** Delete the office's stored copy of an uploaded file (and its pin); absent otherwise. */
   onDeleteFile?: () => void;
+  /** An agent's open suggestion for this file, shown in the document (not a separate review). */
+  suggestion?: DocSuggestionProps;
+  /** The last suggestion applied to this file, while it can still be undone. */
+  appliedSuggestion?: { note: string; onUndo: () => void };
   /** Talk to an agent about this file beside it (Agent chat); absent when nobody can be asked. */
   ask?: {
     agents: AskAgent[];
@@ -214,11 +226,14 @@ function SheetTable({
   mark,
   picked,
   onPick,
+  suggestedAt,
 }: {
   sheet: SheetView;
   mark?: CellRange | null;
   picked?: { a: { r: number; c: number }; b: { r: number; c: number } } | null;
   onPick?: (cell: { r: number; c: number }, extend: boolean) => void;
+  /** An agent's suggested value for a cell, if any. */
+  suggestedAt?: (r: number, c: number) => ProposalHunk | undefined;
 }) {
   const columns = sheet.rows.reduce((max, row) => Math.max(max, row.length), 0);
   const firstMarked = useRef<HTMLTableCellElement | null>(null);
@@ -259,20 +274,38 @@ function SheetTable({
                 {Array.from({ length: columns }, (_, c) => {
                   const marked = inMark(r, c);
                   const isPicked = inPick(r, c);
+                  const suggested = suggestedAt?.(r, c);
+                  const next = suggested && hunkTexts(suggested);
                   return (
                     <td
                       key={c}
                       ref={marked && r === mark?.r0 && c === mark.c0 ? firstMarked : undefined}
                       onClick={(e) => onPick?.({ r, c }, e.shiftKey)}
+                      title={
+                        next
+                          ? `Suggested: ${next.before || '(empty)'} → ${next.after || '(empty)'}`
+                          : undefined
+                      }
                       className={`border px-8 py-2 whitespace-nowrap cursor-cell ${
-                        isPicked
-                          ? 'bg-doc-pick border-status-active'
-                          : marked
-                            ? 'bg-doc-mark border-accent'
-                            : 'border-board-edge'
+                        suggested && suggested.decision !== 'rejected'
+                          ? 'bg-diff-add border-pin-note'
+                          : isPicked
+                            ? 'bg-doc-pick border-status-active'
+                            : marked
+                              ? 'bg-doc-mark border-accent'
+                              : 'border-board-edge'
                       }`}
                     >
-                      {row[c] ?? ''}
+                      {next && suggested?.decision !== 'rejected' ? (
+                        <>
+                          <span className="line-through decoration-danger opacity-60 mr-6">
+                            {row[c] ?? ''}
+                          </span>
+                          {next.after}
+                        </>
+                      ) : (
+                        (row[c] ?? '')
+                      )}
                     </td>
                   );
                 })}
@@ -470,7 +503,14 @@ export function DocViewer({
   onOpenFile,
   onDeleteFile,
   ask,
+  suggestion,
+  appliedSuggestion,
 }: DocViewerProps) {
+  const placed = placeSuggestions(suggestion?.proposal);
+  const inPlace = suggestion
+    ? { placed, canDecide: suggestion.canDecide, onDecide: suggestion.onDecide }
+    : undefined;
+  const [unplaced, setUnplaced] = useState(0);
   const [showAsk, setShowAsk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => setConfirmDelete(false), [pin]);
@@ -592,6 +632,24 @@ export function DocViewer({
                   !wordParagraphs
                 ? { path: pin.value }
                 : null;
+
+  // A suggestion opens on the slide / sheet its first change is on.
+  const suggestionId = suggestion?.proposal.proposalId;
+  useEffect(() => {
+    const first = suggestion?.proposal.hunks.find((h) => h.place)?.place;
+    if (!first) return;
+    if (doc?.kind === 'slides' && first.slide !== undefined) {
+      const index = doc.slides.findIndex((sl) => sl.n === first.slide);
+      if (index !== -1) setSlideIndex(index);
+    }
+    if (doc?.kind === 'table' && first.sheet) {
+      const index = doc.sheets.findIndex(
+        (sh) => sh.name.toLowerCase() === first.sheet!.toLowerCase(),
+      );
+      if (index !== -1) setSheetIndex(index);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per document / suggestion
+  }, [doc, suggestionId]);
 
   // A request naming a slide (--page) opens on it.
   useEffect(() => {
@@ -836,6 +894,25 @@ export function DocViewer({
           {focus && (
             <FocusBanner focus={focus} agent={focusAgent ?? 'An agent'} onAnswer={onAnswerFocus} />
           )}
+          {suggestion && !editing && <SuggestionBar {...suggestion} />}
+          {!suggestion && appliedSuggestion && !editing && (
+            <div className="flex items-center gap-8 px-12 py-4 text-xs bg-bg-dark border-b-2 border-border">
+              <span className="flex-1 text-status-success">{appliedSuggestion.note}</span>
+              <Button
+                size="sm"
+                onClick={appliedSuggestion.onUndo}
+                data-testid="doc-suggestion-undo"
+              >
+                Undo
+              </Button>
+            </div>
+          )}
+          {suggestion && unplaced > 0 && !paragraphs && doc?.kind === 'word' && (
+            <div className="px-12 py-4 text-xs text-status-permission bg-bg-dark border-b-2 border-border">
+              {unplaced} change{unplaced === 1 ? '' : 's'} could not be placed on the page — see the
+              Paragraphs tab.
+            </div>
+          )}
           {(editing || saved || saveError || changedUnderUs) && (
             <div
               className={`flex items-center gap-8 flex-wrap px-10 py-6 border-b-2 text-xs ${
@@ -964,6 +1041,7 @@ export function DocViewer({
               editing={editing}
               edits={edits}
               onEdit={stage}
+              suggestions={editing ? undefined : inPlace}
               onReplaceEdit={(index, edit) =>
                 setEdits((list) =>
                   edit
@@ -984,6 +1062,7 @@ export function DocViewer({
               editing={editing}
               edits={edits}
               onEdit={stage}
+              suggestions={editing ? undefined : inPlace}
             />
           )}
           {doc?.kind === 'word' && !paragraphs && state.status === 'ready' && (
@@ -1000,6 +1079,10 @@ export function DocViewer({
               onPick={(n, extend) =>
                 setPickedParas((prev) => (extend && prev ? { a: prev.a, b: n } : { a: n, b: n }))
               }
+              suggestions={inPlace?.placed}
+              canDecide={inPlace?.canDecide}
+              onDecide={inPlace?.onDecide}
+              onUnplaced={setUnplaced}
             />
           )}
           {textDraft !== null && (
@@ -1075,8 +1158,32 @@ export function DocViewer({
                   ))}
                 </div>
               )}
+              {inPlace && placed.cell.size > 0 && !editing && (
+                <div className="flex flex-col gap-4 max-h-200 overflow-y-auto p-8 bg-bg-dark border-b-2 border-border">
+                  {[...placed.cell.values()].map((h) => (
+                    <SuggestionCard
+                      key={h.hunkId}
+                      hunk={h}
+                      canDecide={inPlace.canDecide}
+                      onDecide={inPlace.onDecide}
+                    />
+                  ))}
+                </div>
+              )}
               {doc.sheets[sheetIndex] && (
                 <SheetTable
+                  suggestedAt={
+                    inPlace && !editing
+                      ? (r, c) =>
+                          cellSuggestion(
+                            placed,
+                            doc.sheets[sheetIndex].name,
+                            sheetIndex === 0,
+                            r,
+                            c,
+                          )
+                      : undefined
+                  }
                   sheet={
                     modelSheets?.[sheetIndex] && edits.length > 0
                       ? modelSheetView(modelSheets[sheetIndex], edits)

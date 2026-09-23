@@ -32,8 +32,9 @@ import { WorkflowBadges } from './components/WorkflowBadges.js';
 import { WorkflowRail } from './components/WorkflowRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
 import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constants.js';
+import { isDocProposal, openProposalFor } from './docSuggestions.js';
 import type { DocRef } from './docViewer.js';
-import { refText, withRefs } from './docViewer.js';
+import { refText, samePath, withRefs } from './docViewer.js';
 import { canSendChatFiles } from './fileUpload.js';
 import { lastEditKeyFor, useDocEdits } from './hooks/useDocEdits.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -877,7 +878,12 @@ function App() {
               suggestions={proposals.proposals.filter(
                 (p) => p.state === 'open' && !proposalsLater.has(p.proposalId),
               )}
-              onReview={(p) => setReviewingId(p.proposalId)}
+              onReview={(p) =>
+                // Office documents are reviewed in the document itself; text files keep the diff panel.
+                isDocProposal(p) && isBrowserRuntime
+                  ? openFileInViewer(p.path)
+                  : setReviewingId(p.proposalId)
+              }
               docEdits={docEdits.edits.filter(
                 (e) => e.agentId !== undefined && !e.undone && !docEditsSeen.has(e.editId),
               )}
@@ -1437,7 +1443,35 @@ function App() {
             }
             onRemoveRef={(i) => setDocTray((prev) => prev.filter((_, j) => j !== i))}
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
-            lastEditKey={lastEditKeyFor(docEdits.edits, viewed.value)}
+            lastEditKey={[
+              lastEditKeyFor(docEdits.edits, viewed.value),
+              // Applying (or undoing) a suggestion rewrites the file too.
+              ...proposals.proposals
+                .filter((p) => samePath(p.path, viewed.value) && p.state !== 'open')
+                .map((p) => `${p.proposalId}:${p.state}:${p.canUndo ? 1 : 0}`),
+            ].join('|')}
+            appliedSuggestion={(() => {
+              const done = [...proposals.proposals]
+                .reverse()
+                .find((p) => samePath(p.path, viewed.value) && p.state === 'applied' && p.canUndo);
+              return done && (chat.privileged || !isBrowserRuntime)
+                ? { note: done.note ?? 'Applied.', onUndo: () => proposals.undo(done.proposalId) }
+                : undefined;
+            })()}
+            suggestion={(() => {
+              const open = openProposalFor(proposals.proposals, viewed.value);
+              return open
+                ? {
+                    proposal: open,
+                    agentLabel: open.agentId !== undefined ? agentLabel(open.agentId) : 'An agent',
+                    canDecide: chat.privileged || !isBrowserRuntime,
+                    onDecide: (hunkId, decision) =>
+                      proposals.decide(open.proposalId, hunkId, decision),
+                    onApply: () => proposals.apply(open.proposalId),
+                    onDiscard: () => proposals.discard(open.proposalId),
+                  }
+                : undefined;
+            })()}
             onOpenFile={chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
             ask={
               chat.privileged || !isBrowserRuntime

@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { DocEdit } from '../../core/src/docModel.js';
-import type { Proposal, ProposalHunk } from '../../core/src/messages.js';
+import type { DocEdit, DocEditPreview } from '../../core/src/docModel.js';
+import type { DocPlaceRef, Proposal, ProposalHunk } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import {
   LAYOUT_FILE_DIR,
@@ -529,15 +529,28 @@ export class Proposals {
   }
 }
 
+/** Where an edit lands, for the viewer to show the suggestion in place. */
+function placeOf(edit: DocEdit): DocPlaceRef {
+  switch (edit.kind) {
+    case 'para':
+      return { para: edit.n };
+    case 'insertAfter':
+      return { insertAfter: edit.n };
+    case 'shape':
+      return { slide: edit.slide, shape: edit.shape };
+    case 'cell':
+      return { cell: edit.ref, ...(edit.sheet ? { sheet: edit.sheet } : {}) };
+  }
+}
+
 /** One review hunk per document edit: what is there now, what would replace it. */
-function docHunks(
-  previews: Array<{ where: string; before: string; after: string }>,
-): ProposalHunk[] {
+function docHunks(previews: DocEditPreview[]): ProposalHunk[] {
   return previews.map((p, i) => ({
     hunkId: `d${i + 1}`,
     oldStart: 0,
     newStart: 0,
     where: p.where,
+    place: placeOf(p.edit),
     lines: [
       ...(p.before ? [{ kind: 'del' as const, text: p.before }] : []),
       ...(p.after ? [{ kind: 'add' as const, text: p.after }] : []),
