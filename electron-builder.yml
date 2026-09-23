@@ -1,9 +1,13 @@
 # Desktop app (Electron shell around the standalone office).
-# Build: npm run package && npx electron-builder
-# Releases: .github/workflows/publish-desktop.yml uploads to the GitHub release,
-# which is also the auto-update feed (adapters/electron/updater.ts).
+# Build only:   npm run desktop:build      (installers in release/)
+# Publish:      GH_TOKEN=… npm run desktop:release
+#   Uploads to the GitHub release v<package.json version> — the feed installed
+#   apps check for updates (adapters/electron/updater.ts). Bump package.json to
+#   match the release tag first.
 appId: com.ak1ena.pixeloffice
 productName: Pixel Office
+# The npm name (@ak1ena/pixel-office) is not a usable file name (Linux binary).
+executableName: pixel-office
 directories:
   output: release
   buildResources: build

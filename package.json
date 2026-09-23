@@ -129,7 +129,9 @@
     "vercel:prepare": "npm run test:report && node scripts/assemble-vercel-output.mjs",
     "knip": "knip",
     "electron": "node esbuild.js && npm run build:webview && electron dist/electron.js",
-    "electron:start": "electron dist/electron.js"
+    "electron:start": "electron dist/electron.js",
+    "desktop:build": "npm run package && electron-builder --publish never",
+    "desktop:release": "npm run package && electron-builder --publish always"
   },
   "devDependencies": {
     "@asyncapi/modelina": "^5.10.1",
