@@ -26,7 +26,7 @@ export function SuggestionBar({
   const all = (decision: HunkDecision) => onDecide('*', decision);
   return (
     <div
-      className="flex flex-col gap-4 px-12 py-6 border-b-2 border-pin-note bg-bg-dark text-sm"
+      className="flex flex-col gap-4 px-12 py-6 border-b-2 border-status-success bg-bg-dark text-sm"
       data-testid="doc-suggestion-bar"
     >
       <div className="flex items-center gap-8 flex-wrap">
@@ -87,20 +87,20 @@ export function SuggestionCard({
     <div
       className={`flex flex-col gap-4 px-8 py-4 border-2 border-dashed font-reading text-read-sm ${
         hunk.decision === 'accepted'
-          ? 'border-status-success bg-diff-add'
+          ? 'border-solid border-status-success bg-diff-add'
           : hunk.decision === 'rejected'
-            ? 'border-danger opacity-60'
-            : 'border-pin-note bg-bg'
+            ? 'border-border opacity-50'
+            : 'border-status-success bg-bg'
       }`}
       data-testid="doc-suggestion"
     >
       {!compact && before && (
-        <span className="line-through decoration-danger text-text-muted whitespace-pre-wrap break-words">
+        <span className="line-through decoration-danger text-danger whitespace-pre-wrap break-words">
           {before}
         </span>
       )}
       {after ? (
-        <span className="whitespace-pre-wrap break-words text-text">{after}</span>
+        <span className="whitespace-pre-wrap break-words text-status-success">{after}</span>
       ) : (
         <span className="text-2xs text-text-muted">(removed)</span>
       )}

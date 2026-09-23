@@ -399,14 +399,19 @@ export const DOCX_FRAME_CSS =
   '.pa-mark{background:rgba(255,213,79,.35)!important;box-shadow:-6px 0 0 #d9a400}' +
   '.pa-pick{background:rgba(90,168,255,.28)!important;box-shadow:-6px 0 0 #2f7fd8}' +
   // An agent's suggested change, placed in the page (DocSuggestions / WordDocumentView).
-  '.pa-sugg-old{text-decoration:line-through;text-decoration-color:#c0392b;background:rgba(192,57,43,.08)}' +
-  '.pa-sugg{margin:4px 0 10px;padding:6px 8px;border:1px dashed #d9a400;background:#fffbe6;white-space:pre-wrap}' +
-  '.pa-sugg[data-state="accepted"]{border-style:solid;border-color:#2e9e5b;background:#e9f7ee}' +
-  '.pa-sugg[data-state="rejected"]{opacity:.5}' +
+  // Deleted text: red, struck through (also over the document's own run colours).
+  '.pa-sugg-old,.pa-sugg-old *{color:#b3261e!important;text-decoration:line-through!important;' +
+  'text-decoration-color:#b3261e!important}' +
+  '.pa-sugg-old{background:rgba(179,38,30,.08)}' +
+  // Suggested text: green.
+  '.pa-sugg{margin:4px 0 10px;padding:6px 8px;border:1px dashed #1e7a3c;background:#eaf7ee;' +
+  'color:#1e7a3c;white-space:pre-wrap}' +
+  '.pa-sugg[data-state="accepted"]{border-style:solid;background:#d6f0de}' +
+  '.pa-sugg[data-state="rejected"]{opacity:.45;color:#5d6470;border-color:#9aa4b2;background:#f4f5f7}' +
   '.pa-sugg-actions{display:flex;gap:6px;align-items:center;margin-top:6px;font:12px system-ui,sans-serif;color:#5d6470;white-space:normal}' +
   '.pa-sugg-actions span{flex:1}' +
   '.pa-sugg button{font:12px system-ui,sans-serif;padding:2px 10px;border:1px solid #9aa4b2;background:#fff;color:#1f242b;cursor:pointer}' +
-  '.pa-sugg button[data-decision="accepted"]{background:#2f7fd8;border-color:#2f7fd8;color:#fff}';
+  '.pa-sugg button[data-decision="accepted"]{background:#1e7a3c;border-color:#1e7a3c;color:#fff}';
 
 // ── Team rooms ──────────────────────────────────────────────
 export const TEAM_ROOM_GLASS = '#3f7fa8';

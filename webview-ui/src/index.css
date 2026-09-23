@@ -52,6 +52,9 @@
   /* Review changes: removed and added lines */
   --color-diff-del: rgba(209, 66, 73, 0.18);
   --color-diff-add: rgba(137, 209, 133, 0.16);
+  /* Suggested changes on paper (the document viewer's white pages): deleted red, new green */
+  --color-sugg-del-ink: #b3261e;
+  --color-sugg-add-ink: #1e7a3c;
   --color-pin-link: #d8d4ff;
   --color-pin-file: #c6efc6;
   --color-pin-snippet: #cfe3ff;
@@ -159,6 +162,8 @@
   --color-doc-pick: var(--color-doc-pick);
   --color-diff-del: var(--color-diff-del);
   --color-diff-add: var(--color-diff-add);
+  --color-sugg-del-ink: var(--color-sugg-del-ink);
+  --color-sugg-add-ink: var(--color-sugg-add-ink);
   --color-pin-link: var(--color-pin-link);
   --color-pin-file: var(--color-pin-file);
   --color-pin-snippet: var(--color-pin-snippet);

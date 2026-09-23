@@ -298,10 +298,10 @@ function SheetTable({
                     >
                       {next && suggested?.decision !== 'rejected' ? (
                         <>
-                          <span className="line-through decoration-danger opacity-60 mr-6">
+                          <span className="line-through decoration-sugg-del-ink text-sugg-del-ink mr-6">
                             {row[c] ?? ''}
                           </span>
-                          {next.after}
+                          <span className="text-sugg-add-ink font-bold">{next.after}</span>
                         </>
                       ) : (
                         (row[c] ?? '')

@@ -169,7 +169,7 @@ export function WordParagraphs({
                   } ${p.table ? 'pl-12 border-l-2 border-board-edge' : ''} ${
                     p.list ? 'pl-12' : ''
                   } ${editing ? 'cursor-text hover:bg-doc-mark' : ''} ${
-                    struck ? 'line-through decoration-danger opacity-70' : ''
+                    struck ? 'line-through decoration-sugg-del-ink text-sugg-del-ink' : ''
                   }`}
                 >
                   {p.list && '• '}
@@ -339,7 +339,7 @@ export function SlidesView({
                       shape.title ? 'text-xl font-bold' : 'text-read'
                     } ${
                       suggested && suggested.decision !== 'rejected'
-                        ? 'line-through decoration-danger opacity-70'
+                        ? 'line-through decoration-sugg-del-ink text-sugg-del-ink'
                         : ''
                     }`}
                   >
