@@ -447,6 +447,7 @@ export interface FolderListing {
   parent?: string;
   home?: string;
   entries: FolderEntry[];
+  files?: FolderFile[];
   error?: string;
 }
 
@@ -454,6 +455,13 @@ export interface FolderEntry {
   name: string;
   path: string;
   isProject?: boolean;
+}
+
+export interface FolderFile {
+  name: string;
+  path: string;
+  size: number;
+  modifiedAt?: string;
 }
 
 export interface BoardLoaded {
@@ -1276,4 +1284,5 @@ export interface AnswerPermission {
 export interface ListFolder {
   type: 'listFolder';
   path?: string;
+  files?: boolean;
 }

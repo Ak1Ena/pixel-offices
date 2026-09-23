@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { FolderEntry, FolderListing } from '../../core/src/messages.js';
+import type { FolderEntry, FolderFile, FolderListing } from '../../core/src/messages.js';
+import { isViewableName } from './boardFiles.js';
 import {
   FOLDER_LIST_MAX_ENTRIES,
   FOLDER_LIST_SKIP_NAMES,
@@ -10,7 +11,8 @@ import {
 } from './constants.js';
 
 /**
- * Lists the sub-folders of one directory for the + Agent folder picker.
+ * Lists the sub-folders of one directory for the + Agent folder picker, and
+ * with `opts.files` the files the document viewer can open (Open file).
  * Absent/empty `requested` means the home folder; `~` expands to it. Only
  * absolute paths are accepted. Never throws — failures come back as `error`
  * with no entries.
@@ -18,6 +20,7 @@ import {
 export async function listFolder(
   requested?: string,
   homeDir = os.homedir(),
+  opts: { files?: boolean } = {},
 ): Promise<FolderListing> {
   const raw = (requested ?? '').trim();
   let target = raw === '' || raw === '~' ? homeDir : raw;
@@ -51,8 +54,13 @@ export async function listFolder(
   }
 
   const candidates: string[] = [];
+  const fileNames: string[] = [];
   for (const d of dirents) {
     if (d.name.startsWith('.') || FOLDER_LIST_SKIP_NAMES.includes(d.name)) continue;
+    if (opts.files && !d.isDirectory() && isViewableName(d.name)) {
+      fileNames.push(d.name); // a link is checked when it is stat'ed below
+      continue;
+    }
     if (d.isDirectory()) {
       candidates.push(d.name);
     } else if (d.isSymbolicLink()) {
@@ -77,7 +85,20 @@ export async function listFolder(
       return entry;
     }),
   );
-  return { ...base, path: resolved, parent, entries };
+  if (!opts.files) return { ...base, path: resolved, parent, entries };
+  fileNames.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  const files: FolderFile[] = [];
+  for (const name of fileNames.slice(0, FOLDER_LIST_MAX_ENTRIES)) {
+    const full = path.join(resolved, name);
+    try {
+      const stat = await fs.promises.stat(full);
+      if (!stat.isFile()) continue;
+      files.push({ name, path: full, size: stat.size, modifiedAt: stat.mtime.toISOString() });
+    } catch {
+      // Dangling link — not listed.
+    }
+  }
+  return { ...base, path: resolved, parent, entries, files };
 }
 
 async function isProjectFolder(dir: string): Promise<boolean> {

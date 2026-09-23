@@ -365,7 +365,9 @@ export function handleClientMessage(
         });
         break;
       }
-      void listFolder(requested).then((listing) => send({ ...listing }));
+      void listFolder(requested, undefined, { files: msg.files === true }).then((listing) =>
+        send({ ...listing }),
+      );
       break;
     }
 

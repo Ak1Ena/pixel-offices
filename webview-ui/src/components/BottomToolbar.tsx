@@ -17,6 +17,8 @@ interface BottomToolbarProps {
   /** Standalone office: open the Add agent dialog (absent when it can't start agents). */
   onAddAgent?: () => void;
   onAddRoom: () => void;
+  /** Standalone office, private link: open a document from this computer (absent otherwise). */
+  onOpenFile?: () => void;
   isDeskOpen: boolean;
   onToggleDesk: () => void;
   /** Cards waiting on the human (a brief to judge, a result to check). */
@@ -44,6 +46,7 @@ export function BottomToolbar({
   onToggleBoard,
   onAddAgent,
   onAddRoom,
+  onOpenFile,
   isDeskOpen,
   onToggleDesk,
   deskWaiting,
@@ -163,6 +166,15 @@ export function BottomToolbar({
           data-testid="add-agent"
         >
           + Agent
+        </Button>
+      )}
+      {onOpenFile && (
+        <Button
+          onClick={onOpenFile}
+          title="Open a Word, PowerPoint, Excel, PDF, text or image file"
+          data-testid="open-file-button"
+        >
+          Open file
         </Button>
       )}
       <Button onClick={onAddRoom} title="Add a team room" data-testid="add-room">

@@ -20,6 +20,22 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe('listFolder', () => {
+  it('with files: also lists the files the viewer opens, never others or dot-files', async () => {
+    fs.writeFileSync(path.join(dir, 'Report.docx'), 'ab');
+    fs.writeFileSync(path.join(dir, 'deck.pptx'), 'abc');
+    fs.writeFileSync(path.join(dir, 'tool.exe'), 'x');
+    fs.writeFileSync(path.join(dir, '.secret.txt'), 'x');
+    fs.symlinkSync(path.join(dir, 'missing.xlsx'), path.join(dir, 'dangling.xlsx'));
+    const res = await listFolder(dir, undefined, { files: true });
+    expect(res.files?.map((f) => [f.name, f.size])).toEqual([
+      ['deck.pptx', 3],
+      ['notes.txt', 1],
+      ['Report.docx', 2],
+    ]);
+    expect(res.entries.map((e) => e.name)).toContain('Alpha');
+    expect((await listFolder(dir)).files).toBeUndefined();
+  });
+
   it('lists sub-folders only, sorted case-insensitively, skipping dot-folders and node_modules', async () => {
     const res = await listFolder(dir);
     expect(res.type).toBe('folderListing');

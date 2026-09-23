@@ -15,6 +15,7 @@ import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { OpenFileDialog } from './components/OpenFileDialog.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
 import { RoomToolOverlay } from './components/RoomToolOverlay.js';
@@ -96,20 +97,29 @@ function agentLabel(id: number): string {
 
 /** Upload a document to the whiteboard (standalone server). Resolves with an error message or null. */
 async function uploadBoardFile(file: File): Promise<string | null> {
-  if (file.size > DOC_UPLOAD_MAX_BYTES) return 'File is too large (limit 25 MB).';
+  const result = await uploadAsPin(file);
+  return 'error' in result ? result.error : null;
+}
+
+/** Store a file with the office (a copy under ~/.pixel-agents/files) as a file pin. */
+async function uploadAsPin(file: File): Promise<{ pinId: string } | { error: string }> {
+  if (file.size > DOC_UPLOAD_MAX_BYTES) return { error: 'File is too large (limit 25 MB).' };
   const token = new URLSearchParams(window.location.search).get('token');
-  if (!token) return 'Open the office from your private link to upload files.';
+  if (!token) return { error: 'Open the office from your private link to upload files.' };
   try {
     const res = await fetch(`${BOARD_FILE_API}?name=${encodeURIComponent(file.name)}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' },
       body: file,
     });
-    if (res.ok) return null;
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    return body?.error ?? `Upload failed (${res.status}).`;
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+      pin?: { id: string };
+    } | null;
+    if (res.ok && body?.pin) return { pinId: body.pin.id };
+    return { error: body?.error ?? `Upload failed (${res.status}).` };
   } catch {
-    return 'Upload failed. Is the office still running?';
+    return { error: 'Upload failed. Is the office still running?' };
   }
 }
 
@@ -150,6 +160,7 @@ function App() {
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
   const [viewedPinId, setViewedPinId] = useState<string | null>(null);
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
+  const [isOpenFileOpen, setIsOpenFileOpen] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
   const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
   const [groupChannelId, setGroupChannelId] = useState<string | undefined>(undefined);
@@ -1218,6 +1229,7 @@ function App() {
           setIsGroupChatOpen(false);
         }}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
+        onOpenFile={isBrowserRuntime && chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
         onAddRoom={() => {
           if (!editor.isEditMode) editor.handleToggleEditMode();
           editor.handleToolChange(EditTool.ROOM);
@@ -1248,6 +1260,18 @@ function App() {
         workspaceFolders={workspaceFolders}
       />
 
+      <OpenFileDialog
+        isOpen={isOpenFileOpen}
+        onClose={() => setIsOpenFileOpen(false)}
+        onOpenPath={openFileInViewer}
+        onUpload={async (file) => {
+          const result = await uploadAsPin(file);
+          if ('error' in result) return result.error;
+          setViewedFocusId(null);
+          setViewedPinId(result.pinId);
+          return null;
+        }}
+      />
       <AddAgentModal
         isOpen={isAddAgentOpen}
         onClose={() => setIsAddAgentOpen(false)}
@@ -1411,6 +1435,7 @@ function App() {
             onRemoveRef={(i) => setDocTray((prev) => prev.filter((_, j) => j !== i))}
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
             lastEditKey={lastEditKeyFor(docEdits.edits, viewed.value)}
+            onOpenFile={chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
             onAskRefs={
               askTarget !== null
                 ? () => {

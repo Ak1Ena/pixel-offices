@@ -920,6 +920,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FolderEntry'
+        files:
+          type: array
+          description: Viewable files in the folder, when the request asked for them.
+          items:
+            $ref: '#/components/schemas/FolderFile'
         error:
           type: string
 
@@ -2687,7 +2692,8 @@ components:
     ListFolder:
       description: |
         List the sub-folders of a folder (home when `path` is absent), for the
-        folder picker. Privileged.
+        folder picker. With `files`, also the files the document viewer can
+        open (Open file). Privileged.
       type: object
       additionalProperties: false
       required: [type]
@@ -2696,6 +2702,8 @@ components:
           const: listFolder
         path:
           type: string
+        files:
+          type: boolean
 
     # ── Supporting schemas ─────────────────────────────────────────
 
@@ -2715,6 +2723,20 @@ components:
         isProject:
           type: boolean
           description: Looks like a project (has .git or package.json etc.).
+
+    FolderFile:
+      type: object
+      additionalProperties: false
+      required: [name, path, size]
+      properties:
+        name:
+          type: string
+        path:
+          type: string
+        size:
+          type: integer
+        modifiedAt:
+          type: string
 
     AgentKey:
       type: string

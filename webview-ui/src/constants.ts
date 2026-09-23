@@ -417,6 +417,11 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
+/** Files opened with Open file, newest first (per viewer). */
+export const OPEN_FILE_RECENT_KEY = 'pixel-office:open-file-recent';
+export const OPEN_FILE_RECENT_MAX = 8;
+/** Above the document viewer (z-60), which it can be opened from. */
+export const OPEN_FILE_Z_INDEX = 70;
 /** localStorage key for the viewer's text settings: size + faces (textPrefs.ts). */
 export const TEXT_PREFS_KEY = 'pixel-office:text-prefs';
 /** localStorage key for Settings → Advanced overrides (tunables.ts); only non-defaults are stored. */

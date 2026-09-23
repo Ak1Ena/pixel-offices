@@ -54,6 +54,8 @@ interface DocViewerProps {
   askLabel?: string;
   /** The newest edit written to this file (anyone's): the viewer reloads when it changes. */
   lastEditKey?: string;
+  /** Open another document (the Open file dialog); absent when this viewer can't. */
+  onOpenFile?: () => void;
 }
 
 type Loaded =
@@ -451,6 +453,7 @@ export function DocViewer({
   onAskRefs,
   askLabel,
   lastEditKey,
+  onOpenFile,
 }: DocViewerProps) {
   const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
   const [pickedCells, setPickedCells] = useState<{
@@ -696,6 +699,11 @@ export function DocViewer({
           {pin.title}
         </span>
         <span className="flex-1" />
+        {onOpenFile && (
+          <Button size="md" onClick={onOpenFile} data-testid="doc-open-file">
+            Open file…
+          </Button>
+        )}
         {canEdit && !editing && (
           <Button size="md" onClick={startEditing} data-testid="doc-edit">
             Edit
