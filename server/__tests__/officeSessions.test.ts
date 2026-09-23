@@ -1,6 +1,14 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { describe, expect, it } from 'vitest';
 
-import { looksLikeQuestion, parseScreenQuestion } from '../src/officeSessions.js';
+import {
+  looksLikeQuestion,
+  parseScreenQuestion,
+  resolveProjectFolder,
+} from '../src/officeSessions.js';
+import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 
 describe('questions on an office-run agent screen', () => {
   it('spots a numbered choice, with or without a cursor mark', () => {
@@ -164,5 +172,39 @@ describe('reading the question off the screen', () => {
 
   it('returns null when nothing is being asked', () => {
     expect(parseScreenQuestion(['Welcome to Claude Code', '> '])).toBeNull();
+  });
+});
+
+describe('the folder an office-run agent starts in', () => {
+  it('drops the trailing slash of ~/ so the transcript folder matches Claude', () => {
+    const home = fs.realpathSync(os.homedir());
+    expect(resolveProjectFolder('~/')).toBe(home);
+    expect(resolveProjectFolder('~')).toBe(home);
+    expect(resolveProjectFolder(`${home}/`)).toBe(home);
+  });
+
+  it('resolves symlinks, as the pty process.cwd() does', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pa-folder-'));
+    const link = `${dir}-link`;
+    fs.symlinkSync(dir, link);
+    try {
+      expect(resolveProjectFolder(link)).toBe(fs.realpathSync(dir));
+    } finally {
+      fs.unlinkSync(link);
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  it('refuses relative paths, missing folders and files', () => {
+    expect(resolveProjectFolder('code/app')).toBeNull();
+    expect(resolveProjectFolder('/no/such/folder/anywhere')).toBeNull();
+    expect(resolveProjectFolder(fs.realpathSync(__filename))).toBeNull();
+  });
+
+  it('finds the same Claude project folder with or without a trailing slash', () => {
+    const home = os.homedir();
+    expect(claudeProvider.getSessionDirs?.(`${home}/`)).toEqual(
+      claudeProvider.getSessionDirs?.(home),
+    );
   });
 });

@@ -278,6 +278,26 @@ function expandHome(p: string): string {
   return t === '~' || t.startsWith('~/') ? path.join(os.homedir(), t.slice(1)) : t;
 }
 
+/**
+ * The folder an agent is started in, spelled the way Claude will see it: its
+ * real path (no trailing slash, symlinks resolved — the pty's `process.cwd()`).
+ * Claude names the transcript folder after that path, so `~/` kept as
+ * `/Users/me/` pointed the office at `-Users-me-` while Claude wrote to
+ * `-Users-me`: the office-run agent watched a file that never appeared and the
+ * scanner adopted the real transcript as a second agent. Null when it is not an
+ * existing absolute folder.
+ */
+export function resolveProjectFolder(raw: string): string | null {
+  const expanded = expandHome(raw);
+  if (!path.isAbsolute(expanded)) return null;
+  try {
+    const real = fs.realpathSync(expanded);
+    return fs.statSync(real).isDirectory() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
 export class OfficeSessions {
   private readonly sessions = new Map<string, OwnedSession>();
   private readonly pty = loadPty();
@@ -303,12 +323,8 @@ export class OfficeSessions {
         error: `The office runs at most ${OFFICE_SESSION_LIMIT} agents of its own.`,
       };
     }
-    const cwd = expandHome(typeof req.cwd === 'string' ? req.cwd : '');
-    try {
-      if (!path.isAbsolute(cwd) || !fs.statSync(cwd).isDirectory()) throw new Error('not a dir');
-    } catch {
-      return { ok: false, error: 'That project folder does not exist on this computer.' };
-    }
+    const cwd = resolveProjectFolder(typeof req.cwd === 'string' ? req.cwd : '');
+    if (!cwd) return { ok: false, error: 'That project folder does not exist on this computer.' };
 
     const words = splitShellWords((req.command ?? '').trim() || 'claude');
     const alias = expandAlias(words[0], words.slice(1));

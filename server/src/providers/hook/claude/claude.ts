@@ -110,7 +110,8 @@ export function describeEdit(toolName: string, input?: unknown): ChatEdit | null
 
 function getSessionDirs(workspacePath: string): string[] {
   // Claude stores sessions at ~/.claude/projects/<workspace-path-with-dashes>/.
-  const dirName = normalizeProjectPath(workspacePath);
+  // Claude's cwd never ends in a separator; `/Users/me/` must not become `-Users-me-`.
+  const dirName = normalizeProjectPath(path.resolve(workspacePath));
   const projectDir = path.join(os.homedir(), '.claude', 'projects', dirName);
 
   // Try exact match first.
