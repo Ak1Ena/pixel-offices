@@ -6,12 +6,14 @@ import * as path from 'path';
 import type { DocEdit, DocEditPreview } from '../../core/src/docModel.js';
 import type { DocPlaceRef, Proposal, ProposalHunk } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { backupName } from './backups.js';
 import {
   LAYOUT_FILE_DIR,
   PROPOSAL_BACKUP_DIR,
   PROPOSAL_MAX_BYTES,
   PROPOSAL_MAX_OPEN,
   PROPOSAL_REASON_MAX_CHARS,
+  SUGGESTIONS_FILE_NAME,
 } from './constants.js';
 import { guessAgent } from './focusRequests.js';
 import type { Hunk } from './lineDiff.js';
@@ -90,6 +92,11 @@ function hunkTitle(h: ProposalHunk): string {
   return `line ${h.oldStart}: "${text}"`;
 }
 
+/** ~/.pixel-agents/suggestions.json: open suggestions kept across restarts. */
+export function suggestionsFilePath(): string {
+  return path.join(os.homedir(), LAYOUT_FILE_DIR, SUGGESTIONS_FILE_NAME);
+}
+
 export class Proposals {
   private entries: Entry[] = [];
   private readonly waiters = new Map<string, Set<(r: ProposalResult) => void>>();
@@ -104,8 +111,43 @@ export class Proposals {
       LAYOUT_FILE_DIR,
       PROPOSAL_BACKUP_DIR,
     ),
+    /** Where open suggestions are kept across restarts; absent = memory only. */
+    private readonly persistPath?: string,
+    /** A file was written (Apply / Undo): Files notes it, backups get pruned. */
+    private readonly onWrite: (filePath: string) => void = () => {},
   ) {
     store.on('agentRemoved', this.onAgentRemoved);
+    this.load();
+  }
+
+  /** Open suggestions saved by an earlier run (their agent ids may be stale: dropped). */
+  private load(): void {
+    if (!this.persistPath) return;
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.persistPath, 'utf-8')) as { entries?: unknown };
+      if (!Array.isArray(raw.entries)) return;
+      for (const e of raw.entries as Entry[]) {
+        if (!e?.proposal?.proposalId || e.proposal.state !== 'open' || !Array.isArray(e.hunks))
+          continue;
+        delete e.proposal.agentId; // agent ids mean nothing across runs
+        this.entries.push(e);
+      }
+    } catch {
+      /* none saved yet, or unreadable: start empty */
+    }
+  }
+
+  private save(): void {
+    if (!this.persistPath) return;
+    const open = this.entries.filter((e) => e.proposal.state === 'open');
+    try {
+      fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
+      const tmp = `${this.persistPath}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ version: 1, entries: open }), { mode: 0o600 });
+      fs.renameSync(tmp, this.persistPath);
+    } catch (err) {
+      console.error('[Pixel Agents] Failed to save suggestions:', err);
+    }
   }
 
   snapshot(): { type: 'proposals'; proposals: Proposal[] } {
@@ -271,10 +313,7 @@ export class Proposals {
     let backupPath: string;
     try {
       fs.mkdirSync(this.backupDir, { recursive: true });
-      backupPath = path.join(
-        this.backupDir,
-        `${Date.now()}-${entry.proposal.proposalId}-${path.basename(filePath)}`,
-      );
+      backupPath = path.join(this.backupDir, backupName(filePath, entry.proposal.proposalId));
       fs.writeFileSync(backupPath, current, { mode: 0o600 });
       const mode = fs.statSync(filePath).mode;
       const tmp = `${filePath}.pixel-agents.tmp`;
@@ -288,6 +327,7 @@ export class Proposals {
     }
     entry.backupPath = backupPath;
     entry.appliedHash = sha(result.buffer);
+    this.onWrite(filePath);
     const summary = this.summary(entry, 'applied');
     this.finish(
       entry,
@@ -372,10 +412,7 @@ export class Proposals {
     try {
       fs.mkdirSync(this.backupDir, { recursive: true });
       if (fs.existsSync(filePath)) {
-        backupPath = path.join(
-          this.backupDir,
-          `${Date.now()}-${entry.proposal.proposalId}-${path.basename(filePath)}`,
-        );
+        backupPath = path.join(this.backupDir, backupName(filePath, entry.proposal.proposalId));
         fs.copyFileSync(filePath, backupPath);
       }
       const mode = fs.existsSync(filePath) ? fs.statSync(filePath).mode : undefined;
@@ -390,6 +427,7 @@ export class Proposals {
     }
     entry.backupPath = backupPath;
     entry.appliedHash = sha(merged);
+    this.onWrite(filePath);
     const summary = this.summary(entry, 'applied');
     this.finish(
       entry,
@@ -433,6 +471,7 @@ export class Proposals {
         error: `Couldn't restore: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
+    this.onWrite(entry.proposal.path);
     entry.proposal.state = 'open';
     entry.proposal.canUndo = false;
     entry.proposal.note = 'Undone: the file is back as it was. The suggestion is open again.';
@@ -525,6 +564,7 @@ export class Proposals {
   }
 
   private broadcast(): void {
+    this.save();
     this.store.broadcast(this.snapshot());
   }
 }

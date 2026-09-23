@@ -89,8 +89,16 @@ export type PinFileResult =
 export function resolvePinFile(pins: BoardPin[], pinId: string): PinFileResult {
   const pin = pins.find((p) => p.id === pinId);
   if (!pin || pin.kind !== 'file') return { ok: false, status: 404, error: 'No such file pin.' };
+  return resolveViewableFile(pin.value);
+}
 
-  let target = pin.value.trim();
+/**
+ * A path the viewer may be sent, or why not: absolute (or `~`), a viewable
+ * type, the REAL path still that type, a regular file, under the size cap.
+ * Pins and Files (by id) both come through here.
+ */
+export function resolveViewableFile(rawPath: string): PinFileResult {
+  let target = rawPath.trim();
   if (target === '~' || target.startsWith('~/')) target = path.join(os.homedir(), target.slice(1));
   if (!path.isAbsolute(target)) {
     return {

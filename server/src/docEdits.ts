@@ -6,6 +6,7 @@ import * as path from 'path';
 import type { DocEdit, DocEditPreview, DocModel } from '../../core/src/docModel.js';
 import type { DocEditMode, DocEditNotice } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { backupName } from './backups.js';
 import { getDocEditDefault, setDocEditDefault } from './configPersistence.js';
 import {
   BOARD_FILE_MAX_BYTES,
@@ -99,6 +100,8 @@ export class DocEdits {
     ),
     private readonly readDefault: () => DocEditMode = getDocEditDefault,
     private readonly writeDefault: (mode: DocEditMode) => void = setDocEditDefault,
+    /** A file was written (Files notes it; backups get pruned). */
+    private readonly onWrite: (filePath: string) => void = () => {},
   ) {}
 
   get defaultMode(): DocEditMode {
@@ -274,6 +277,7 @@ export class DocEdits {
     record.notice.undone = true;
     record.notice.canUndo = false;
     this.publish();
+    this.onWrite(record.notice.path);
     return { ok: true };
   }
 
@@ -289,7 +293,7 @@ export class DocEdits {
     let backupPath: string | undefined;
     try {
       fs.mkdirSync(this.backupDir, { recursive: true });
-      backupPath = path.join(this.backupDir, `${Date.now()}-${editId}-${path.basename(filePath)}`);
+      backupPath = path.join(this.backupDir, backupName(filePath, editId));
       fs.writeFileSync(backupPath, current, { mode: 0o600 });
       atomicWrite(filePath, next);
     } catch (err) {
@@ -318,6 +322,7 @@ export class DocEdits {
     }
     while (this.records.length > DOC_EDITS_KEPT) this.records.shift();
     this.publish();
+    this.onWrite(filePath);
     return { ok: true, notice: { ...notice }, previews, sha: appliedHash };
   }
 

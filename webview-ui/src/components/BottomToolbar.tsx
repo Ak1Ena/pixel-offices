@@ -19,6 +19,11 @@ interface BottomToolbarProps {
   onAddRoom: () => void;
   /** Standalone office, private link: open a document from this computer (absent otherwise). */
   onOpenFile?: () => void;
+  /** Files rail (standalone, private link); absent otherwise. */
+  isFilesOpen?: boolean;
+  onToggleFiles?: () => void;
+  /** Suggestions waiting for review, shown on the Files button. */
+  filesWaiting?: number;
   isDeskOpen: boolean;
   onToggleDesk: () => void;
   /** Cards waiting on the human (a brief to judge, a result to check). */
@@ -47,6 +52,9 @@ export function BottomToolbar({
   onAddAgent,
   onAddRoom,
   onOpenFile,
+  isFilesOpen = false,
+  onToggleFiles,
+  filesWaiting = 0,
   isDeskOpen,
   onToggleDesk,
   deskWaiting,
@@ -166,6 +174,17 @@ export function BottomToolbar({
           data-testid="add-agent"
         >
           + Agent
+        </Button>
+      )}
+      {onToggleFiles && (
+        <Button
+          variant={isFilesOpen ? 'active' : 'default'}
+          onClick={onToggleFiles}
+          title="Files: documents you opened, suggestions to review, uploads, backups"
+          data-testid="files-toggle"
+          className={filesWaiting > 0 ? 'text-status-permission' : ''}
+        >
+          Files{filesWaiting > 0 ? ` · ${filesWaiting}` : ''}
         </Button>
       )}
       {onOpenFile && (

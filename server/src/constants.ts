@@ -218,6 +218,16 @@ export const DOC_EDITS_KEPT = 20;
 export const DOC_EDIT_CHANGE_MAX_CHARS = 60;
 /** A text file saved from the viewer. */
 export const DOC_EDIT_TEXT_MAX_BYTES = 1_000_000;
+/** Files the office opened (Files → Recent): ~/.pixel-agents/files.json, newest first. */
+export const OFFICE_FILES_FILE_NAME = 'files.json';
+export const OFFICE_FILES_MAX = 100;
+/** Pending document / file suggestions, kept across restarts. */
+export const SUGGESTIONS_FILE_NAME = 'suggestions.json';
+/** The viewer fetches files the office opened here, by file id (not by pin). */
+export const OFFICE_FILE_API_PREFIX = '/api/docs/files';
+/** Backups kept per file (newest first), and for how long. */
+export const BACKUPS_KEEP_PER_FILE = 5;
+export const BACKUPS_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before

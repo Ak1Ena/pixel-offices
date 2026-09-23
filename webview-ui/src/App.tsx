@@ -9,8 +9,10 @@ import { ChatCard } from './components/ChatCard.js';
 import { ChatPeekBubbles } from './components/ChatPeekBubbles.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { DebugView } from './components/DebugView.js';
+import type { ViewerFile } from './components/DocViewer.js';
 import { DocViewer } from './components/DocViewer.js';
 import { EditActionBar } from './components/EditActionBar.js';
+import { FilesRail } from './components/FilesRail.js';
 import { FocusNotices } from './components/FocusNotices.js';
 import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
@@ -34,12 +36,13 @@ import { ZoomControls } from './components/ZoomControls.js';
 import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constants.js';
 import { isDocProposal, openProposalFor } from './docSuggestions.js';
 import type { DocRef } from './docViewer.js';
-import { refText, samePath, withRefs } from './docViewer.js';
+import { fileBaseName, refText, samePath, withRefs } from './docViewer.js';
 import { canSendChatFiles } from './fileUpload.js';
 import { lastEditKeyFor, useDocEdits } from './hooks/useDocEdits.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
+import { useFiles } from './hooks/useFiles.js';
 import { useFocusRequests } from './hooks/useFocusRequests.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
@@ -104,6 +107,31 @@ async function uploadBoardFile(file: File): Promise<string | null> {
   return 'error' in result ? result.error : null;
 }
 
+/** Store a file with the office (a copy under ~/.pixel-agents/files) in Files, without pinning it. */
+async function uploadToFiles(
+  file: File,
+): Promise<{ fileId: string; path: string } | { error: string }> {
+  if (file.size > DOC_UPLOAD_MAX_BYTES) return { error: 'File is too large (limit 25 MB).' };
+  const token = new URLSearchParams(window.location.search).get('token');
+  if (!token) return { error: 'Open the office from your private link to upload files.' };
+  try {
+    const res = await fetch(`${BOARD_FILE_API}?name=${encodeURIComponent(file.name)}&pin=0`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    const body = (await res.json().catch(() => null)) as {
+      error?: string;
+      fileId?: string;
+      path?: string;
+    } | null;
+    if (res.ok && body?.fileId && body.path) return { fileId: body.fileId, path: body.path };
+    return { error: body?.error ?? `Upload failed (${res.status}).` };
+  } catch {
+    return { error: 'Upload failed. Is the office still running?' };
+  }
+}
+
 /** Store a file with the office (a copy under ~/.pixel-agents/files) as a file pin. */
 async function uploadAsPin(file: File): Promise<{ pinId: string } | { error: string }> {
   if (file.size > DOC_UPLOAD_MAX_BYTES) return { error: 'File is too large (limit 25 MB).' };
@@ -161,7 +189,9 @@ function App() {
   const [chatAgentId, setChatAgentId] = useState<number | null>(null);
   const [isBoardOpen, setIsBoardOpen] = useState(false);
   const [attachedPinIds, setAttachedPinIds] = useState<Record<number, string[]>>({});
-  const [viewedPinId, setViewedPinId] = useState<string | null>(null);
+  const [viewedFile, setViewedFile] = useState<ViewerFile | null>(null);
+  const files = useFiles();
+  const [isFilesOpen, setIsFilesOpen] = useState(false);
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
   const [isOpenFileOpen, setIsOpenFileOpen] = useState(false);
   const [roomNameDraft, setRoomNameDraft] = useState<string | null>(null);
@@ -185,27 +215,34 @@ function App() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
-  // A file named in the chat opens in the viewer through a board file pin —
-  // the viewer's only route to a file. An existing pin for the path is reused.
-  const { pins: boardPins, savePin } = chat;
+  // Any file opens in the viewer through Files (never by pinning it: the
+  // whiteboard is what agents see). A pin opens the same way, by its path.
+  const [fileOpenError, setFileOpenError] = useState<string | null>(null);
   const openFileInViewer = useCallback(
-    (path: string) => {
-      const existing = boardPins.find((p) => p.kind === 'file' && p.value === path);
-      const id = existing?.id ?? newPinId();
-      if (!existing) {
-        savePin({
-          id,
-          kind: 'file',
-          title: path.split('/').pop() || path,
-          value: path,
-          scope: [],
-          createdAt: new Date().toISOString(),
+    (path: string, focusId: string | null = null) => {
+      setFileOpenError(null);
+      void files.open(path).then((result) => {
+        if ('error' in result) {
+          setFileOpenError(result.error);
+          return;
+        }
+        setViewedFocusId(focusId);
+        setViewedFile({
+          id: result.fileId,
+          path: result.path,
+          title: fileBaseName(result.path).replace(/^pin_[A-Za-z0-9]+-/, ''),
         });
-      }
-      setViewedFocusId(null);
-      setViewedPinId(id);
+      });
     },
-    [boardPins, savePin],
+    [files],
+  );
+  const { pins: boardPins } = chat;
+  const openPinInViewer = useCallback(
+    (pinId: string, focusId: string | null = null) => {
+      const pin = boardPins.find((p) => p.id === pinId && p.kind === 'file');
+      if (pin) openFileInViewer(pin.value, focusId);
+    },
+    [boardPins, openFileInViewer],
   );
   /** Places picked in the viewer, waiting to be sent (the tray), and those attached per agent. */
   const [docTray, setDocTray] = useState<DocRef[]>([]);
@@ -866,14 +903,7 @@ function App() {
                 (r) => r.state === 'waiting' && !focusLater.has(r.requestId),
               )}
               labelOf={agentLabel}
-              onOpen={
-                isBrowserRuntime
-                  ? (r) => {
-                      setViewedPinId(r.pinId);
-                      setViewedFocusId(r.requestId);
-                    }
-                  : undefined
-              }
+              onOpen={isBrowserRuntime ? (r) => openPinInViewer(r.pinId, r.requestId) : undefined}
               onLater={(r) => setFocusLater((prev) => new Set(prev).add(r.requestId))}
               suggestions={proposals.proposals.filter(
                 (p) => p.state === 'open' && !proposalsLater.has(p.proposalId),
@@ -990,12 +1020,7 @@ function App() {
               onDetachPin={detachPin}
               requests={focus.requests}
               onOpenRequest={
-                isBrowserRuntime
-                  ? (r) => {
-                      setViewedPinId(r.pinId);
-                      setViewedFocusId(r.requestId);
-                    }
-                  : undefined
+                isBrowserRuntime ? (r) => openPinInViewer(r.pinId, r.requestId) : undefined
               }
               onOpenRoom={(roomId) => {
                 setIsMessengerOpen(false);
@@ -1107,12 +1132,36 @@ function App() {
             />
           )}
 
-          {!editor.isEditMode && !isWorkflowsOpen && (
+          {isFilesOpen && !editor.isEditMode && (
+            <FilesRail
+              files={files.files}
+              backups={files.backups}
+              uploadsBytes={files.uploadsBytes}
+              backupsBytes={files.backupsBytes}
+              suggestions={proposals.proposals.filter((p) => p.state === 'open')}
+              labelOf={agentLabel}
+              canManage={chat.privileged || !isBrowserRuntime}
+              onClose={() => setIsFilesOpen(false)}
+              onOpenFile={() => setIsOpenFileOpen(true)}
+              onOpen={(f) => openFileInViewer(f.path)}
+              onReview={(p) =>
+                isDocProposal(p) ? openFileInViewer(p.path) : setReviewingId(p.proposalId)
+              }
+              onDiscard={(p) => proposals.discard(p.proposalId)}
+              onPin={(f, pinned) => files.setPinned(f.fileId, pinned)}
+              onForget={(f) => files.forget(f.fileId)}
+              onDeleteUpload={(f) => files.deleteUpload(f.fileId)}
+              onClearBackups={files.clearBackups}
+            />
+          )}
+
+          {!editor.isEditMode && !isWorkflowsOpen && !isFilesOpen && (
             <TaskDesk
               isOpen={isDeskOpen}
               onToggle={() => {
                 setIsDeskOpen((v) => !v);
                 setIsWorkflowsOpen(false);
+                setIsFilesOpen(false);
               }}
               desk={desk}
               labelOf={agentLabel}
@@ -1148,7 +1197,7 @@ function App() {
               canDeleteFiles={chat.privileged || !isBrowserRuntime}
               // The viewer fetches files over HTTP from the standalone server;
               // the VS Code panel has no such route to call.
-              onView={isBrowserRuntime ? setViewedPinId : undefined}
+              onView={isBrowserRuntime ? (pinId) => openPinInViewer(pinId) : undefined}
               onUpload={isBrowserRuntime ? uploadBoardFile : undefined}
             />
           )}
@@ -1238,7 +1287,6 @@ function App() {
           setIsGroupChatOpen(false);
         }}
         onAddAgent={chat.canStartAgents ? () => setIsAddAgentOpen(true) : undefined}
-        onOpenFile={isBrowserRuntime && chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
         onAddRoom={() => {
           if (!editor.isEditMode) editor.handleToggleEditMode();
           editor.handleToolChange(EditTool.ROOM);
@@ -1258,7 +1306,19 @@ function App() {
         onToggleWorkflows={() => {
           setIsWorkflowsOpen((v) => !v);
           setIsDeskOpen(false);
+          setIsFilesOpen(false);
         }}
+        isFilesOpen={isFilesOpen}
+        filesWaiting={proposals.proposals.filter((p) => p.state === 'open').length}
+        onToggleFiles={
+          isBrowserRuntime && chat.privileged
+            ? () => {
+                setIsFilesOpen((v) => !v);
+                setIsDeskOpen(false);
+                setIsWorkflowsOpen(false);
+              }
+            : undefined
+        }
         isMessengerOpen={isMessengerOpen}
         onToggleMessenger={() =>
           isMessengerOpen
@@ -1269,15 +1329,30 @@ function App() {
         workspaceFolders={workspaceFolders}
       />
 
+      {fileOpenError && (
+        <div
+          role="alert"
+          className="fixed left-1/2 -translate-x-1/2 bottom-80 z-70 pixel-panel flex items-center gap-8 px-10 py-6 text-sm border-danger"
+        >
+          <span className="text-danger">{fileOpenError}</span>
+          <button
+            className="bg-transparent border-0 text-text-muted cursor-pointer"
+            onClick={() => setFileOpenError(null)}
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <OpenFileDialog
         isOpen={isOpenFileOpen}
         onClose={() => setIsOpenFileOpen(false)}
         onOpenPath={openFileInViewer}
         onUpload={async (file) => {
-          const result = await uploadAsPin(file);
+          const result = await uploadToFiles(file);
           if ('error' in result) return result.error;
           setViewedFocusId(null);
-          setViewedPinId(result.pinId);
+          setViewedFile({ id: result.fileId, path: result.path, title: file.name });
           return null;
         }}
       />
@@ -1391,11 +1466,11 @@ function App() {
       />
 
       {(() => {
-        const viewed = viewedPinId ? chat.pins.find((p) => p.id === viewedPinId) : undefined;
+        const viewed = viewedFile;
         if (!viewed) return null;
         const canAttach = chatAgentId !== null && chat.sendable[chatAgentId] === true;
         const viewedFocus = focus.requests.find(
-          (r) => r.requestId === viewedFocusId && r.pinId === viewed.id,
+          (r) => r.requestId === viewedFocusId && samePath(viewed.path, r.path),
         );
         // "Ask about this" goes to the chat on screen — Messages when it is open
         // (it covers the chat card), else the chat card — else the agent that
@@ -1415,14 +1490,11 @@ function App() {
           agentId !== undefined ? agentLabel(agentId) : 'An agent';
         return (
           <DocViewer
-            pin={viewed}
+            file={viewed}
             filePins={chat.pins.filter((p) => p.kind === 'file')}
-            onSelect={(pinId) => {
-              setViewedPinId(pinId);
-              setViewedFocusId(null);
-            }}
+            onSelect={(pinId) => openPinInViewer(pinId)}
             onClose={() => {
-              setViewedPinId(null);
+              setViewedFile(null);
               setViewedFocusId(null);
             }}
             focus={viewedFocus}
@@ -1444,22 +1516,22 @@ function App() {
             onRemoveRef={(i) => setDocTray((prev) => prev.filter((_, j) => j !== i))}
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
             lastEditKey={[
-              lastEditKeyFor(docEdits.edits, viewed.value),
+              lastEditKeyFor(docEdits.edits, viewed.path),
               // Applying (or undoing) a suggestion rewrites the file too.
               ...proposals.proposals
-                .filter((p) => samePath(p.path, viewed.value) && p.state !== 'open')
+                .filter((p) => samePath(p.path, viewed.path) && p.state !== 'open')
                 .map((p) => `${p.proposalId}:${p.state}:${p.canUndo ? 1 : 0}`),
             ].join('|')}
             appliedSuggestion={(() => {
               const done = [...proposals.proposals]
                 .reverse()
-                .find((p) => samePath(p.path, viewed.value) && p.state === 'applied' && p.canUndo);
+                .find((p) => samePath(p.path, viewed.path) && p.state === 'applied' && p.canUndo);
               return done && (chat.privileged || !isBrowserRuntime)
                 ? { note: done.note ?? 'Applied.', onUndo: () => proposals.undo(done.proposalId) }
                 : undefined;
             })()}
             suggestion={(() => {
-              const open = openProposalFor(proposals.proposals, viewed.value);
+              const open = openProposalFor(proposals.proposals, viewed.path);
               return open
                 ? {
                     proposal: open,
@@ -1488,7 +1560,7 @@ function App() {
                           chat.asking[id] === true ||
                           officeState.characters.get(id)?.isActive === true,
                         inFolder: isInFolder(
-                          viewed.value,
+                          viewed.path,
                           desk.agents.find((a) => a.id === id)?.root,
                         ),
                       })),
@@ -1497,7 +1569,7 @@ function App() {
                     entriesFor: (id) => chat.chats[id] ?? [],
                     onSend: chat.sendMessage,
                     onOpenChat: (id) => {
-                      setViewedPinId(null);
+                      setViewedFile(null);
                       setViewedFocusId(null);
                       openChat(id);
                     },
@@ -1506,10 +1578,10 @@ function App() {
                 : undefined
             }
             onDeleteFile={
-              chat.privileged && isStoredUploadPath(viewed.value)
+              chat.privileged && isStoredUploadPath(viewed.path)
                 ? () => {
-                    chat.removePin(viewed.id, true);
-                    setViewedPinId(null);
+                    files.deleteUpload(viewed.id);
+                    setViewedFile(null);
                     setViewedFocusId(null);
                   }
                 : undefined
@@ -1527,7 +1599,7 @@ function App() {
                       return { ...prev, [target]: merged };
                     });
                     setDocTray([]);
-                    setViewedPinId(null);
+                    setViewedFile(null);
                     setViewedFocusId(null);
                     if (isMessengerOpen) openMessenger(target);
                     else openChat(target);
@@ -1537,14 +1609,22 @@ function App() {
             onSelectRequest={(requestId) => {
               const request = focus.requests.find((r) => r.requestId === requestId);
               if (!request) return;
-              setViewedPinId(request.pinId);
-              setViewedFocusId(requestId);
+              openPinInViewer(request.pinId, requestId);
             }}
             onAttach={
               canAttach
                 ? () => {
-                    attachPin(chatAgentId, viewed.id);
-                    setViewedPinId(null);
+                    // A pinned file attaches as its pin; any other file as a reference.
+                    const pin = chat.pins.find(
+                      (p) => p.kind === 'file' && samePath(viewed.path, p.value),
+                    );
+                    if (pin) attachPin(chatAgentId, pin.id);
+                    else
+                      setDocRefsFor((prev) => ({
+                        ...prev,
+                        [chatAgentId]: [...(prev[chatAgentId] ?? []), { path: viewed.path }],
+                      }));
+                    setViewedFile(null);
                   }
                 : undefined
             }

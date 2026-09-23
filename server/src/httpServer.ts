@@ -10,10 +10,12 @@ import type { DocEdit } from '../../core/src/docModel.js';
 import type { BoardPin } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import type { PinFileResult } from './boardFiles.js';
 import {
   isViewableName,
   resolveChatImage,
   resolvePinFile,
+  resolveViewableFile,
   saveChatFile,
   saveUploadedFile,
 } from './boardFiles.js';
@@ -42,6 +44,7 @@ import {
   LAUNCHER_POLL_TIMEOUT_MS,
   LAUNCHER_SESSION_ID_PATTERN,
   MAX_HOOK_BODY_SIZE,
+  OFFICE_FILE_API_PREFIX,
   PERMISSION_POLL_MS,
   PERMISSION_POLL_SEGMENT,
   PROPOSAL_POLL_MS,
@@ -149,6 +152,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerHookRoute(app, options);
   registerLauncherRoutes(app, options);
   registerBoardFileRoute(app, options);
+  registerOfficeFileRoutes(app, options);
   // Uploads send the raw file bytes; one parser serves both upload routes.
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) =>
     done(null, body),
@@ -308,20 +312,52 @@ function registerLauncherRoutes(app: FastifyInstance, options: HttpServerOptions
 function registerBoardFileRoute(app: FastifyInstance, options: HttpServerOptions): void {
   const { getBoardPins } = options;
   if (!getBoardPins) return;
-  app.get<{ Params: { pinId: string } }>(
-    `${BOARD_FILE_API_PREFIX}/:pinId`,
-    {
-      preHandler: bearerAuth(options.token),
-      schema: {
-        params: {
-          type: 'object',
-          properties: { pinId: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
-          required: ['pinId'],
-        },
-      },
+  registerViewerFileRoutes(app, options, BOARD_FILE_API_PREFIX, '^[A-Za-z0-9_-]{1,64}$', (id) =>
+    resolvePinFile(getBoardPins(), id),
+  );
+}
+
+/**
+ * Files → the viewer fetches a file the office opened by its FILE id (see
+ * officeFiles.ts): the browser names an id, never a path. Token required.
+ */
+function registerOfficeFileRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const runtime = options.runtime;
+  if (!runtime) return;
+  registerViewerFileRoutes(app, options, OFFICE_FILE_API_PREFIX, '^f[a-f0-9]{12}$', (id) => {
+    const filePath = runtime.files.pathOf(id);
+    return filePath
+      ? resolveViewableFile(filePath)
+      : { ok: false, status: 404, error: 'No such file in Files.' };
+  });
+}
+
+/**
+ * What the document viewer needs for one file, however it is named (a pin id
+ * or a file id): the bytes, its numbered model, and saving the human's edits
+ * (sha-checked, backed up — docEdits.ts). Bearer token on every route.
+ */
+function registerViewerFileRoutes(
+  app: FastifyInstance,
+  options: HttpServerOptions,
+  prefix: string,
+  idPattern: string,
+  resolve: (id: string) => PinFileResult,
+): void {
+  const schema = {
+    params: {
+      type: 'object',
+      properties: { id: { type: 'string', pattern: idPattern } },
+      required: ['id'],
     },
+  };
+  type Id = { Params: { id: string } };
+
+  app.get<Id>(
+    `${prefix}/:id`,
+    { preHandler: bearerAuth(options.token), schema },
     async (request, reply) => {
-      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      const file = resolve(request.params.id);
       if (!file.ok) return reply.code(file.status).send({ error: file.error });
       return reply
         .header('Content-Type', file.contentType)
@@ -332,32 +368,15 @@ function registerBoardFileRoute(app: FastifyInstance, options: HttpServerOptions
         .send(fs.createReadStream(file.filePath));
     },
   );
-}
 
-/**
- * Office documents. The viewer (token in hand, like the file route above)
- * reads a pinned document's numbered places and saves the human's edits; an
- * AGENT sends its edits with `pixel-office doc edit` (Bearer, browsers
- * refused) and the office applies them, or holds them for review, as the
- * human set for that agent (docEdits.ts).
- */
-function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): void {
-  const { getBoardPins, runtime } = options;
-  if (!getBoardPins || !runtime) return;
-  const pinParams = {
-    params: {
-      type: 'object',
-      properties: { pinId: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
-      required: ['pinId'],
-    },
-  };
-  type Pin = { Params: { pinId: string } };
+  const runtime = options.runtime;
+  if (!runtime) return;
 
-  app.get<Pin>(
-    `${BOARD_FILE_API_PREFIX}/:pinId/model`,
-    { preHandler: bearerAuth(options.token), schema: pinParams },
+  app.get<Id>(
+    `${prefix}/:id/model`,
+    { preHandler: bearerAuth(options.token), schema },
     async (request, reply) => {
-      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      const file = resolve(request.params.id);
       if (!file.ok) return reply.code(file.status).send({ error: file.error });
       const result = await runtime.docs.model(file.filePath);
       if (!result.ok) return reply.code(415).send({ error: result.error });
@@ -367,15 +386,11 @@ function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): vo
     },
   );
 
-  app.post<Pin & { Body: { sha?: unknown; edits?: unknown; text?: unknown } | null }>(
-    `${BOARD_FILE_API_PREFIX}/:pinId/edits`,
-    {
-      preHandler: bearerAuth(options.token),
-      schema: pinParams,
-      bodyLimit: DOC_EDIT_TEXT_MAX_BYTES * 2,
-    },
+  app.post<Id & { Body: { sha?: unknown; edits?: unknown; text?: unknown } | null }>(
+    `${prefix}/:id/edits`,
+    { preHandler: bearerAuth(options.token), schema, bodyLimit: DOC_EDIT_TEXT_MAX_BYTES * 2 },
     async (request, reply) => {
-      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      const file = resolve(request.params.id);
       if (!file.ok) return reply.code(file.status).send({ error: file.error });
       const body = request.body ?? {};
       const sha = typeof body.sha === 'string' ? body.sha : undefined;
@@ -390,7 +405,18 @@ function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): vo
       return { sha: result.sha, edit: result.notice };
     },
   );
+}
 
+/**
+ * Office documents. The viewer (token in hand, like the file route above)
+ * reads a pinned document's numbered places and saves the human's edits; an
+ * AGENT sends its edits with `pixel-office doc edit` (Bearer, browsers
+ * refused) and the office applies them, or holds them for review, as the
+ * human set for that agent (docEdits.ts).
+ */
+function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const { runtime } = options;
+  if (!runtime) return;
   const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
     if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
   };
@@ -405,11 +431,14 @@ function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): vo
   );
 }
 
-/** Upload a document from the browser: stored locally and pinned to the whiteboard. Token required. */
+/**
+ * Upload a document from the browser: stored locally, added to Files, and —
+ * unless `pin=0` (Open file) — pinned to the whiteboard. Token required.
+ */
 function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptions): void {
   const { saveBoardPin, getBoardPins } = options;
   if (!saveBoardPin) return;
-  app.post<{ Querystring: { name?: string }; Body: Buffer }>(
+  app.post<{ Querystring: { name?: string; pin?: string }; Body: Buffer }>(
     BOARD_FILE_API_PREFIX,
     {
       preHandler: bearerAuth(options.token),
@@ -417,7 +446,10 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
       schema: {
         querystring: {
           type: 'object',
-          properties: { name: { type: 'string', minLength: 1, maxLength: 255 } },
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 255 },
+            pin: { type: 'string', enum: ['0', '1'] },
+          },
           required: ['name'],
         },
       },
@@ -434,9 +466,12 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
       const id = `pin_${crypto.randomUUID().replace(/-/g, '')}`;
       const filePath = saveUploadedFile(name, request.body, id);
       if (!filePath) return reply.code(400).send({ error: 'Could not store that file.' });
+      const opened = options.runtime?.files.open(filePath, 'upload');
+      const fileId = opened?.ok ? opened.fileId : undefined;
+      if (request.query.pin === '0') return { path: filePath, ...(fileId ? { fileId } : {}) };
       // The same file uploaded again: its copy (and pin) are reused, not duplicated.
       const existing = getBoardPins?.().find((p) => p.kind === 'file' && p.value === filePath);
-      if (existing) return { pin: existing };
+      if (existing) return { pin: existing, ...(fileId ? { fileId } : {}) };
       const pin: BoardPin = {
         id,
         kind: 'file',
@@ -446,7 +481,7 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
         createdAt: new Date().toISOString(),
       };
       if (!saveBoardPin(pin)) return reply.code(400).send({ error: 'The whiteboard is full.' });
-      return { pin };
+      return { pin, ...(fileId ? { fileId } : {}) };
     },
   );
 }

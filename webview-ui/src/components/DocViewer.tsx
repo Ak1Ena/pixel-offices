@@ -8,7 +8,7 @@ import type {
   ProposalHunk,
 } from '../../../core/src/messages.js';
 import type { AskAgent } from '../askAgent.js';
-import { BOARD_FILE_API } from '../constants.js';
+import { OFFICE_FILE_API } from '../constants.js';
 import { cellSuggestion, hunkTexts, placeSuggestions } from '../docSuggestions.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
@@ -25,6 +25,7 @@ import {
   parseCsv,
   refLabel,
   refText,
+  samePath,
   spotLabel,
   toSheetView,
   viewerKind,
@@ -38,8 +39,15 @@ import { SuggestionBar, SuggestionCard } from './DocSuggestions.js';
 import { Button } from './ui/Button.js';
 import { WordDocumentView } from './WordDocumentView.js';
 
+/** A file the viewer shows: fetched by its Files id (never by path). */
+export interface ViewerFile {
+  id: string;
+  path: string;
+  title: string;
+}
+
 interface DocViewerProps {
-  pin: BoardPin;
+  file: ViewerFile;
   /** Every file pin, for the list on the left. */
   filePins: BoardPin[];
   onSelect: (pinId: string) => void;
@@ -106,12 +114,12 @@ function officeToken(): string | null {
 
 /** The office's numbered model of a Word / PowerPoint / Excel file, and the hash edits go against. */
 async function loadModel(
-  pin: BoardPin,
+  file: ViewerFile,
   token: string,
   signal: AbortSignal,
 ): Promise<{ sha: string; model: DocModel } | null> {
   try {
-    const res = await fetch(`${BOARD_FILE_API}/${encodeURIComponent(pin.id)}/model`, {
+    const res = await fetch(`${OFFICE_FILE_API}/${encodeURIComponent(file.id)}/model`, {
       headers: { Authorization: `Bearer ${token}` },
       signal,
     });
@@ -133,8 +141,8 @@ async function hashOf(blob: Blob): Promise<string | undefined> {
   }
 }
 
-async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewState> {
-  const kind = viewerKind(pin.value);
+async function loadDocument(file: ViewerFile, signal: AbortSignal): Promise<ViewState> {
+  const kind = viewerKind(file.path);
   if (kind === 'unsupported') {
     return {
       status: 'error',
@@ -150,7 +158,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
         'Files only open when the office was opened from your private link (the one with ?token= that pixel-office printed).',
     };
   }
-  const res = await fetch(`${BOARD_FILE_API}/${encodeURIComponent(pin.id)}`, {
+  const res = await fetch(`${OFFICE_FILE_API}/${encodeURIComponent(file.id)}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal,
   });
@@ -164,7 +172,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
   }
   if (kind === 'word') {
     // Drawn by WordDocumentView from the blob; the model gives the ¶ numbers.
-    const loaded = await loadModel(pin, token, signal);
+    const loaded = await loadModel(file, token, signal);
     const paragraphs = loaded?.model.kind === 'docx' ? loaded.model.paragraphs : undefined;
     return {
       status: 'ready',
@@ -174,7 +182,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     };
   }
   if (kind === 'slides') {
-    const loaded = await loadModel(pin, token, signal);
+    const loaded = await loadModel(file, token, signal);
     if (loaded?.model.kind !== 'pptx') {
       return { status: 'error', message: 'Could not read this presentation.' };
     }
@@ -186,7 +194,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     };
   }
   if (kind === 'sheet') {
-    const loaded = await loadModel(pin, token, signal);
+    const loaded = await loadModel(file, token, signal);
     if (loaded?.model.kind === 'xlsx') {
       const model = loaded.model.sheets;
       return {
@@ -213,7 +221,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
       sha,
       doc: {
         kind: 'table',
-        sheets: [toSheetView(fileBaseName(pin.value), parseCsv(text))],
+        sheets: [toSheetView(fileBaseName(file.path), parseCsv(text))],
         raw: text,
       },
     };
@@ -478,13 +486,13 @@ function FocusBanner({
 }
 
 /**
- * Opens a whiteboard file pin inside the office: PDF and images natively,
+ * Opens a file inside the office (Files, or a whiteboard pin opened through Files): PDF and images natively,
  * Word laid out like Word by docx-preview (in a frame that runs no scripts — nothing in the document runs
  * in the office page), Excel/CSV as a table, text as text. Libraries load
  * only when a document of that type is opened.
  */
 export function DocViewer({
-  pin,
+  file,
   filePins,
   onSelect,
   onClose,
@@ -513,7 +521,7 @@ export function DocViewer({
   const [unplaced, setUnplaced] = useState(0);
   const [showAsk, setShowAsk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  useEffect(() => setConfirmDelete(false), [pin]);
+  useEffect(() => setConfirmDelete(false), [file.id]);
   const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
   const [pickedCells, setPickedCells] = useState<{
     a: { r: number; c: number };
@@ -540,7 +548,7 @@ export function DocViewer({
     setPickedParas(null);
     setPickedShape(null);
     setPdfPage(focus?.page ? String(focus.page) : '');
-  }, [pin, focus?.page]);
+  }, [file.id, focus?.page]);
   useEffect(() => {
     setEditing(false);
     setEdits([]);
@@ -549,7 +557,7 @@ export function DocViewer({
     setSaved(null);
     setChangedUnderUs(false);
     setSlideIndex(0);
-  }, [pin]);
+  }, [file.id]);
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   const [sheetIndex, setSheetIndex] = useState(0);
 
@@ -557,7 +565,7 @@ export function DocViewer({
     const abort = new AbortController();
     let objectUrl: string | null = null;
     setState((prev) => (prev.status === 'ready' && reloadKey > 0 ? prev : { status: 'loading' }));
-    loadDocument(pin, abort.signal)
+    loadDocument(file, abort.signal)
       .then((next) => {
         if (abort.signal.aborted) return;
         if (next.status === 'ready' && 'url' in next.doc) objectUrl = next.doc.url;
@@ -572,8 +580,9 @@ export function DocViewer({
       abort.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [pin, reloadKey]);
-  useEffect(() => setSheetIndex(0), [pin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a file is its id; the object is rebuilt every render
+  }, [file.id, reloadKey]);
+  useEffect(() => setSheetIndex(0), [file.id]);
 
   const dirty = edits.length > 0 || textDraft !== null;
   // Someone wrote to this file (an agent, an Undo, another window): show the new version,
@@ -592,7 +601,7 @@ export function DocViewer({
     const url = URL.createObjectURL(state.blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileBaseName(pin.value);
+    a.download = fileBaseName(file.path);
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1_000);
   };
@@ -609,28 +618,28 @@ export function DocViewer({
   const current: DocRef | null =
     wordParagraphs && pickedParas
       ? {
-          path: pin.value,
+          path: file.path,
           paraStart: Math.min(pickedParas.a, pickedParas.b),
           paraEnd: Math.max(pickedParas.a, pickedParas.b),
         }
       : slide
-        ? { path: pin.value, slide: slide.n, ...(pickedShape ? { shape: pickedShape } : {}) }
+        ? { path: file.path, slide: slide.n, ...(pickedShape ? { shape: pickedShape } : {}) }
         : doc?.kind === 'text' && pickedLines
           ? {
-              path: pin.value,
+              path: file.path,
               lineStart: Math.min(pickedLines.a, pickedLines.b),
               lineEnd: Math.max(pickedLines.a, pickedLines.b),
             }
           : doc?.kind === 'table' && pickedCells
-            ? { path: pin.value, cell: cellRange(pickedCells.a, pickedCells.b, sheetName) }
+            ? { path: file.path, cell: cellRange(pickedCells.a, pickedCells.b, sheetName) }
             : doc?.kind === 'pdf' && Number(pdfPage) > 0
-              ? { path: pin.value, page: Number(pdfPage) }
+              ? { path: file.path, page: Number(pdfPage) }
               : doc &&
                   doc.kind !== 'text' &&
                   doc.kind !== 'table' &&
                   doc.kind !== 'pdf' &&
                   !wordParagraphs
-                ? { path: pin.value }
+                ? { path: file.path }
                 : null;
 
   // A suggestion opens on the slide / sheet its first change is on.
@@ -673,7 +682,7 @@ export function DocViewer({
     ((doc?.kind === 'word' && !!doc.paragraphs) ||
       doc?.kind === 'slides' ||
       !!modelSheets ||
-      (textSource !== null && isTextEditableName(pin.value)));
+      (textSource !== null && isTextEditableName(file.path)));
   const stage = (edit: DocEdit) => setEdits((list) => mergeDocEdit(list, edit));
   const startEditing = () => {
     setSaved(null);
@@ -703,7 +712,7 @@ export function DocViewer({
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await fetch(`${BOARD_FILE_API}/${encodeURIComponent(pin.id)}/edits`, {
+      const res = await fetch(`${OFFICE_FILE_API}/${encodeURIComponent(file.id)}/edits`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -760,7 +769,7 @@ export function DocViewer({
   return (
     <div
       role="dialog"
-      aria-label={`Document: ${pin.title}`}
+      aria-label={`Document: ${file.title}`}
       className="absolute inset-0 z-60 flex flex-col bg-bg"
       data-testid="doc-viewer"
       onKeyDown={(e) => {
@@ -772,10 +781,10 @@ export function DocViewer({
     >
       <div className="flex items-center gap-8 px-10 py-6 border-b-2 border-border flex-wrap">
         <span className="px-6 text-2xs bg-accent text-white uppercase">
-          {fileExtension(pin.value) || 'file'}
+          {fileExtension(file.path) || 'file'}
         </span>
         <span className="text-base overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
-          {pin.title}
+          {file.title}
         </span>
         <span className="flex-1" />
         {ask && (
@@ -878,7 +887,9 @@ export function DocViewer({
                 key={p.id}
                 onClick={() => onSelect(p.id)}
                 className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-xs text-text overflow-hidden text-ellipsis whitespace-nowrap ${
-                  p.id === pin.id ? 'bg-active-bg border-accent' : 'bg-btn-bg border-transparent'
+                  samePath(file.path, p.value)
+                    ? 'bg-active-bg border-accent'
+                    : 'bg-btn-bg border-transparent'
                 }`}
               >
                 <span className="text-2xs text-text-muted uppercase mr-6">
@@ -1016,14 +1027,14 @@ export function DocViewer({
           )}
           {doc?.kind === 'pdf' && (
             <iframe
-              title={pin.title}
+              title={file.title}
               src={focus?.page ? `${doc.url}#page=${focus.page}` : doc.url}
               className="flex-1 w-full border-0 bg-board"
             />
           )}
           {doc?.kind === 'image' && (
             <div className="flex-1 min-h-0 overflow-auto flex bg-bg-dark">
-              <img src={doc.url} alt={pin.title} className="m-auto max-w-full" />
+              <img src={doc.url} alt={file.title} className="m-auto max-w-full" />
             </div>
           )}
           {paragraphs && (
@@ -1067,7 +1078,7 @@ export function DocViewer({
           )}
           {doc?.kind === 'word' && !paragraphs && state.status === 'ready' && (
             <WordDocumentView
-              title={pin.title}
+              title={file.title}
               blob={state.blob}
               paragraphs={doc.paragraphs}
               mark={
@@ -1090,7 +1101,7 @@ export function DocViewer({
               value={textDraft}
               onChange={(e) => setTextDraft(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              aria-label={`Edit ${pin.title}`}
+              aria-label={`Edit ${file.title}`}
               spellCheck={false}
               className="flex-1 min-h-0 m-0 p-16 bg-board text-board-ink font-mono text-code border-0 rounded-none outline-none resize-none"
               data-testid="doc-text-editor"
@@ -1315,7 +1326,7 @@ export function DocViewer({
         </div>
         {ask && showAsk && state.status === 'ready' && (
           <DocChatPanel
-            filePath={pin.value}
+            filePath={file.path}
             refs={
               current && !refs.some((r) => refText(r) === refText(current))
                 ? [...refs, current]

@@ -14,6 +14,7 @@ import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { pruneBackups } from './backups.js';
 import { BoardStore } from './boardStore.js';
 import { setReplyListener } from './chatLog.js';
 import { ChatSender } from './chatSender.js';
@@ -49,9 +50,11 @@ import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
 import { MentionRelay } from './mentionRelay.js';
+import { OfficeFiles } from './officeFiles.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { PermissionBroker } from './permissionBroker.js';
+import { suggestionsFilePath } from './proposals.js';
 import { Proposals } from './proposals.js';
 import { SessionRouter } from './sessionRouter.js';
 import { SubagentWatch } from './subagentWatch.js';
@@ -120,6 +123,7 @@ export class AgentRuntime {
   private focusRequests: FocusRequests | null = null;
   private proposalStore: Proposals | null = null;
   private docEditor: DocEdits | null = null;
+  private officeFiles: OfficeFiles | null = null;
   private workflowStore: WorkflowStore | null = null;
   private workflowRuns: WorkflowRuns | null = null;
   private teamStore: TeamStore | null = null;
@@ -857,7 +861,11 @@ export class AgentRuntime {
    *  change is broadcast to all clients as `boardLoaded`. */
   get board(): BoardStore {
     this.boardStore ??= new BoardStore(
-      (pins) => this.store.broadcast({ type: 'boardLoaded', pins }),
+      (pins) => {
+        this.store.broadcast({ type: 'boardLoaded', pins });
+        // A file's "pinned" flag in Files follows the board.
+        if (this.officeFiles) this.publishFiles();
+      },
       undefined,
       (agentId) => {
         const agent = this.store.get(agentId);
@@ -879,14 +887,48 @@ export class AgentRuntime {
 
   /** Changes agents suggested to files, waiting for review (`pixel-office propose`). */
   get proposals(): Proposals {
-    this.proposalStore ??= new Proposals(this.store, (id, text) => this.chatSender.send(id, text));
+    this.proposalStore ??= new Proposals(
+      this.store,
+      (id, text) => this.chatSender.send(id, text),
+      undefined,
+      suggestionsFilePath(),
+      (filePath) => this.fileWritten(filePath),
+    );
     return this.proposalStore;
   }
 
   /** Edits to office documents (viewer saves, agents' `pixel-office doc edit`). */
   get docs(): DocEdits {
-    this.docEditor ??= new DocEdits(this.store, () => this.proposals);
+    this.docEditor ??= new DocEdits(
+      this.store,
+      () => this.proposals,
+      undefined,
+      undefined,
+      undefined,
+      (filePath) => this.fileWritten(filePath),
+    );
     return this.docEditor;
+  }
+
+  /** Files: the documents the office opened (not the whiteboard); created on first use. */
+  get files(): OfficeFiles {
+    this.officeFiles ??= new OfficeFiles(
+      () => this.publishFiles(),
+      () => this.board.getPins(),
+    );
+    return this.officeFiles;
+  }
+
+  /** Broadcast Files (filesLoaded) — after anything that changes it outside the store. */
+  publishFiles(): void {
+    this.store.broadcast({ ...this.files.snapshot() });
+  }
+
+  /** The office wrote to a file: note it in Files, keep backups within bounds. */
+  private fileWritten(filePath: string): void {
+    pruneBackups();
+    this.files.markEdited(filePath);
+    this.publishFiles();
   }
 
   /** Saved workflows (~/.pixel-agents/workflows/*.md); read and watched on first use. */
@@ -988,6 +1030,7 @@ export class AgentRuntime {
     this.boardStore?.dispose();
     this.focusRequests?.dispose();
     this.proposalStore?.dispose();
+    this.officeFiles?.dispose();
     this.workflowStore?.dispose();
     this.workflowRuns?.dispose();
     this.teamStore?.dispose();

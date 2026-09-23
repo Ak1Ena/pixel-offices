@@ -117,6 +117,8 @@ components:
         - $ref: '#/components/schemas/AgentClearRequests'
         - $ref: '#/components/schemas/DocEdits'
         - $ref: '#/components/schemas/DocEditDefault'
+        - $ref: '#/components/schemas/FilesLoaded'
+        - $ref: '#/components/schemas/FileOpened'
         - $ref: '#/components/schemas/AgentPermissionAsk'
         - $ref: '#/components/schemas/AgentPermissionAnswered'
         - $ref: '#/components/schemas/FolderListing'
@@ -218,6 +220,11 @@ components:
         - $ref: '#/components/schemas/SetAgentPrefs'
         - $ref: '#/components/schemas/SetDocEditDefault'
         - $ref: '#/components/schemas/UndoDocEdit'
+        - $ref: '#/components/schemas/OpenOfficeFile'
+        - $ref: '#/components/schemas/ForgetOfficeFile'
+        - $ref: '#/components/schemas/PinOfficeFile'
+        - $ref: '#/components/schemas/DeleteOfficeUpload'
+        - $ref: '#/components/schemas/ClearBackups'
         - $ref: '#/components/schemas/AnswerScreenQuestion'
         - $ref: '#/components/schemas/SetAgentRelay'
         - $ref: '#/components/schemas/AnswerPermission'
@@ -831,6 +838,92 @@ components:
           type: boolean
         undone:
           type: boolean
+
+    FilesLoaded:
+      description: |
+        Files → the documents the office opened (newest first), how much
+        space its uploaded copies and backups take, and the backups by file.
+        Separate from the whiteboard: opening a file never pins it. Sent in the
+        handshake and on every change.
+      type: object
+      additionalProperties: false
+      required: [type, files, uploadsBytes, backups, backupsBytes]
+      properties:
+        type:
+          const: filesLoaded
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/OfficeFile'
+        uploadsBytes:
+          type: integer
+        backups:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupGroup'
+        backupsBytes:
+          type: integer
+
+    OfficeFile:
+      type: object
+      additionalProperties: false
+      required: [fileId, path, name, source, openedAt, pinned]
+      properties:
+        fileId:
+          type: string
+        path:
+          type: string
+        name:
+          type: string
+        source:
+          $ref: '#/components/schemas/OfficeFileSource'
+        openedAt:
+          type: string
+        editedAt:
+          type: string
+        size:
+          type: integer
+        missing:
+          type: boolean
+          description: The file is no longer at its path.
+        pinned:
+          type: boolean
+          description: A whiteboard pin points at it (agents can see it).
+
+    OfficeFileSource:
+      type: string
+      enum: [disk, upload]
+
+    BackupGroup:
+      type: object
+      additionalProperties: false
+      required: [key, name, versions, bytes, newestAt]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        versions:
+          type: integer
+        bytes:
+          type: integer
+        newestAt:
+          type: string
+
+    FileOpened:
+      description: Reply to openOfficeFile, to the requester only — the file id to view, or why not.
+      type: object
+      additionalProperties: false
+      required: [type, path]
+      properties:
+        type:
+          const: fileOpened
+        path:
+          type: string
+        fileId:
+          type: string
+        error:
+          type: string
 
     DocEditDefault:
       description: What an agent's document edits do when it has no docEditMode of its own. Handshake + on change.
@@ -2667,6 +2760,69 @@ components:
         type:
           const: undoDocEdit
         editId:
+          type: string
+
+    OpenOfficeFile:
+      description: |
+        Open a document from this computer by path: it joins Files → Recent
+        (not the whiteboard) and the reply (fileOpened) names the id the
+        viewer fetches it by. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, path]
+      properties:
+        type:
+          const: openOfficeFile
+        path:
+          type: string
+
+    ForgetOfficeFile:
+      description: Remove a file from Files → Recent. The file itself is not touched. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, fileId]
+      properties:
+        type:
+          const: forgetOfficeFile
+        fileId:
+          type: string
+
+    PinOfficeFile:
+      description: Pin a file to the whiteboard (agents see it) or remove its pins. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, fileId, pinned]
+      properties:
+        type:
+          const: pinOfficeFile
+        fileId:
+          type: string
+        pinned:
+          type: boolean
+
+    DeleteOfficeUpload:
+      description: |
+        Delete the office's stored copy of an uploaded file (and its pins),
+        and drop it from Files. Only copies in ~/.pixel-agents/files; the
+        user's own files are never deleted. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, fileId]
+      properties:
+        type:
+          const: deleteOfficeUpload
+        fileId:
+          type: string
+
+    ClearBackups:
+      description: Delete the backups of one file (`key` from filesLoaded.backups), or all. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: clearBackups
+        key:
           type: string
 
     InterruptAgent:

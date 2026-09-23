@@ -368,6 +368,8 @@ export const TOUCH_TAP_SLOP_PX = 8;
 // ── Document viewer ─────────────────────────────────────────
 /** Route pinned files are fetched from (server: BOARD_FILE_API_PREFIX). */
 export const BOARD_FILE_API = '/api/board/files';
+/** Files the office opened, fetched by file id (server: OFFICE_FILE_API_PREFIX). */
+export const OFFICE_FILE_API = '/api/docs/files';
 /** Command agents run to post a note to the whiteboard (server: BOARD_CLI_COMMAND). */
 export const BOARD_POST_COMMAND = 'pixel-office board add --note';
 /** How agents list everyone in the office (any CLI), told in the group-chat note. */
@@ -444,6 +446,8 @@ export const OPEN_FILE_RECENT_KEY = 'pixel-office:open-file-recent';
 export const OPEN_FILE_RECENT_MAX = 8;
 /** Above the document viewer (z-60), which it can be opened from. */
 export const OPEN_FILE_Z_INDEX = 70;
+/** How often the Files rail refreshes its "5 min ago" labels. */
+export const FILES_CLOCK_TICK_MS = 30_000;
 /** Which agent each document's chat talks to (per viewer): path → agent id. */
 export const DOC_CHAT_AGENTS_KEY = 'pixel-office:doc-chat-agents';
 /** Messages a document chat shows before "Show earlier". */

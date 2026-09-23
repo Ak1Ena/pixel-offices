@@ -39,6 +39,8 @@ export type ServerMessage =
   | AgentClearRequests
   | DocEdits
   | DocEditDefault
+  | FilesLoaded
+  | FileOpened
   | AgentPermissionAsk
   | AgentPermissionAnswered
   | FolderListing
@@ -131,6 +133,11 @@ export type ClientMessage =
   | SetAgentPrefs
   | SetDocEditDefault
   | UndoDocEdit
+  | OpenOfficeFile
+  | ForgetOfficeFile
+  | PinOfficeFile
+  | DeleteOfficeUpload
+  | ClearBackups
   | AnswerScreenQuestion
   | SetAgentRelay
   | AnswerPermission
@@ -420,6 +427,43 @@ export interface DocEditNotice {
 export interface DocEditDefault {
   type: 'docEditDefault';
   mode: DocEditMode;
+}
+
+export interface FilesLoaded {
+  type: 'filesLoaded';
+  files: OfficeFile[];
+  uploadsBytes: number;
+  backups: BackupGroup[];
+  backupsBytes: number;
+}
+
+export interface OfficeFile {
+  fileId: string;
+  path: string;
+  name: string;
+  source: OfficeFileSource;
+  openedAt: string;
+  editedAt?: string;
+  size?: number;
+  missing?: boolean;
+  pinned: boolean;
+}
+
+export type OfficeFileSource = 'disk' | 'upload';
+
+export interface BackupGroup {
+  key: string;
+  name: string;
+  versions: number;
+  bytes: number;
+  newestAt: string;
+}
+
+export interface FileOpened {
+  type: 'fileOpened';
+  path: string;
+  fileId?: string;
+  error?: string;
 }
 
 export interface AgentPermissionAsk {
@@ -1271,6 +1315,32 @@ export interface SetDocEditDefault {
 export interface UndoDocEdit {
   type: 'undoDocEdit';
   editId: string;
+}
+
+export interface OpenOfficeFile {
+  type: 'openOfficeFile';
+  path: string;
+}
+
+export interface ForgetOfficeFile {
+  type: 'forgetOfficeFile';
+  fileId: string;
+}
+
+export interface PinOfficeFile {
+  type: 'pinOfficeFile';
+  fileId: string;
+  pinned: boolean;
+}
+
+export interface DeleteOfficeUpload {
+  type: 'deleteOfficeUpload';
+  fileId: string;
+}
+
+export interface ClearBackups {
+  type: 'clearBackups';
+  key?: string;
 }
 
 export interface AnswerScreenQuestion {

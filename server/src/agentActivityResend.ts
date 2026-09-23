@@ -129,6 +129,7 @@ export function sendOfficeChatState(
   send({ type: 'agentRelayState', enabled: runtime.relay.enabled });
   send({ ...runtime.contextClear.snapshot() });
   send({ ...runtime.docs.snapshot() });
+  send({ ...runtime.files.snapshot() });
   send({ type: 'docEditDefault', mode: runtime.docs.defaultMode });
   for (const ask of runtime.permissions.snapshot()) send(ask);
   for (const id of runtime.chatSender.sendableSnapshot()) {
