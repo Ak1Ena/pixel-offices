@@ -219,6 +219,7 @@ export function ChatCard({
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [showPrefs, setShowPrefs] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [clearMode, setClearMode] = useState<ClearMode>('clear');
   const [draft, setDraft] = useState('');
   const [nameDraft, setNameDraft] = useState<string | null>(null);
@@ -251,6 +252,64 @@ export function ChatCard({
   useEffect(() => {
     if (!readOnlyReason) inputRef.current?.focus();
   }, [agentId, readOnlyReason, attachedPins.length]);
+
+  // Less-used actions live in the ⋯ menu so the header keeps room for the name.
+  const menuItems: Array<{
+    id: string;
+    icon: string;
+    label: string;
+    onClick: () => void;
+    on?: boolean;
+    danger?: boolean;
+  }> = [
+    ...(onSetClearPolicy || onSetDocEditMode
+      ? [
+          {
+            id: 'chat-prefs',
+            icon: '⚙',
+            label: 'Agent settings',
+            onClick: () => setShowPrefs((v) => !v),
+            on: showPrefs,
+          },
+        ]
+      : []),
+    ...(onClearContext
+      ? [
+          {
+            id: 'chat-clear',
+            icon: '↺',
+            label: 'Clear context…',
+            onClick: () => setShowClear((v) => !v),
+            on: showClear,
+          },
+        ]
+      : []),
+    ...(screen
+      ? [
+          {
+            id: 'chat-screen-toggle',
+            icon: '▤',
+            label: 'Terminal screen',
+            onClick: () => setShowScreen((v) => !v),
+            on: showScreen,
+          },
+        ]
+      : []),
+    ...(onOpenTerminal
+      ? [{ id: 'chat-terminal', icon: '>', label: 'Show terminal', onClick: onOpenTerminal }]
+      : []),
+    ...(onRemove
+      ? [
+          {
+            id: 'chat-remove',
+            icon: '×',
+            label: 'Remove agent…',
+            onClick: () => setConfirmRemove((v) => !v),
+            danger: true,
+          },
+        ]
+      : []),
+  ];
 
   const container = containerRef.current;
   const ch = officeState.characters.get(agentId);
@@ -385,8 +444,9 @@ export function ChatCard({
         {nameDraft === null ? (
           <>
             <span
-              className="text-base overflow-hidden text-ellipsis whitespace-nowrap"
+              className="min-w-0 text-base overflow-hidden text-ellipsis whitespace-nowrap"
               onDoubleClick={() => setNameDraft(customName || title)}
+              title={title}
               data-testid="chat-title"
             >
               {title}
@@ -452,72 +512,66 @@ export function ChatCard({
           <Button
             size="sm"
             onClick={onStop}
-            className="text-danger"
+            className="text-danger whitespace-nowrap shrink-0"
             title="Stop what this agent is doing (presses Esc in its terminal)"
             data-testid="chat-stop"
           >
             ■ Stop
           </Button>
         )}
-        {(onSetClearPolicy || onSetDocEditMode) && (
-          <Button
-            size="sm"
-            variant={showPrefs ? 'active' : 'default'}
-            onClick={() => setShowPrefs((v) => !v)}
-            title="What this agent may do: clear its own context, edit documents"
-            aria-label="Agent settings"
-            data-testid="chat-prefs"
-          >
-            ⚙
-          </Button>
-        )}
-        {onClearContext && (
-          <Button
-            size="sm"
-            variant={showClear ? 'active' : 'default'}
-            onClick={() => setShowClear((v) => !v)}
-            title="Clear this agent's context (/clear), or change whether it may clear itself"
-            data-testid="chat-clear"
-          >
-            Clear…
-          </Button>
-        )}
-        {screen && (
-          <Button
-            size="sm"
-            variant={showScreen ? 'active' : 'default'}
-            onClick={() => setShowScreen((v) => !v)}
-            title="Show what is on this agent's terminal screen"
-            data-testid="chat-screen-toggle"
-          >
-            Screen
-          </Button>
-        )}
         {onExpand && (
           <Button
             size="sm"
+            className="shrink-0"
             onClick={onExpand}
             title="Read this chat in Messages"
+            aria-label="Open in Messages"
             data-testid="chat-expand"
           >
             ⤢
           </Button>
         )}
-        {onOpenTerminal && (
-          <Button size="sm" onClick={onOpenTerminal} title="Show this session's terminal">
-            Terminal
-          </Button>
-        )}
-        {onRemove && (
-          <Button
-            size="sm"
-            variant={confirmRemove ? 'active' : 'default'}
-            onClick={() => setConfirmRemove((v) => !v)}
-            title="Remove this agent from the office"
-            data-testid="chat-remove"
-          >
-            Remove
-          </Button>
+        {menuItems.length > 0 && (
+          <span className="relative shrink-0">
+            <Button
+              size="sm"
+              variant={showMenu ? 'active' : 'default'}
+              onClick={() => setShowMenu((v) => !v)}
+              aria-label="More"
+              aria-haspopup="menu"
+              aria-expanded={showMenu}
+              title="More: settings, clear, screen, remove"
+              data-testid="chat-menu"
+            >
+              ⋯
+            </Button>
+            {showMenu && (
+              <span
+                role="menu"
+                className="absolute top-full right-0 mt-4 z-20 w-200 pixel-panel p-4 flex flex-col"
+                onMouseLeave={() => setShowMenu(false)}
+              >
+                {menuItems.map((item) => (
+                  <button
+                    key={item.id}
+                    role="menuitem"
+                    onClick={() => {
+                      setShowMenu(false);
+                      item.onClick();
+                    }}
+                    className={`flex items-center gap-8 text-left px-8 py-4 bg-transparent border-0 rounded-none text-sm cursor-pointer hover:bg-btn-hover ${
+                      item.danger ? 'text-danger' : 'text-text'
+                    }`}
+                    data-testid={item.id}
+                  >
+                    <span className="w-16 text-center text-text-muted">{item.icon}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {item.on && <span className="text-2xs text-accent-bright">on</span>}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
         )}
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close chat" title="Close">
           ×
@@ -909,11 +963,10 @@ export function ChatCard({
           )}
           <FileChips attachments={attachments} />
           {queue?.error && <div className="text-2xs text-danger">{queue.error}</div>}
-          <label htmlFor={`chat-input-${agentId}`} className="text-2xs text-text-muted">
-            Message {title} · Enter sends, Shift+Enter new line · drop a pin
-            {filesEnabled ? ' or files' : ''} to attach
+          <label htmlFor={`chat-input-${agentId}`} className="sr-only">
+            Message {title}
           </label>
-          <div className="flex gap-6 items-end">
+          <div className="flex flex-col gap-6">
             <textarea
               onPaste={(e) => {
                 if (!filesEnabled) return;
@@ -933,58 +986,63 @@ export function ChatCard({
                   void submit();
                 }
               }}
-              className={`flex-1 min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 rounded-none outline-none ${
+              placeholder={`Message ${title} — Enter sends, Shift+Enter new line`}
+              title={`Drop a pin${filesEnabled ? ' or files' : ''} here to attach`}
+              className={`w-full min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 rounded-none outline-none ${
                 isDropTarget ? 'border-dashed border-pin-note' : 'border-border focus:border-accent'
               }`}
               data-testid="chat-input"
             />
-            {filesEnabled && <AttachFileButton attachments={attachments} />}
-            {workflows && onAttachWorkflow && (
-              <span className="relative">
-                <Button
-                  size="md"
-                  onClick={() => setShowWorkflows((v) => !v)}
-                  title="Give this agent a workflow"
-                >
-                  Workflow
-                </Button>
-                {showWorkflows && (
-                  <span className="absolute bottom-full right-0 mb-4 z-10 w-220 pixel-panel p-4 flex flex-col">
-                    {workflows.length === 0 && (
-                      <span className="text-2xs text-text-muted p-4">
-                        No workflows yet. Make one in Workflows.
-                      </span>
-                    )}
-                    {workflows.map((w) => (
-                      <button
-                        key={w.id}
-                        className="flex gap-6 text-left px-6 py-2 bg-transparent border-0 text-xs text-text cursor-pointer hover:bg-bg-thumb"
-                        onClick={() => {
-                          onAttachWorkflow(w.id);
-                          setShowWorkflows(false);
-                        }}
-                      >
-                        <span className="flex-1">{w.title}</span>
-                        <span className="text-2xs text-text-muted">{w.steps} steps</span>
-                      </button>
-                    ))}
-                  </span>
-                )}
-              </span>
-            )}
-            <Button
-              variant={hasContent && !attachments.uploading ? 'accent' : 'disabled'}
-              size="md"
-              disabled={!hasContent || attachments.uploading}
-              onClick={() => void submit()}
-              data-testid="chat-send"
-            >
-              {attachments.uploading
-                ? 'Uploading'
-                : ch.isActive || needsApproval
-                  ? 'Queue'
-                  : 'Send'}
-            </Button>
+            <div className="flex gap-6 items-center">
+              {filesEnabled && <AttachFileButton attachments={attachments} size="sm" />}
+              {workflows && onAttachWorkflow && (
+                <span className="relative">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowWorkflows((v) => !v)}
+                    title="Give this agent a workflow"
+                  >
+                    Workflow
+                  </Button>
+                  {showWorkflows && (
+                    <span className="absolute bottom-full left-0 mb-4 z-10 w-220 pixel-panel p-4 flex flex-col">
+                      {workflows.length === 0 && (
+                        <span className="text-2xs text-text-muted p-4">
+                          No workflows yet. Make one in Workflows.
+                        </span>
+                      )}
+                      {workflows.map((w) => (
+                        <button
+                          key={w.id}
+                          className="flex gap-6 text-left px-6 py-2 bg-transparent border-0 text-xs text-text cursor-pointer hover:bg-bg-thumb"
+                          onClick={() => {
+                            onAttachWorkflow(w.id);
+                            setShowWorkflows(false);
+                          }}
+                        >
+                          <span className="flex-1">{w.title}</span>
+                          <span className="text-2xs text-text-muted">{w.steps} steps</span>
+                        </button>
+                      ))}
+                    </span>
+                  )}
+                </span>
+              )}
+              <span className="flex-1" />
+              <Button
+                variant={hasContent && !attachments.uploading ? 'accent' : 'disabled'}
+                size="sm"
+                disabled={!hasContent || attachments.uploading}
+                onClick={() => void submit()}
+                data-testid="chat-send"
+              >
+                {attachments.uploading
+                  ? 'Uploading'
+                  : ch.isActive || needsApproval
+                    ? 'Queue'
+                    : 'Send'}
+              </Button>
+            </div>
           </div>
         </div>
       ) : (

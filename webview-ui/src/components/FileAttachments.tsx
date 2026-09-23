@@ -170,7 +170,13 @@ export function LinkedText({ text }: { text: string }) {
 }
 
 /** "File" button that opens the system file picker (several files at once). */
-export function AttachFileButton({ attachments }: { attachments: FileAttachments }) {
+export function AttachFileButton({
+  attachments,
+  size = 'md',
+}: {
+  attachments: FileAttachments;
+  size?: 'sm' | 'md';
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -186,7 +192,7 @@ export function AttachFileButton({ attachments }: { attachments: FileAttachments
         data-testid="chat-file-input"
       />
       <Button
-        size="md"
+        size={size}
         disabled={attachments.uploading}
         onClick={() => inputRef.current?.click()}
         title="Send files to the agent (it gets their paths)"
