@@ -90,9 +90,33 @@ export function stuckReason(task: DeskTask, agents: DeskAgent[]): string | null 
   const allowed = here.filter((a) => task.allow.length === 0 || task.allow.includes(a.id));
   if (allowed.length === 0) return 'Nobody is allowed to take it.';
   if (allowed.every((a) => !a.canReach)) {
-    return 'The office cannot type into the agents in this folder.';
+    return task.allow.length > 0
+      ? 'Only read-only sessions may take it: the office cannot type into them.'
+      : 'The office cannot type into the agents in this folder.';
   }
   return 'Agents in this folder have pick-up switched off.';
+}
+
+/**
+ * How a stuck card can be moved on from the panel: let anyone in the folder
+ * take it (only read-only agents were picked, and a reachable one is here), or
+ * start an agent (nobody here the office can type into).
+ */
+export function stuckFixes(
+  task: DeskTask,
+  agents: DeskAgent[],
+): { allowAnyone: boolean; startAgent: boolean } {
+  const none = { allowAnyone: false, startAgent: false };
+  if (!stuckReason(task, agents)) return none;
+  const here = agentsInFolder(task, agents);
+  const reachable = here.filter((a) => a.canReach);
+  const allowedReachable = reachable.filter(
+    (a) => task.allow.length === 0 || task.allow.includes(a.id),
+  );
+  return {
+    allowAnyone: task.allow.length > 0 && allowedReachable.length === 0 && reachable.length > 0,
+    startAgent: reachable.length === 0,
+  };
 }
 
 /** "3/5" for the newest brief's subtasks, skipped ones left out; null when there are none. */

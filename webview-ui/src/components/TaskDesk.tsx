@@ -33,6 +33,7 @@ import {
   sameSteps,
   STATE_LABEL,
   stepsToWorkflow,
+  stuckFixes,
   stuckReason,
   subtaskProgress,
   workflowToSteps,
@@ -341,10 +342,19 @@ function WhoMayLook({
 }) {
   const here = agentsInFolder(task, agents);
   const allowed = (id: number) => task.allow.length === 0 || task.allow.includes(id);
+  const reachable = here.filter((a) => a.canReach);
   const toggle = (id: number) => {
-    const next = here.filter((a) => (a.id === id ? !allowed(id) : allowed(a.id))).map((a) => a.id);
-    // Everyone ticked is stored as "anyone in the folder", so agents who join later count too.
-    onAllow(next.length === here.length ? [] : next);
+    // Only agents the office can type into count as ticked (a read-only one only ever unticks).
+    const ticked = (a: DeskAgent) => allowed(a.id) && (a.canReach || task.allow.includes(a.id));
+    const next = here.filter((a) => (a.id === id ? !ticked(a) : ticked(a))).map((a) => a.id);
+    // Every reachable agent ticked is stored as "anyone in the folder", so agents who join later count too.
+    onAllow(
+      reachable.length > 0 &&
+        reachable.every((a) => next.includes(a.id)) &&
+        next.every((n) => reachable.some((a) => a.id === n))
+        ? []
+        : next,
+    );
   };
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -359,8 +369,14 @@ function WhoMayLook({
           <label className="flex gap-4 items-center">
             <input
               type="checkbox"
-              checked={allowed(agent.id)}
-              disabled={!editable}
+              checked={allowed(agent.id) && (agent.canReach || task.allow.includes(agent.id))}
+              // A read-only session can never take a card: it can be unticked, never ticked.
+              disabled={!editable || (!agent.canReach && !task.allow.includes(agent.id))}
+              title={
+                agent.canReach
+                  ? undefined
+                  : 'The office cannot type into this session, so it cannot take cards.'
+              }
               onChange={() => toggle(agent.id)}
             />
             {labelOf(agent.id)}
@@ -441,6 +457,7 @@ function CardDetail({
   const setSteps = judging ? setSubtasks : setDraft;
   const stuck = stuckReason(task, desk.agents);
   const noAgentHere = agentsInFolder(task, desk.agents).length === 0;
+  const fixes = stuckFixes(task, desk.agents);
   const send = (action: 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack') => {
     if ((action === 'rejected' || action === 'sendBack') && !note.trim()) {
       setNeedNote(true);
@@ -501,7 +518,19 @@ function CardDetail({
           onAllow={(allow) => desk.setAllow(task.id, allow)}
           onPickup={desk.setPickup}
         />
-        {stuck && noAgentHere && canStartAgents && <StartAgentHere folder={task.folder.root} />}
+        {fixes.allowAnyone && (
+          <Button
+            size="sm"
+            className="self-start"
+            onClick={() => desk.setAllow(task.id, [])}
+            data-testid="desk-allow-anyone"
+          >
+            Let any agent here take it
+          </Button>
+        )}
+        {stuck && (noAgentHere || fixes.startAgent) && canStartAgents && (
+          <StartAgentHere folder={task.folder.root} />
+        )}
       </div>
 
       {task.result && (task.state === 'result' || task.state === 'done') && (

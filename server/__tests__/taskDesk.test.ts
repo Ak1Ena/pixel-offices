@@ -83,6 +83,24 @@ const BRIEF = {
 };
 
 describe('who gets a card', () => {
+  it('refuses a card only read-only sessions may take — it would never be picked up', async () => {
+    const t = setup();
+    t.addAgent(1, { displayName: 'Terminal Tom' });
+    t.addAgent(2);
+    t.unreachable.add(1);
+    const task = await t.addCard();
+    const refused = t.desk.setAllow(task.id, [1]);
+    expect(refused.ok).toBe(false);
+    expect((refused as { error: string }).error).toMatch(/Terminal Tom is a read-only session/);
+    expect(t.card(task).value.allow).toEqual([]);
+    // One reachable agent among them is enough; junk ids are dropped.
+    expect(t.desk.setAllow(task.id, [1, 2, 'x']).ok).toBe(true);
+    expect(t.card(task).value.allow).toEqual([1, 2]);
+    await t.desk.tick();
+    expect(t.card(task).value).toMatchObject({ state: 'looking', claimedBy: 2 });
+    t.desk.dispose();
+  });
+
   it('hands an inbox card to a free agent in the same project, by its root', async () => {
     const t = setup();
     t.addAgent(1, { cwd: `${REPO}/server` });

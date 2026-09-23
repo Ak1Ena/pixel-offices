@@ -268,7 +268,16 @@ export class TaskDesk {
     const task = this.cards.find(taskId);
     if (!task) return { ok: false, error: NO_CARD };
     if (!Array.isArray(allow)) return { ok: false, error: 'allow must be a list of agent ids.' };
-    const reply = this.commit({ ok: true, task: { ...task, allow: allow as number[] } });
+    const ids = allow.filter((id): id is number => Number.isInteger(id));
+    // A card only read-only sessions may take would wait forever: say so instead.
+    if (ids.length > 0 && !ids.some((id) => this.chat.canSend(id))) {
+      const names = ids.map((id) => this.labelOf(id)).join(', ');
+      return {
+        ok: false,
+        error: `${names} ${ids.length === 1 ? 'is a read-only session' : 'are read-only sessions'}: the office cannot type into ${ids.length === 1 ? 'it' : 'them'}, so the card would never be picked up. Pick an agent the office started (or one run with \`pixel-office claude\`), or let anyone in the folder take it.`,
+      };
+    }
+    const reply = this.commit({ ok: true, task: { ...task, allow: ids } });
     if (reply.ok) void this.tick();
     return reply;
   }

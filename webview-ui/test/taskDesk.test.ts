@@ -20,6 +20,7 @@ import {
   NO_FILTER,
   sameSteps,
   stepsToWorkflow,
+  stuckFixes,
   stuckReason,
   subtaskProgress,
   workflowToSteps,
@@ -292,4 +293,26 @@ test('sameSteps compares what the human can change', () => {
 
 test('new step ids use the server format', () => {
   assert.match(newStepId(), /^s[a-f0-9]{6}$/);
+});
+
+test('a card only read-only sessions may take says so and offers a way out', () => {
+  const readOnly = agent({ id: 1, canReach: false });
+  const reachable = agent({ id: 2 });
+  const onlyReadOnly = task({ allow: [1] });
+  assert.equal(
+    stuckReason(onlyReadOnly, [readOnly, reachable]),
+    'Only read-only sessions may take it: the office cannot type into them.',
+  );
+  assert.deepEqual(stuckFixes(onlyReadOnly, [readOnly, reachable]), {
+    allowAnyone: true,
+    startAgent: false,
+  });
+  // Nobody here the office can type into: start one.
+  assert.deepEqual(stuckFixes(onlyReadOnly, [readOnly]), { allowAnyone: false, startAgent: true });
+  assert.deepEqual(stuckFixes(task({}), [readOnly]), { allowAnyone: false, startAgent: true });
+  // Not stuck: nothing to offer.
+  assert.deepEqual(stuckFixes(task({ allow: [2] }), [readOnly, reachable]), {
+    allowAnyone: false,
+    startAgent: false,
+  });
 });
