@@ -41,6 +41,8 @@ interface SettingsModalProps {
   onImportLayout: (file: File) => void;
   /** Switch to the bundled City Office layout (an undoable edit). */
   onUseCityOffice: () => void;
+  /** Switch back to the office the app ships with (an undoable edit). */
+  onUseOriginalOffice: () => void;
   /** Replay the welcome tour (it shows by itself only once). */
   onShowIntro: () => void;
   /** What agents' document edits do unless an agent has its own setting; absent = not offered. */
@@ -68,6 +70,7 @@ export function SettingsModal({
   onExportLayout,
   onImportLayout,
   onUseCityOffice,
+  onUseOriginalOffice,
   onShowIntro,
   docEditDefault,
   onDocEditDefault,
@@ -126,6 +129,14 @@ export function SettingsModal({
         }}
       >
         Use City Office Layout
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          onUseOriginalOffice();
+          onClose();
+        }}
+      >
+        Use Original Office Layout
       </MenuItem>
       <MenuItem
         onClick={() => {

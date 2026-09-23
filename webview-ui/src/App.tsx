@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+// The office new users get (the server serves the same file as the default layout).
+import originalOfficeLayout from '../public/assets/default-layout-1.json';
 import { isInFolder } from './askAgent.js';
 import { toMajorMinor } from './changelogData.js';
 import { AddAgentModal } from './components/AddAgentModal.js';
@@ -1462,6 +1464,11 @@ function App() {
         onShowIntro={() => setIntroReplay(true)}
         onUseCityOffice={() =>
           editor.applyPresetLayout(migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout))
+        }
+        onUseOriginalOffice={() =>
+          editor.applyPresetLayout(
+            migrateLayoutColors(originalOfficeLayout as unknown as OfficeLayout),
+          )
         }
       />
 

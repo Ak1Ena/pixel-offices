@@ -147,3 +147,16 @@ test('migrateLayoutColors is idempotent (running twice produces equivalent outpu
   assert.deepEqual(twice.tiles, once.tiles);
   assert.deepEqual(twice.tileColors, once.tileColors);
 });
+
+test('both built-in layouts load: the original office and City Office', async () => {
+  const { deserializeLayout } = await import('../src/office/layout/layoutSerializer.js');
+  const original = (await import('../public/assets/default-layout-1.json')).default;
+  const city = (await import('../src/office/layout/presets/cityOffice.json')).default;
+  for (const preset of [original, city]) {
+    const layout = deserializeLayout(JSON.stringify(preset));
+    assert.ok(layout, 'parses as a layout');
+    assert.equal(layout.version, 1);
+    assert.equal(layout.tiles.length, layout.cols * layout.rows);
+    assert.ok(layout.furniture.length > 0);
+  }
+});
