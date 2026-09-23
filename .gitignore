@@ -52,3 +52,4 @@ agent-orchestrator.yaml
 tasks/
 # npm pack output (release tarballs are attached to GitHub releases)
 *.tgz
+release
