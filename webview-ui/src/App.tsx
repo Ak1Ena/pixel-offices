@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { isInFolder } from './askAgent.js';
 import { toMajorMinor } from './changelogData.js';
 import { AddAgentModal } from './components/AddAgentModal.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
@@ -1438,6 +1439,37 @@ function App() {
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
             lastEditKey={lastEditKeyFor(docEdits.edits, viewed.value)}
             onOpenFile={chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
+            ask={
+              chat.privileged || !isBrowserRuntime
+                ? {
+                    agents: agents
+                      .filter(
+                        (id) =>
+                          chat.sendable[id] === true && !officeState.characters.get(id)?.isSubagent,
+                      )
+                      .map((id) => ({
+                        id,
+                        label: agentLabel(id),
+                        busy:
+                          chat.asking[id] === true ||
+                          officeState.characters.get(id)?.isActive === true,
+                        inFolder: isInFolder(
+                          viewed.value,
+                          desk.agents.find((a) => a.id === id)?.root,
+                        ),
+                      })),
+                    preferred: askTarget,
+                    canStartAgent: chat.canStartAgents,
+                    onSend: chat.sendMessage,
+                    onOpenChat: (id) => {
+                      setViewedPinId(null);
+                      setViewedFocusId(null);
+                      openChat(id);
+                    },
+                    onClearRefs: () => setDocTray([]),
+                  }
+                : undefined
+            }
             onDeleteFile={
               chat.privileged && isStoredUploadPath(viewed.value)
                 ? () => {

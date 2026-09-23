@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { DocEdit, DocModel, DocSheet, DocSlide } from '../../../core/src/docModel.js';
 import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
+import type { AskAgent } from '../askAgent.js';
 import { BOARD_FILE_API } from '../constants.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
@@ -24,6 +25,7 @@ import {
 } from '../docViewer.js';
 import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
+import { AskAgentPanel } from './AskAgentPanel.js';
 import { SlidesView, WordParagraphs } from './DocModelViews.js';
 import { Button } from './ui/Button.js';
 import { WordDocumentView } from './WordDocumentView.js';
@@ -59,6 +61,16 @@ interface DocViewerProps {
   onOpenFile?: () => void;
   /** Delete the office's stored copy of an uploaded file (and its pin); absent otherwise. */
   onDeleteFile?: () => void;
+  /** "Ask an agent" about this file without leaving it; absent when nobody can be asked. */
+  ask?: {
+    agents: AskAgent[];
+    preferred?: number | null;
+    canStartAgent: boolean;
+    onSend: (agentId: number, text: string) => void;
+    onOpenChat: (agentId: number) => void;
+    /** The question went out: the picked places are used up. */
+    onClearRefs: () => void;
+  };
 }
 
 type Loaded =
@@ -455,7 +467,9 @@ export function DocViewer({
   lastEditKey,
   onOpenFile,
   onDeleteFile,
+  ask,
 }: DocViewerProps) {
+  const [showAsk, setShowAsk] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => setConfirmDelete(false), [pin]);
   const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
@@ -704,6 +718,17 @@ export function DocViewer({
           {pin.title}
         </span>
         <span className="flex-1" />
+        {ask && (
+          <Button
+            size="md"
+            variant={showAsk ? 'active' : 'accent'}
+            onClick={() => setShowAsk((v) => !v)}
+            title="Ask an agent about this file — or about the parts you picked"
+            data-testid="doc-ask-agent"
+          >
+            Ask an agent
+          </Button>
+        )}
         {onDeleteFile &&
           (confirmDelete ? (
             <>
@@ -1125,9 +1150,19 @@ export function DocViewer({
                   />
                 )}
                 <span className="flex-1" />
-                {onAskRefs && (refs.length > 0 || current) && (
+                {ask && (refs.length > 0 || current) && !showAsk && (
                   <Button
                     variant="accent"
+                    size="sm"
+                    onClick={() => setShowAsk(true)}
+                    data-testid="doc-pick-ask-agent"
+                  >
+                    Ask an agent…
+                  </Button>
+                )}
+                {onAskRefs && (refs.length > 0 || current) && (
+                  <Button
+                    variant={ask ? 'default' : 'accent'}
                     size="sm"
                     onClick={() => {
                       if (current && onAddRef && !refs.some((r) => refText(r) === refText(current)))
@@ -1136,7 +1171,9 @@ export function DocViewer({
                     }}
                     data-testid="doc-pick-ask"
                   >
-                    Ask {askLabel ?? 'the agent'} about this
+                    {ask
+                      ? `Add to ${askLabel ?? 'the'} chat`
+                      : `Ask ${askLabel ?? 'the agent'} about this`}
                   </Button>
                 )}
               </div>
@@ -1167,6 +1204,29 @@ export function DocViewer({
             </div>
           )}
         </div>
+        {ask && showAsk && state.status === 'ready' && (
+          <AskAgentPanel
+            filePath={pin.value}
+            refs={
+              current && !refs.some((r) => refText(r) === refText(current))
+                ? [...refs, current]
+                : refs
+            }
+            agents={ask.agents}
+            preferred={ask.preferred}
+            canStartAgent={ask.canStartAgent}
+            onSend={ask.onSend}
+            onOpenChat={ask.onOpenChat}
+            onSent={() => {
+              ask.onClearRefs();
+              setPickedLines(null);
+              setPickedCells(null);
+              setPickedParas(null);
+              setPickedShape(null);
+            }}
+            onClose={() => setShowAsk(false)}
+          />
+        )}
       </div>
     </div>
   );
