@@ -23,6 +23,8 @@
 
 <br/>
 
+> **This repository is Pixel Office** (`@ak1ena/pixel-office`, command `pixel-office`), a fork of Pixel Agents. On top of the office it adds chat with your agents, a task desk, workflows and teams, a document viewer and editor for Word, PowerPoint and Excel, and more. See [Pixel Office features](#pixel-office-features) and [Working with agents](#working-with-agents). Install it from the [releases](https://github.com/Ak1Ena/pixel-offices/releases), not from npm.
+
 Pixel Agents turns the AI coding agents running in your terminals into animated pixel-art characters working in a tiny office. They walk to their desks, sit down, type when they're editing files, read when they're searching, and flag you visually when they're stuck waiting for input.
 
 It ships in two forms from the same codebase:
@@ -46,6 +48,20 @@ The architecture is fully agent-agnostic and editor-agnostic: a typed `HookProvi
 - **Shared layout and assets** — import/export layouts and load external character, pet, and furniture packs
 - **Areas** — paint named areas onto the office, map workspace folders to them, and new agents sit inside the areas mapped to their folder
 - **Diverse characters** — 6 diverse characters. These are based on the amazing work of [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
+
+### Pixel Office features
+
+- **Chat with your agents** — click a character to open its chat card (or **Messages** for long reads); send messages, **■ Stop** a turn, answer permission prompts and on-screen questions from the office.
+- **Start agents from the office** — **+ Agent** runs Claude (or `agy`) in a folder you pick, no terminal needed. `pixel-office claude` runs one in your own terminal that the office can still type into.
+- **Clear context** — **⋯ → Clear context…** runs `/clear` (or `/compact`) after the current turn. Agents can ask to clear themselves (`pixel-office clear`); per agent you choose Ask me / Allow / Never.
+- **Task desk** — cards (task / issue / feature) that agents in the card's folder pick up: they look, write a brief with **steps**, you approve, they build. Steps are `do`, `gate` (the agent waits for your Continue / Stop) or `show` (it opens a file for you); drag to reorder, edit them before and during the build, save them as a workflow.
+- **Workflows and teams** — reusable step lists you hand to an agent, and team presets whose lead calls teammates in with `@name`.
+- **Documents** — open Word, PowerPoint, Excel, PDF, CSV, text and images in the office. Word is laid out like Word; pick paragraphs, slides, cells or lines and ask an agent about them (only the place is sent, never the text). Edit in place with backup and Undo.
+- **Agent chat beside a document** — talk to one agent about the open file; its suggested changes appear in the document itself (deleted text red, new text green) with Accept / Reject and Apply.
+- **Agents edit documents** — `pixel-office doc edit` changes one paragraph, text box or cell and keeps the rest of the file as it was. Per agent: **Ask before applying**, **Auto-accept** or **Read only**.
+- **Files** — the documents you opened, suggestions waiting for review, uploaded copies and backups in one rail, separate from the whiteboard (agents only see what you **Pin to board**).
+- **Whiteboard, "show me", review changes** — shared pins agents can read; agents point you at a spot in a file (`pixel-office show`) or suggest a change for you to review (`pixel-office propose`).
+- **Settings** — text size and fonts, **Advanced** limits and sizes, per-agent settings (⚙), the City Office or the original office layout.
 
 <p align="center">
   <img src="webview-ui/public/characters.png" alt="Pixel Agents characters" width="320" height="72" style="image-rendering: pixelated;">
@@ -82,28 +98,38 @@ To use Claude with `--dangerously-skip-permissions`, hover over **+ Agent** to f
 
 Pixel Agents also detects Claude sessions started outside the extension. Turn on **Settings → Watch All Sessions** to include sessions from other workspaces.
 
-### Standalone CLI
+### Standalone CLI (Pixel Office)
 
-Run Pixel Agents from the workspace whose Claude sessions you want to see:
+Pixel Office is not on npm. Install a release tarball (see [releases](https://github.com/Ak1Ena/pixel-offices/releases) for the newest):
+
+```bash
+npm install -g https://github.com/Ak1Ena/pixel-offices/releases/download/v2.1.0/ak1ena-pixel-office-2.1.0.tgz
+```
+
+Or run it from source (`npm link` puts your checkout's `pixel-office` on your PATH; run `npm run compile` again after pulling):
+
+```bash
+git clone https://github.com/Ak1Ena/pixel-offices.git
+cd pixel-offices
+npm install
+npm run compile
+npm link
+```
+
+Then start the office from the project whose agents you want to see:
 
 ```bash
 cd /path/to/your/project
-npx pixel-agents
+pixel-office
 ```
 
-The CLI chooses a free local port and prints the URL. Standalone does not launch Claude for you; start Claude Code in a terminal for the same workspace. To install the command globally instead:
+It picks a free local port, opens the office in your browser and prints the link. Start agents with **+ Agent** in the office, or with `pixel-office claude` in any terminal. Use a fixed address or port when needed:
 
 ```bash
-npm install --global pixel-agents
-pixel-agents
-```
-
-Use a fixed address or port when needed:
-
-```bash
-pixel-agents --port 3100
-pixel-agents --host 127.0.0.1 --port 3100
-pixel-agents --help
+pixel-office --port 3100
+pixel-office --host 127.0.0.1 --port 3100
+pixel-office --lan        # also reachable from a phone on the same Wi-Fi
+pixel-office --help
 ```
 
 The default bind address is `127.0.0.1`. Binding to `0.0.0.0` exposes the UI and WebSocket to the local network; do this only on a trusted network.
@@ -112,13 +138,41 @@ Open the URL the CLI prints - it carries a `?token=` for this session. Any brows
 
 Treat that URL as a secret: the token is a bearer capability, not proof of being local. Whoever holds it can approve the hook install from anywhere the server is reachable — so don't paste the URL into a shared channel, and note that it also lands in your browser history and (unredacted) in the server's own request log.
 
-Pass `--no-terminal` to disable the embedded terminal — watch agents without launching or attaching to them from the browser.
+Pass `--no-open` to not open the browser.
 
 ### Running the extension and standalone together
 
 The extension and standalone CLI can run at the same time. Each server registers under `~/.pixel-agents/servers/`; the hook script sends events to all active registrations. VS Code and standalone keep separate agents, seats, and settings while using the shared office layout.
 
 Stop a standalone server with **Ctrl+C**. It removes only its own registration.
+
+## Working with agents
+
+**Which agents you can talk to.** The office can type into an agent only if it can reach its terminal:
+
+| How the agent runs                     | Chat, Stop, Clear, task desk           | After the office stops                                                               |
+| -------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------ |
+| **+ Agent** (the office runs it)       | ✓                                      | It stops with the office. Resume it with `pixel-office claude --resume <session id>` |
+| `pixel-office claude` in your terminal | ✓                                      | Keeps running and reconnects to the next office on its own                           |
+| VS Code terminal (extension)           | ✓                                      | —                                                                                    |
+| Plain `claude` in another terminal     | read-only (the office only watches it) | Keeps running                                                                        |
+
+**Commands your agents use.** Agents started from the office are told about these; you can run them too:
+
+```bash
+pixel-office agents                          # who is in the office
+pixel-office task show|brief|step|gate|done  # answer a task desk card
+pixel-office doc outline FILE                # numbered paragraphs / slides / cells
+pixel-office doc read FILE --para 3-4        # read one place (also --slide N, --cell B2:C9)
+pixel-office doc edit FILE --para 3 --text "…" [--wait]   # change one place
+pixel-office show FILE --lines 40-58 --why "…"            # point the human at a spot
+pixel-office propose FILE --from NEWFILE --why "…"         # suggest a change to a text file
+pixel-office board add|list|detail|rm        # the shared whiteboard
+pixel-office workflow step|gate|show         # report progress on a workflow
+pixel-office clear [--reason "…"]            # ask for a fresh context
+```
+
+**Where the office keeps things** (`~/.pixel-agents/`): the layout, whiteboard, task desk, workflows and teams, `files.json` (documents you opened — paths only), `suggestions.json` (suggestions waiting for review), `files/` (uploaded copies) and `backups/` (the version before each write; the last 5 per file are kept for 7 days).
 
 ## Customizing the Office
 
@@ -205,6 +259,9 @@ The staged output serves the combined `e2e`, `server`, and `webview` Allure repo
 - **Standalone will not start:** verify Node.js 20+, omit `--port` to choose a free port, or select another fixed port.
 - **An agent is missing:** confirm **Settings → Instant Detection (Hooks)** is on and that the session belongs to the current workspace. Enable **Watch All Sessions** if needed.
 - **The UI looks disconnected:** open **Settings → Debug View** to inspect the server connection, transcript path, and latest agent data.
+- **You can't message an agent / a task desk card never gets picked up:** that agent is a read-only session (plain `claude` in another terminal). Start it with `pixel-office claude` or **+ Agent** instead; the task desk won't let a card wait on read-only agents.
+- **A document looks wrong:** Word opens in the **Document** tab laid out like Word; **Paragraphs** is the numbered list used for picking and editing. Older `.doc`, `.ppt` and `.xls` files need saving as `.docx`, `.pptx` or `.xlsx` first.
+- **Agents from last time are still in the office:** agents from other terminals come back because they are still running. Remove a character with **⋯ → Remove agent…** on its chat card.
 - **Extension and standalone are both running:** this is supported. Current versions create separate files under `~/.pixel-agents/servers/`; stopping one does not remove the other.
 
 ## Community & Contributing
