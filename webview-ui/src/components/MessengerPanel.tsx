@@ -198,7 +198,7 @@ function CodeBlock({ text }: { text: string }) {
   );
 }
 
-function Markdown({ blocks }: { blocks: MdBlock[] }) {
+export function Markdown({ blocks }: { blocks: MdBlock[] }) {
   return (
     <div className="flex flex-col gap-8">
       {blocks.map((b, i) => {

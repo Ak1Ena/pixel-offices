@@ -1460,6 +1460,7 @@ function App() {
                       })),
                     preferred: askTarget,
                     canStartAgent: chat.canStartAgents,
+                    entriesFor: (id) => chat.chats[id] ?? [],
                     onSend: chat.sendMessage,
                     onOpenChat: (id) => {
                       setViewedPinId(null);

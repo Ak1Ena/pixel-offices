@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { DocEdit, DocModel, DocSheet, DocSlide } from '../../../core/src/docModel.js';
-import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
+import type { BoardPin, ChatEntry, FocusRequest } from '../../../core/src/messages.js';
 import type { AskAgent } from '../askAgent.js';
 import { BOARD_FILE_API } from '../constants.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
@@ -25,7 +25,7 @@ import {
 } from '../docViewer.js';
 import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
-import { AskAgentPanel } from './AskAgentPanel.js';
+import { DocChatPanel } from './DocChatPanel.js';
 import { SlidesView, WordParagraphs } from './DocModelViews.js';
 import { Button } from './ui/Button.js';
 import { WordDocumentView } from './WordDocumentView.js';
@@ -61,9 +61,11 @@ interface DocViewerProps {
   onOpenFile?: () => void;
   /** Delete the office's stored copy of an uploaded file (and its pin); absent otherwise. */
   onDeleteFile?: () => void;
-  /** "Ask an agent" about this file without leaving it; absent when nobody can be asked. */
+  /** Talk to an agent about this file beside it (Agent chat); absent when nobody can be asked. */
   ask?: {
     agents: AskAgent[];
+    /** An agent's chat thread. */
+    entriesFor: (agentId: number) => ChatEntry[];
     preferred?: number | null;
     canStartAgent: boolean;
     onSend: (agentId: number, text: string) => void;
@@ -723,10 +725,10 @@ export function DocViewer({
             size="md"
             variant={showAsk ? 'active' : 'accent'}
             onClick={() => setShowAsk((v) => !v)}
-            title="Ask an agent about this file — or about the parts you picked"
+            title="Talk to an agent about this file, beside it"
             data-testid="doc-ask-agent"
           >
-            Ask an agent
+            Agent chat
           </Button>
         )}
         {onDeleteFile &&
@@ -1157,7 +1159,7 @@ export function DocViewer({
                     onClick={() => setShowAsk(true)}
                     data-testid="doc-pick-ask-agent"
                   >
-                    Ask an agent…
+                    Ask in Agent chat…
                   </Button>
                 )}
                 {onAskRefs && (refs.length > 0 || current) && (
@@ -1205,7 +1207,7 @@ export function DocViewer({
           )}
         </div>
         {ask && showAsk && state.status === 'ready' && (
-          <AskAgentPanel
+          <DocChatPanel
             filePath={pin.value}
             refs={
               current && !refs.some((r) => refText(r) === refText(current))
@@ -1215,6 +1217,7 @@ export function DocViewer({
             agents={ask.agents}
             preferred={ask.preferred}
             canStartAgent={ask.canStartAgent}
+            entriesFor={ask.entriesFor}
             onSend={ask.onSend}
             onOpenChat={ask.onOpenChat}
             onSent={() => {

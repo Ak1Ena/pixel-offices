@@ -430,6 +430,10 @@ export const OPEN_FILE_RECENT_KEY = 'pixel-office:open-file-recent';
 export const OPEN_FILE_RECENT_MAX = 8;
 /** Above the document viewer (z-60), which it can be opened from. */
 export const OPEN_FILE_Z_INDEX = 70;
+/** Which agent each document's chat talks to (per viewer): path → agent id. */
+export const DOC_CHAT_AGENTS_KEY = 'pixel-office:doc-chat-agents';
+/** Messages a document chat shows before "Show earlier". */
+export const DOC_CHAT_RECENT_ENTRIES = 30;
 /** localStorage key for the viewer's text settings: size + faces (textPrefs.ts). */
 export const TEXT_PREFS_KEY = 'pixel-office:text-prefs';
 /** localStorage key for Settings → Advanced overrides (tunables.ts); only non-defaults are stored. */

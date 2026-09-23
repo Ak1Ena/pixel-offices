@@ -1,3 +1,5 @@
+import type { ChatEntry } from '../../core/src/messages.js';
+import { DOC_CHAT_AGENTS_KEY, DOC_CHAT_RECENT_ENTRIES } from './constants.js';
 import type { DocRef } from './docViewer.js';
 import { withRefs } from './docViewer.js';
 
@@ -46,4 +48,65 @@ export function askMessage(question: string, refs: DocRef[], filePath: string): 
   const places = refs.length > 0 ? refs : [{ path: filePath }];
   const text = question.trim() || 'Can you help me with this?';
   return withRefs(text, places);
+}
+
+/**
+ * A follow-up in a document chat: the text plus the places picked since the
+ * last message. The first message to an agent about a file always names the
+ * file (askMessage); later ones only add picks, the agent already knows it.
+ */
+export function followUpMessage(text: string, refs: DocRef[]): string {
+  return withRefs(text.trim(), refs);
+}
+
+/** What a document chat shows: the newest entries (tool rows included, drawn compactly). */
+export function recentEntries(
+  entries: ChatEntry[],
+  showAll: boolean,
+): { shown: ChatEntry[]; hidden: number } {
+  if (showAll || entries.length <= DOC_CHAT_RECENT_ENTRIES) return { shown: entries, hidden: 0 };
+  return {
+    shown: entries.slice(-DOC_CHAT_RECENT_ENTRIES),
+    hidden: entries.length - DOC_CHAT_RECENT_ENTRIES,
+  };
+}
+
+/** The agent a document's chat talks to, remembered per file path; malformed reads as none. */
+export function parseDocChatAgents(raw: string | null): Record<string, number> {
+  try {
+    const value: unknown = raw ? JSON.parse(raw) : {};
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const out: Record<string, number> = {};
+    for (const [path, id] of Object.entries(value as Record<string, unknown>)) {
+      if (Number.isInteger(id)) out[path] = id as number;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function loadDocChatAgent(path: string): number | undefined {
+  try {
+    return parseDocChatAgents(localStorage.getItem(DOC_CHAT_AGENTS_KEY))[path];
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveDocChatAgent(path: string, agentId: number): void {
+  try {
+    const all = parseDocChatAgents(localStorage.getItem(DOC_CHAT_AGENTS_KEY));
+    all[path] = agentId;
+    localStorage.setItem(DOC_CHAT_AGENTS_KEY, JSON.stringify(all));
+  } catch {
+    /* private window or blocked storage: the choice just isn't remembered */
+  }
+}
+
+/** A newly started agent: the one id present now that wasn't before. */
+export function newAgentId(before: number[], now: number[]): number | undefined {
+  const known = new Set(before);
+  const fresh = now.filter((id) => !known.has(id));
+  return fresh.length === 1 ? fresh[0] : undefined;
 }

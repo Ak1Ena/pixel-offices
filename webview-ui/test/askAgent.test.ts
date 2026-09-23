@@ -2,7 +2,17 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { askMessage, fileFolder, isInFolder, rankAgents } from '../src/askAgent.js';
+import {
+  askMessage,
+  fileFolder,
+  followUpMessage,
+  isInFolder,
+  newAgentId,
+  parseDocChatAgents,
+  rankAgents,
+  recentEntries,
+} from '../src/askAgent.js';
+import { DOC_CHAT_RECENT_ENTRIES } from '../src/constants.js';
 
 test('the folder a file is in', () => {
   assert.equal(fileFolder('/w/q3/report.docx'), '/w/q3');
@@ -36,4 +46,37 @@ test('the question carries references, the whole file when nothing was picked', 
   assert.ok(picked.includes('[@/w/b.xlsx cells C2:C4]'));
   assert.ok(picked.includes('pixel-office doc read'));
   assert.ok(askMessage('', [], '/w/a.md').startsWith('Can you help me with this?'));
+});
+
+test('follow-ups carry only the new picks; the first message named the file', () => {
+  assert.equal(followUpMessage('  and this?  ', []), 'and this?');
+  assert.ok(
+    followUpMessage('this one', [{ path: '/w/r.docx', paraStart: 4 }]).includes(
+      '[@/w/r.docx paragraph 4]',
+    ),
+  );
+});
+
+test('a document chat shows the newest entries first, with the rest behind "Show earlier"', () => {
+  const entries = Array.from({ length: DOC_CHAT_RECENT_ENTRIES + 5 }, (_, i) => ({
+    entryId: `e${i}`,
+    role: 'assistant' as const,
+    text: String(i),
+  }));
+  const recent = recentEntries(entries, false);
+  assert.equal(recent.hidden, 5);
+  assert.equal(recent.shown[0].entryId, 'e5');
+  assert.equal(recentEntries(entries, true).hidden, 0);
+});
+
+test('the agent remembered per file survives bad storage', () => {
+  assert.deepEqual(parseDocChatAgents('{"/w/a.docx": 3, "/w/b.docx": "x"}'), { '/w/a.docx': 3 });
+  assert.deepEqual(parseDocChatAgents('[1]'), {});
+  assert.deepEqual(parseDocChatAgents('nope'), {});
+});
+
+test('a newly started agent is the one id that appeared', () => {
+  assert.equal(newAgentId([1, 2], [1, 2, 7]), 7);
+  assert.equal(newAgentId([1], [1]), undefined);
+  assert.equal(newAgentId([1], [1, 5, 6]), undefined); // two arrived: can't tell which
 });
