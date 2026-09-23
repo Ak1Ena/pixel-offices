@@ -1,17 +1,11 @@
 import {
-  BURN_TYPING_SPEED,
   DEFAULT_MAX_CONTEXT_TOKENS,
-  SEAT_REST_MAX_SEC,
-  SEAT_REST_MIN_SEC,
   TYPE_FRAME_DURATION_SEC,
   WALK_FRAME_DURATION_SEC,
-  WALK_SPEED_PX_PER_SEC,
-  WANDER_MOVES_BEFORE_REST_MAX,
-  WANDER_MOVES_BEFORE_REST_MIN,
-  WANDER_PAUSE_MAX_SEC,
-  WANDER_PAUSE_MIN_SEC,
   WARP_FLASH_SEC,
 } from '../../constants.js';
+import { orderedRange } from '../../tunables.js';
+import { tunable } from '../../tunableStore.js';
 import { findPath } from '../layout/tileMap.js';
 import type { CharacterSprites } from '../sprites/spriteData.js';
 import { isReadingToolName } from '../toolUtils.js';
@@ -23,6 +17,26 @@ import { CharacterState, Direction, TILE_SIZE } from '../types.js';
 export function isReadingTool(tool: string | null): boolean {
   if (!tool) return false;
   return isReadingToolName(tool);
+}
+
+/** Pacing from Settings → Advanced, read at each use so a change applies at once.
+ *  A "shortest" set above its "longest" is read as the other way round. */
+function wanderPause(): number {
+  return randomRange(...orderedRange(tunable('wanderPauseMinSec'), tunable('wanderPauseMaxSec')));
+}
+
+function wanderLimit(): number {
+  return randomInt(...orderedRange(tunable('wanderMovesMin'), tunable('wanderMovesMax')));
+}
+
+function seatRest(): number {
+  return randomRange(...orderedRange(tunable('seatRestMinSec'), tunable('seatRestMaxSec')));
+}
+
+function burnTypingSpeed(level: number): number {
+  if (level >= 2) return tunable('burnFireTypingSpeed');
+  if (level === 1) return tunable('burnWarmTypingSpeed');
+  return 1;
 }
 
 /** Pixel center of a tile */
@@ -75,7 +89,7 @@ export function createCharacter(
     frameTimer: 0,
     wanderTimer: 0,
     wanderCount: 0,
-    wanderLimit: randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX),
+    wanderLimit: wanderLimit(),
     isActive: true,
     seatId,
     bubbleType: null,
@@ -104,8 +118,8 @@ export function updateCharacter(
 
   switch (ch.state) {
     case CharacterState.TYPE: {
-      // A character burning tokens types faster (BURN_TYPING_SPEED).
-      const typeFrameSec = TYPE_FRAME_DURATION_SEC / BURN_TYPING_SPEED[ch.burnLevel ?? 0];
+      // A character burning tokens types faster (Settings → Advanced → Activity).
+      const typeFrameSec = TYPE_FRAME_DURATION_SEC / burnTypingSpeed(ch.burnLevel ?? 0);
       if (ch.frameTimer >= typeFrameSec) {
         ch.frameTimer -= typeFrameSec;
         ch.frame = (ch.frame + 1) % 2;
@@ -120,9 +134,9 @@ export function updateCharacter(
         ch.state = CharacterState.IDLE;
         ch.frame = 0;
         ch.frameTimer = 0;
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
+        ch.wanderTimer = wanderPause();
         ch.wanderCount = 0;
-        ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX);
+        ch.wanderLimit = wanderLimit();
       }
       break;
     }
@@ -210,7 +224,7 @@ export function updateCharacter(
             ch.wanderCount++;
           }
         }
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
+        ch.wanderTimer = wanderPause();
       }
       break;
     }
@@ -253,20 +267,17 @@ export function updateCharacter(
               if (ch.seatTimer < 0) {
                 ch.seatTimer = 0;
               } else {
-                ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC);
+                ch.seatTimer = seatRest();
               }
               ch.wanderCount = 0;
-              ch.wanderLimit = randomInt(
-                WANDER_MOVES_BEFORE_REST_MIN,
-                WANDER_MOVES_BEFORE_REST_MAX,
-              );
+              ch.wanderLimit = wanderLimit();
               ch.frame = 0;
               ch.frameTimer = 0;
               break;
             }
           }
           ch.state = CharacterState.IDLE;
-          ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC);
+          ch.wanderTimer = wanderPause();
         }
         ch.frame = 0;
         ch.frameTimer = 0;
@@ -290,7 +301,7 @@ export function updateCharacter(
       }
       ch.dir = directionBetween(ch.tileCol, ch.tileRow, nextTile.col, nextTile.row);
 
-      ch.moveProgress += (WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt;
+      ch.moveProgress += (tunable('walkSpeedPxPerSec') / TILE_SIZE) * dt;
 
       const fromCenter = tileCenter(ch.tileCol, ch.tileRow);
       const toCenter = tileCenter(nextTile.col, nextTile.row);

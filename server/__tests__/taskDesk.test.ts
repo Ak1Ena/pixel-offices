@@ -249,7 +249,7 @@ describe('the loop from brief to done', () => {
     now = t.card(task).value;
     expect(now).toMatchObject({ state: 'working', claimedBy: 1 });
     expect(t.sent[1][1]).toContain('Do the task');
-    expect(t.sent[1][1]).toContain('its 2 subtasks');
+    expect(t.sent[1][1]).toContain('its 2 steps');
 
     expect(t.desk.markSubtask(task.num, 2).ok).toBe(true);
     expect(t.card(task).value.briefs[0].subtasks[1].done).toBe(true);
@@ -434,6 +434,82 @@ describe('pixel-office task (agent CLI over HTTP)', () => {
       state: 'result',
       result: { summary: 'fixed it', tests: 'green' },
     });
+    o.desk.dispose();
+    await o.close();
+  });
+
+  it('gate waits for the human; step reports a mid-build plan change', async () => {
+    const o = await office();
+    o.addAgent(1);
+    const task = await o.addCard();
+    await o.desk.tick();
+    const n = String(task.num);
+    await run([o.server], ['brief', n, '--file', 'b.json'], {
+      'b.json': JSON.stringify({
+        ...BRIEF,
+        subtasks: ['find it', '[gate] check with me', 'fix it'],
+      }),
+    });
+    const steps = o.card(task).value.briefs[0].subtasks;
+    expect(steps.map((s) => [s.title, s.kind])).toEqual([
+      ['find it', undefined],
+      ['check with me', 'gate'],
+      ['fix it', undefined],
+    ]);
+    expect(steps.every((s) => /^s[a-f0-9]{6}$/.test(s.id ?? ''))).toBe(true);
+
+    o.desk.humanCall(task.id, { action: 'do' });
+    await o.desk.tick();
+    expect(o.sent.at(-1)?.[1]).toContain(`gate ${n} <step number>`);
+
+    const waiting = run([o.server], ['gate', n, '2', '--ask', 'Ready to fix?']);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(o.card(task).value.briefs[0].subtasks[1]).toMatchObject({
+      waiting: true,
+      ask: 'Ready to fix?',
+    });
+    expect(o.desk.answerGate(task.id, 2, 'continue', 'go').ok).toBe(true);
+    const gate = await waiting;
+    expect(gate.out).toContain('go ahead');
+    expect(gate.out).toContain('They said: go');
+    expect(o.card(task).value.briefs[0].subtasks.map((s) => [s.done, s.skip])).toEqual([
+      [false, true],
+      [true, false],
+      [false, false],
+    ]);
+
+    // The human adds a step after the current one; the next report says so, once.
+    const current = o.card(task).value.briefs[0].subtasks;
+    expect(
+      o.desk.editSteps(task.id, [
+        ...current,
+        { title: 'write a test', skip: false, done: false, by: 'you' },
+      ]).ok,
+    ).toBe(true);
+    const stepped = await run([o.server], ['step', n, '3']);
+    expect(stepped.out).toContain('The human changed the steps');
+    expect(stepped.out).toContain('write a test (added by the human)');
+    expect((await run([o.server], ['step', n, '4'])).out).not.toContain('changed the steps');
+    o.desk.dispose();
+    await o.close();
+  });
+
+  it('an answer given between polls is kept; a card that stops being built ends the wait', async () => {
+    const o = await office();
+    o.addAgent(1);
+    const task = await o.addCard();
+    await o.desk.tick();
+    o.desk.submitBrief(task.num, { ...BRIEF, subtasks: ['[gate] ok?', 'go'] });
+    o.desk.humanCall(task.id, { action: 'do' });
+    await o.desk.tick();
+    expect(o.desk.openGate(task.num, 1, '').ok).toBe(true);
+    o.desk.answerGate(task.id, 1, 'stop', 'not yet');
+    expect(await o.desk.waitGate(task.num, 1, 10)).toEqual({ decision: 'stop', note: 'not yet' });
+
+    expect(o.desk.openGate(task.num, 2, '').ok).toBe(true);
+    const wait = o.desk.waitGate(task.num, 2, 5_000);
+    o.desk.submitResult(task.num, { summary: 'stopped' });
+    expect(await wait).toEqual({ decision: 'gone' });
     o.desk.dispose();
     await o.close();
   });

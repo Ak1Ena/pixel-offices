@@ -35,11 +35,13 @@ export interface ShowCommand {
 }
 
 export const SHOW_USAGE = `Usage: pixel-office show <path> [--lines 40-58] [--page 3] [--cell "Q3!B4"]
+                         [--para 12-14] [--slide 2]
                          [--find "phrase"] [--why "why the user should look"]
                          [--agent NAME] [--wait]
 
 Points the user at part of a file: the office opens it in its document viewer
-at those lines (text, code, markdown, logs, CSV), page (PDF) or cell (Excel).
+at those lines (text, code, markdown, logs, CSV), page (PDF), cell (Excel),
+paragraphs (Word — numbers from \`pixel-office doc outline\`) or slide (PowerPoint).
 Only the path is sent, never the file.
 --wait   keep running until the user answers, then print "ok" or their reply.`;
 
@@ -63,9 +65,11 @@ export function parseShowArgs(argv: string[]): ShowCommand {
       case '-h':
       case '--help':
         return { ...cmd, help: true };
+      // Word paragraphs travel as lines: the viewer reads them as ¶ numbers for a .docx.
+      case '--para':
       case '--lines': {
         const m = /^(\d+)(?:\s*[-:]\s*(\d+))?$/.exec(needValue(argv, i, arg).trim());
-        if (!m) throw new ShowCliError('--lines takes a line or a range, e.g. 40 or 40-58.');
+        if (!m) throw new ShowCliError(`${arg} takes a number or a range, e.g. 40 or 40-58.`);
         cmd.lineStart = positive(m[1], arg);
         cmd.lineEnd = m[2] ? positive(m[2], arg) : cmd.lineStart;
         if (cmd.lineEnd < cmd.lineStart)
@@ -73,6 +77,8 @@ export function parseShowArgs(argv: string[]): ShowCommand {
         i++;
         break;
       }
+      // A slide travels as a page: the viewer opens that slide of a .pptx.
+      case '--slide':
       case '--page':
         cmd.page = positive(needValue(argv, i, arg), arg);
         i++;

@@ -24,6 +24,7 @@ import { DismissalTracker } from '../src/dismissalTracker.js';
 import {
   adoptExternalSessionFromHook,
   ensureProjectScan,
+  reassignAgentToFile,
   scanExternalDir,
   scanForNewJsonlFiles,
   setDismissalTracker,
@@ -531,5 +532,43 @@ describe('fileWatcher dismissal state', () => {
     // Guards against accidental changes that would make these tests lie.
     expect(DISMISSED_COOLDOWN_MS).toBeGreaterThan(60_000);
     expect(EXTERNAL_ACTIVE_THRESHOLD_MS).toBeGreaterThan(30_000);
+  });
+  // ── /clear keeps the terminal's key ───────────────────────────────
+
+  describe('/clear reassignment', () => {
+    it('keeps the id the terminal was started with as launchKey, across several clears', () => {
+      const first = writeJsonlFile('launched.jsonl', '{"type":"assistant"}\n');
+      adoptExternalSessionFromHook(
+        'launched',
+        first,
+        projectDir,
+        knownJsonlFiles,
+        nextAgentIdRef,
+        agents,
+        fileWatchers,
+        pollingTimers,
+        waitingTimers,
+        permissionTimers,
+        () => {},
+      );
+      const [id, agent] = [...agents][0];
+      const move = (file: string) =>
+        reassignAgentToFile(
+          id,
+          file,
+          agents,
+          fileWatchers,
+          pollingTimers,
+          waitingTimers,
+          permissionTimers,
+          () => {},
+        );
+      move(writeJsonlFile('second.jsonl', ''));
+      expect(agent.sessionId).toBe('second');
+      expect(agent.launchKey).toBe('launched');
+      move(writeJsonlFile('third.jsonl', ''));
+      expect(agent.sessionId).toBe('third');
+      expect(agent.launchKey).toBe('launched');
+    });
   });
 });

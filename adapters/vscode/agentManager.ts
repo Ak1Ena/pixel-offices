@@ -298,6 +298,9 @@ export function persistAgents(agents: AgentStateStore, adapter: StateAdapter): v
       displayName: agent.displayName,
       cwd: agent.cwd,
       pickup: agent.pickup,
+      launchKey: agent.launchKey,
+      clearPolicy: agent.clearPolicy,
+      docEditMode: agent.docEditMode,
     });
   }
   adapter.saveAgents(persisted);
@@ -400,6 +403,9 @@ export function restoreAgents(
       displayName: p.displayName,
       cwd: p.cwd,
       pickup: p.pickup,
+      launchKey: p.launchKey,
+      clearPolicy: p.clearPolicy,
+      docEditMode: p.docEditMode,
     };
 
     assignPaletteIfNeeded(agent, store);

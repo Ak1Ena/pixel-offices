@@ -1644,6 +1644,10 @@ export function reassignAgentToFile(
 
   // Swap to new file (update sessionId for hook registration).
   // Keep hookDelivered — if hooks worked before /clear, they'll work after.
+  // The terminal keeps the id it was started with: an office-run or launcher
+  // session is found by that key (launchKey), and without it a cleared agent
+  // could no longer be typed into and the launcher would re-adopt the old file.
+  agent.launchKey ??= agent.sessionId;
   agent.sessionId = path.basename(newFilePath, '.jsonl');
   agent.jsonlFile = newFilePath;
   agent.fileOffset = 0;

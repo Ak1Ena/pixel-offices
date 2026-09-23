@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { toMajorMinor } from '../changelogData.ts';
-import { WHATS_NEW_AUTO_CLOSE_MS, WHATS_NEW_FADE_MS } from '../constants.ts';
+import { WHATS_NEW_FADE_MS } from '../constants.ts';
+import { tunable } from '../tunableStore.js';
 import { Button } from './ui/Button.js';
 
 interface VersionIndicatorProps {
@@ -28,7 +29,7 @@ export function VersionIndicator({
   // Start fade-out after auto-close delay, then fully dismiss after the transition
   useEffect(() => {
     if (!showUpdateNotice || fading) return;
-    const fadeTimer = setTimeout(() => setFading(true), WHATS_NEW_AUTO_CLOSE_MS);
+    const fadeTimer = setTimeout(() => setFading(true), tunable('whatsNewAutoCloseSec') * 1000);
     return () => clearTimeout(fadeTimer);
   }, [showUpdateNotice, fading]);
 

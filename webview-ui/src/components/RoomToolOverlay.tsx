@@ -508,7 +508,7 @@ export function RoomToolOverlay({
           <span className="text-sm text-status-active">
             {unreachable.join(', ')} can't be reached on foot
           </span>
-          <span className="text-2xs text-text-muted font-reading">
+          <span className="text-read-sm text-text-muted font-reading">
             Give it a door onto open floor, or join it with a portal pair: one end outside, one
             inside. Characters step in and come out on the other side.
           </span>

@@ -6,7 +6,6 @@ import {
   CARPET_DEFAULT_COLOR,
   LAYOUT_SAVE_DEBOUNCE_MS,
   TEAM_ROOM_AREA_COLOR,
-  ZOOM_DEFAULT_DPR_FACTOR,
   ZOOM_MAX,
   ZOOM_MIN,
 } from '../constants.js';
@@ -47,6 +46,7 @@ import type {
 import { EditTool } from '../office/types.js';
 import { TileType } from '../office/types.js';
 import { transport } from '../transport/index.js';
+import { tunable } from '../tunableStore.js';
 
 interface EditorActions {
   isEditMode: boolean;
@@ -111,7 +111,7 @@ interface EditorActions {
  *  the DOM into every graph that imports it (OfficeState's included). */
 function defaultZoom(): number {
   const dpr = window.devicePixelRatio || 1;
-  return Math.max(ZOOM_MIN, Math.round(ZOOM_DEFAULT_DPR_FACTOR * dpr));
+  return Math.max(ZOOM_MIN, Math.round(tunable('defaultZoomDprFactor') * dpr));
 }
 
 export function useEditorActions(

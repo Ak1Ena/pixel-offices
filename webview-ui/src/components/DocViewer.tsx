@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 
+import type { DocEdit, DocModel, DocSheet, DocSlide } from '../../../core/src/docModel.js';
 import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
-import { BOARD_FILE_API, DOC_NUMBERED_MAX_LINES, DOCX_FRAME_CSS } from '../constants.js';
+import { BOARD_FILE_API, DOCX_FRAME_CSS } from '../constants.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
+  cellEditText,
   cellRange,
   columnLetter,
   fileBaseName,
   fileExtension,
+  isTextEditableName,
+  mergeDocEdit,
+  modelSheetGrid,
+  modelSheetView,
   parseCellRef,
   parseCsv,
   refLabel,
@@ -16,6 +22,9 @@ import {
   toSheetView,
   viewerKind,
 } from '../docViewer.js';
+import { transport } from '../transport/index.js';
+import { tunable } from '../tunableStore.js';
+import { SlidesView, WordParagraphs } from './DocModelViews.js';
 import { Button } from './ui/Button.js';
 
 interface DocViewerProps {
@@ -43,22 +52,54 @@ interface DocViewerProps {
   onAskRefs?: () => void;
   /** Who "Ask about this" goes to ("auth-fix"), for the button. */
   askLabel?: string;
+  /** The newest edit written to this file (anyone's): the viewer reloads when it changes. */
+  lastEditKey?: string;
 }
 
 type Loaded =
   | { kind: 'pdf' | 'image'; url: string }
-  | { kind: 'word'; html: string }
-  | { kind: 'table'; sheets: SheetView[] }
+  | { kind: 'word'; html: string; paragraphs?: Extract<DocModel, { kind: 'docx' }>['paragraphs'] }
+  | { kind: 'slides'; slides: DocSlide[] }
+  | { kind: 'table'; sheets: SheetView[]; model?: DocSheet[]; raw?: string }
   | { kind: 'text'; text: string };
 
 type ViewState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; doc: Loaded; blob: Blob };
+  | { status: 'ready'; doc: Loaded; blob: Blob; sha?: string };
 
 /** The server token this page was opened with (the private link), if any. */
 function officeToken(): string | null {
   return new URLSearchParams(window.location.search).get('token');
+}
+
+/** The office's numbered model of a Word / PowerPoint / Excel file, and the hash edits go against. */
+async function loadModel(
+  pin: BoardPin,
+  token: string,
+  signal: AbortSignal,
+): Promise<{ sha: string; model: DocModel } | null> {
+  try {
+    const res = await fetch(`${BOARD_FILE_API}/${encodeURIComponent(pin.id)}/model`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal,
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { sha: string; model: DocModel };
+  } catch {
+    return null; // an older office, or a file the parser can't read: view without places
+  }
+}
+
+/** sha256 of the bytes, when the browser can (secure contexts only). */
+async function hashOf(blob: Blob): Promise<string | undefined> {
+  try {
+    if (!globalThis.crypto?.subtle) return undefined;
+    const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return undefined;
+  }
 }
 
 async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewState> {
@@ -67,7 +108,7 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     return {
       status: 'error',
       message:
-        'The viewer opens PDF, Word (.docx), Excel (.xlsx), CSV, text and images. Older .doc and .xls files need saving as .docx or .xlsx first.',
+        'The viewer opens PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, text and images. Older .doc, .ppt and .xls files need saving as .docx, .pptx or .xlsx first.',
     };
   }
   const token = officeToken();
@@ -91,11 +132,42 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     return { status: 'ready', blob, doc: { kind, url: URL.createObjectURL(blob) } };
   }
   if (kind === 'word') {
-    const mammoth = await import('mammoth/mammoth.browser');
+    const [mammoth, loaded] = await Promise.all([
+      import('mammoth/mammoth.browser'),
+      loadModel(pin, token, signal),
+    ]);
     const { value } = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
-    return { status: 'ready', blob, doc: { kind: 'word', html: value } };
+    const paragraphs = loaded?.model.kind === 'docx' ? loaded.model.paragraphs : undefined;
+    return {
+      status: 'ready',
+      blob,
+      sha: loaded?.sha,
+      doc: { kind: 'word', html: value, ...(paragraphs ? { paragraphs } : {}) },
+    };
+  }
+  if (kind === 'slides') {
+    const loaded = await loadModel(pin, token, signal);
+    if (loaded?.model.kind !== 'pptx') {
+      return { status: 'error', message: 'Could not read this presentation.' };
+    }
+    return {
+      status: 'ready',
+      blob,
+      sha: loaded.sha,
+      doc: { kind: 'slides', slides: loaded.model.slides },
+    };
   }
   if (kind === 'sheet') {
+    const loaded = await loadModel(pin, token, signal);
+    if (loaded?.model.kind === 'xlsx') {
+      const model = loaded.model.sheets;
+      return {
+        status: 'ready',
+        blob,
+        sha: loaded.sha,
+        doc: { kind: 'table', sheets: model.map((s) => modelSheetView(s)), model },
+      };
+    }
     const { default: readXlsxFile } = await import('read-excel-file/browser');
     const sheets = await readXlsxFile(blob);
     return {
@@ -105,14 +177,20 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     };
   }
   const text = await blob.text();
+  const sha = await hashOf(blob);
   if (kind === 'csv') {
     return {
       status: 'ready',
       blob,
-      doc: { kind: 'table', sheets: [toSheetView(fileBaseName(pin.value), parseCsv(text))] },
+      sha,
+      doc: {
+        kind: 'table',
+        sheets: [toSheetView(fileBaseName(pin.value), parseCsv(text))],
+        raw: text,
+      },
     };
   }
-  return { status: 'ready', blob, doc: { kind: 'text', text } };
+  return { status: 'ready', blob, sha, doc: { kind: 'text', text } };
 }
 
 function SheetTable({
@@ -217,16 +295,16 @@ function NumberedText({
   useEffect(() => {
     firstMarked.current?.scrollIntoView({ block: 'center' });
   }, [text, from]);
-  if (lines.length > DOC_NUMBERED_MAX_LINES && from === undefined) {
+  if (lines.length > tunable('docNumberedMaxLines') && from === undefined) {
     return (
-      <pre className="flex-1 min-h-0 overflow-auto m-0 p-16 bg-board text-board-ink text-xs whitespace-pre-wrap break-words">
+      <pre className="flex-1 min-h-0 overflow-auto m-0 p-16 bg-board text-board-ink text-code whitespace-pre-wrap break-words">
         {text}
       </pre>
     );
   }
   // A huge file shows a window around the marked lines instead of every line.
-  const start = lines.length > DOC_NUMBERED_MAX_LINES && from ? Math.max(1, from - 200) : 1;
-  const end = Math.min(lines.length, start + DOC_NUMBERED_MAX_LINES - 1);
+  const start = lines.length > tunable('docNumberedMaxLines') && from ? Math.max(1, from - 200) : 1;
+  const end = Math.min(lines.length, start + tunable('docNumberedMaxLines') - 1);
   const shown = lines.slice(start - 1, end);
   return (
     <div
@@ -372,6 +450,7 @@ export function DocViewer({
   onRemoveRef,
   onAskRefs,
   askLabel,
+  lastEditKey,
 }: DocViewerProps) {
   const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
   const [pickedCells, setPickedCells] = useState<{
@@ -380,19 +459,42 @@ export function DocViewer({
   } | null>(null);
   const [pdfPage, setPdfPage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [pickedParas, setPickedParas] = useState<{ a: number; b: number } | null>(null);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [pickedShape, setPickedShape] = useState<string | null>(null);
+  const [wordView, setWordView] = useState<'places' | 'formatted'>('places');
+  // Editing: staged edits (Word / PowerPoint / Excel) or a text draft, saved in one go.
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState<DocEdit[]>([]);
+  const [textDraft, setTextDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [changedUnderUs, setChangedUnderUs] = useState(false);
   useEffect(() => {
     setPickedLines(null);
     setPickedCells(null);
+    setPickedParas(null);
+    setPickedShape(null);
     setPdfPage(focus?.page ? String(focus.page) : '');
   }, [pin, focus?.page]);
+  useEffect(() => {
+    setEditing(false);
+    setEdits([]);
+    setTextDraft(null);
+    setSaveError(null);
+    setSaved(null);
+    setChangedUnderUs(false);
+    setSlideIndex(0);
+  }, [pin]);
   const [state, setState] = useState<ViewState>({ status: 'loading' });
   const [sheetIndex, setSheetIndex] = useState(0);
 
   useEffect(() => {
     const abort = new AbortController();
     let objectUrl: string | null = null;
-    setState({ status: 'loading' });
-    setSheetIndex(0);
+    setState((prev) => (prev.status === 'ready' && reloadKey > 0 ? prev : { status: 'loading' }));
     loadDocument(pin, abort.signal)
       .then((next) => {
         if (abort.signal.aborted) return;
@@ -408,7 +510,20 @@ export function DocViewer({
       abort.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [pin]);
+  }, [pin, reloadKey]);
+  useEffect(() => setSheetIndex(0), [pin]);
+
+  const dirty = edits.length > 0 || textDraft !== null;
+  // Someone wrote to this file (an agent, an Undo, another window): show the new version,
+  // unless the human is mid-edit — then say so and let them decide.
+  const seenEditKey = useRef(lastEditKey);
+  useEffect(() => {
+    if (lastEditKey === seenEditKey.current) return;
+    seenEditKey.current = lastEditKey;
+    if (dirty) setChangedUnderUs(true);
+    else setReloadKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new edit reloads
+  }, [lastEditKey]);
 
   const download = () => {
     if (state.status !== 'ready') return;
@@ -424,20 +539,132 @@ export function DocViewer({
   const mark = focus?.cell ? parseCellRef(focus.cell) : null;
   const sheetName =
     doc?.kind === 'table' && doc.sheets.length > 1 ? doc.sheets[sheetIndex]?.name : undefined;
+  const paragraphs = doc?.kind === 'word' && wordView === 'places' ? doc.paragraphs : undefined;
+  const slide = doc?.kind === 'slides' ? doc.slides[slideIndex] : undefined;
   const current: DocRef | null =
-    doc?.kind === 'text' && pickedLines
+    paragraphs && pickedParas
       ? {
           path: pin.value,
-          lineStart: Math.min(pickedLines.a, pickedLines.b),
-          lineEnd: Math.max(pickedLines.a, pickedLines.b),
+          paraStart: Math.min(pickedParas.a, pickedParas.b),
+          paraEnd: Math.max(pickedParas.a, pickedParas.b),
         }
-      : doc?.kind === 'table' && pickedCells
-        ? { path: pin.value, cell: cellRange(pickedCells.a, pickedCells.b, sheetName) }
-        : doc?.kind === 'pdf' && Number(pdfPage) > 0
-          ? { path: pin.value, page: Number(pdfPage) }
-          : doc && doc.kind !== 'text' && doc.kind !== 'table' && doc.kind !== 'pdf'
-            ? { path: pin.value }
-            : null;
+      : slide
+        ? { path: pin.value, slide: slide.n, ...(pickedShape ? { shape: pickedShape } : {}) }
+        : doc?.kind === 'text' && pickedLines
+          ? {
+              path: pin.value,
+              lineStart: Math.min(pickedLines.a, pickedLines.b),
+              lineEnd: Math.max(pickedLines.a, pickedLines.b),
+            }
+          : doc?.kind === 'table' && pickedCells
+            ? { path: pin.value, cell: cellRange(pickedCells.a, pickedCells.b, sheetName) }
+            : doc?.kind === 'pdf' && Number(pdfPage) > 0
+              ? { path: pin.value, page: Number(pdfPage) }
+              : doc &&
+                  doc.kind !== 'text' &&
+                  doc.kind !== 'table' &&
+                  doc.kind !== 'pdf' &&
+                  !paragraphs
+                ? { path: pin.value }
+                : null;
+
+  // A request naming a slide (--page) opens on it.
+  useEffect(() => {
+    if (doc?.kind !== 'slides' || !focus?.page) return;
+    const index = doc.slides.findIndex((s) => s.n === focus.page);
+    if (index !== -1) setSlideIndex(index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per document / request
+  }, [doc, focus?.requestId]);
+
+  const token = officeToken();
+  const textSource =
+    doc?.kind === 'text'
+      ? doc.text
+      : doc?.kind === 'table' && doc.raw !== undefined
+        ? doc.raw
+        : null;
+  const modelSheets = doc?.kind === 'table' ? doc.model : undefined;
+  const canEdit =
+    !!token &&
+    state.status === 'ready' &&
+    ((doc?.kind === 'word' && !!doc.paragraphs) ||
+      doc?.kind === 'slides' ||
+      !!modelSheets ||
+      (textSource !== null && isTextEditableName(pin.value)));
+  const stage = (edit: DocEdit) => setEdits((list) => mergeDocEdit(list, edit));
+  const startEditing = () => {
+    setSaved(null);
+    setSaveError(null);
+    setEditing(true);
+    if (doc?.kind === 'word') setWordView('places');
+    if (textSource !== null && !modelSheets && doc?.kind !== 'word') setTextDraft(textSource);
+  };
+  const stopEditing = () => {
+    setEditing(false);
+    setEdits([]);
+    setTextDraft(null);
+    setSaveError(null);
+    if (changedUnderUs) {
+      setChangedUnderUs(false);
+      setReloadKey((k) => k + 1);
+    }
+  };
+  const save = async () => {
+    if (!token || state.status !== 'ready') return;
+    const body =
+      textDraft !== null
+        ? { sha: state.sha, text: textDraft }
+        : {
+            sha: state.sha,
+            edits: edits.filter((e) => e.kind !== 'insertAfter' || e.text.trim() !== ''),
+          };
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`${BOARD_FILE_API}/${encodeURIComponent(pin.id)}/edits`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const reply = (await res.json().catch(() => null)) as {
+        error?: string;
+        edit?: { editId: string };
+      } | null;
+      if (!res.ok || !reply?.edit) {
+        setSaveError(reply?.error ?? `Could not save (${res.status}).`);
+        return;
+      }
+      seenEditKey.current = `${reply.edit.editId}:false`;
+      setSaved(reply.edit.editId);
+      setEditing(false);
+      setEdits([]);
+      setTextDraft(null);
+      setChangedUnderUs(false);
+      setReloadKey((k) => k + 1);
+    } catch {
+      setSaveError('Could not reach the office to save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  // The cell picked for editing (one cell, the first of a picked range).
+  const editCell =
+    editing && modelSheets && pickedCells
+      ? {
+          sheet: modelSheets[sheetIndex]?.name,
+          ref: cellRange(pickedCells.a, pickedCells.a),
+          grid: modelSheets[sheetIndex] ? modelSheetGrid(modelSheets[sheetIndex]) : null,
+        }
+      : null;
+  const editCellValue = (() => {
+    if (!editCell) return '';
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const e = edits[i];
+      if (e.kind === 'cell' && e.ref === editCell.ref && (e.sheet ?? '') === (editCell.sheet ?? ''))
+        return e.value;
+    }
+    return cellEditText(editCell.grid?.rows[pickedCells!.a.r]?.[pickedCells!.a.c]);
+  })();
 
   // A request naming a sheet opens on that sheet.
   useEffect(() => {
@@ -469,6 +696,11 @@ export function DocViewer({
           {pin.title}
         </span>
         <span className="flex-1" />
+        {canEdit && !editing && (
+          <Button size="md" onClick={startEditing} data-testid="doc-edit">
+            Edit
+          </Button>
+        )}
         {onAttach && (
           <Button variant="accent" size="md" onClick={onAttach} data-testid="doc-attach">
             Attach to chat
@@ -538,6 +770,99 @@ export function DocViewer({
           {focus && (
             <FocusBanner focus={focus} agent={focusAgent ?? 'An agent'} onAnswer={onAnswerFocus} />
           )}
+          {(editing || saved || saveError || changedUnderUs) && (
+            <div
+              className={`flex items-center gap-8 flex-wrap px-10 py-6 border-b-2 text-xs ${
+                editing ? 'bg-chat-permission border-status-permission' : 'bg-bg-dark border-border'
+              }`}
+              data-testid="doc-edit-bar"
+            >
+              {editing ? (
+                <span className="flex-1 min-w-0">
+                  {textDraft !== null
+                    ? 'Editing the text.'
+                    : doc?.kind === 'word'
+                      ? 'Click a paragraph to change its text.'
+                      : doc?.kind === 'slides'
+                        ? 'Click a text box to change it.'
+                        : 'Pick a cell, then type its value or a formula (=SUM(A1:A3)).'}{' '}
+                  {edits.length > 0 &&
+                    `${edits.length} change${edits.length === 1 ? '' : 's'} not saved.`}{' '}
+                  <span className="text-text-muted">
+                    Formatting outside the changed text is kept; a backup is saved.
+                  </span>
+                </span>
+              ) : (
+                <span className="flex-1 min-w-0">
+                  {saved && !saveError && <span className="text-status-success">Saved. </span>}
+                  {changedUnderUs && (
+                    <span className="text-status-permission">
+                      Someone else changed this file while you were editing.{' '}
+                    </span>
+                  )}
+                </span>
+              )}
+              {saveError && <span className="text-danger">{saveError}</span>}
+              {editing && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="accent"
+                    onClick={() => void save()}
+                    disabled={saving || !dirty}
+                    data-testid="doc-save"
+                  >
+                    {saving ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button size="sm" onClick={stopEditing}>
+                    Cancel
+                  </Button>
+                </>
+              )}
+              {!editing && saved && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    transport.send({ type: 'undoDocEdit', editId: saved });
+                    setSaved(null);
+                  }}
+                  data-testid="doc-undo"
+                >
+                  Undo
+                </Button>
+              )}
+              {!editing && changedUnderUs && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setChangedUnderUs(false);
+                    setReloadKey((k) => k + 1);
+                  }}
+                >
+                  Reload
+                </Button>
+              )}
+            </div>
+          )}
+          {doc?.kind === 'word' && doc.paragraphs && !editing && (
+            <div role="tablist" className="flex bg-bg-dark border-b-2 border-border text-sm">
+              {(['places', 'formatted'] as const).map((v) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={wordView === v}
+                  onClick={() => setWordView(v)}
+                  className={`px-12 py-4 border-0 border-b-4 rounded-none cursor-pointer ${
+                    wordView === v
+                      ? 'bg-bg text-text border-accent'
+                      : 'bg-bg-dark text-text-muted border-transparent'
+                  }`}
+                >
+                  {v === 'places' ? 'Paragraphs' : 'Formatted'}
+                </button>
+              ))}
+            </div>
+          )}
           {state.status === 'loading' && (
             <div className="m-auto text-sm text-text-muted">Opening…</div>
           )}
@@ -558,7 +883,44 @@ export function DocViewer({
               <img src={doc.url} alt={pin.title} className="m-auto max-w-full" />
             </div>
           )}
-          {doc?.kind === 'word' && (
+          {paragraphs && (
+            <WordParagraphs
+              paragraphs={paragraphs}
+              mark={
+                focus?.lineStart
+                  ? { from: focus.lineStart, to: focus.lineEnd ?? focus.lineStart }
+                  : null
+              }
+              picked={pickedParas}
+              onPick={(n, extend) =>
+                setPickedParas((prev) => (extend && prev ? { a: prev.a, b: n } : { a: n, b: n }))
+              }
+              editing={editing}
+              edits={edits}
+              onEdit={stage}
+              onReplaceEdit={(index, edit) =>
+                setEdits((list) =>
+                  edit
+                    ? list.map((e, i) => (i === index ? edit : e))
+                    : list.filter((_, i) => i !== index),
+                )
+              }
+            />
+          )}
+          {doc?.kind === 'slides' && (
+            <SlidesView
+              slides={doc.slides}
+              index={slideIndex}
+              onIndex={setSlideIndex}
+              markSlide={focus?.page}
+              pickedShape={pickedShape}
+              onPickShape={setPickedShape}
+              editing={editing}
+              edits={edits}
+              onEdit={stage}
+            />
+          )}
+          {doc?.kind === 'word' && !paragraphs && (
             <iframe
               title={pin.title}
               sandbox=""
@@ -566,7 +928,18 @@ export function DocViewer({
               className="flex-1 w-full border-0 bg-board"
             />
           )}
-          {doc?.kind === 'text' && (
+          {textDraft !== null && (
+            <textarea
+              value={textDraft}
+              onChange={(e) => setTextDraft(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label={`Edit ${pin.title}`}
+              spellCheck={false}
+              className="flex-1 min-h-0 m-0 p-16 bg-board text-board-ink font-mono text-code border-0 rounded-none outline-none resize-none"
+              data-testid="doc-text-editor"
+            />
+          )}
+          {doc?.kind === 'text' && textDraft === null && (
             <NumberedText
               text={doc.text}
               from={focus?.lineStart}
@@ -577,8 +950,38 @@ export function DocViewer({
               }
             />
           )}
-          {doc?.kind === 'table' && (
+          {doc?.kind === 'table' && textDraft === null && (
             <>
+              {editCell && (
+                <div className="flex items-center gap-6 px-10 py-4 bg-bg-dark border-b-2 border-border">
+                  <span className="text-code-sm font-mono text-text-muted w-80 shrink-0">
+                    {editCell.ref}
+                  </span>
+                  <input
+                    autoFocus
+                    value={editCellValue}
+                    onChange={(e) =>
+                      stage({
+                        kind: 'cell',
+                        ...(editCell.sheet ? { sheet: editCell.sheet } : {}),
+                        ref: editCell.ref,
+                        value: e.target.value,
+                      })
+                    }
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter' && pickedCells) {
+                        const below = { r: pickedCells.a.r + 1, c: pickedCells.a.c };
+                        setPickedCells({ a: below, b: below });
+                      }
+                    }}
+                    aria-label={`Value of ${editCell.ref}`}
+                    placeholder="value, or =formula"
+                    className="flex-1 min-w-0 bg-bg border-2 border-accent px-6 py-2 font-mono text-code text-text"
+                    data-testid="doc-cell-input"
+                  />
+                </div>
+              )}
               {doc.sheets.length > 1 && (
                 <div role="tablist" className="flex bg-bg-dark border-b-2 border-border">
                   {doc.sheets.map((s, i) => (
@@ -600,7 +1003,11 @@ export function DocViewer({
               )}
               {doc.sheets[sheetIndex] && (
                 <SheetTable
-                  sheet={doc.sheets[sheetIndex]}
+                  sheet={
+                    modelSheets?.[sheetIndex] && edits.length > 0
+                      ? modelSheetView(modelSheets[sheetIndex], edits)
+                      : doc.sheets[sheetIndex]
+                  }
                   picked={pickedCells}
                   onPick={(cell, extend) =>
                     setPickedCells((prev) =>
@@ -650,13 +1057,15 @@ export function DocViewer({
                   </>
                 ) : (
                   <span className="text-text-muted">
-                    {doc?.kind === 'text'
-                      ? 'Click a line number to pick it; Shift-click another for a range.'
-                      : doc?.kind === 'table'
-                        ? 'Click a cell to pick it; Shift-click another for a range.'
-                        : doc?.kind === 'pdf'
-                          ? 'Type the page to point at.'
-                          : 'Point at this whole file.'}
+                    {paragraphs
+                      ? 'Click a ¶ number to pick that paragraph; Shift-click another for a range.'
+                      : doc?.kind === 'text'
+                        ? 'Click a line number to pick it; Shift-click another for a range.'
+                        : doc?.kind === 'table'
+                          ? 'Click a cell to pick it; Shift-click another for a range.'
+                          : doc?.kind === 'pdf'
+                            ? 'Type the page to point at.'
+                            : 'Point at this whole file.'}
                   </span>
                 )}
                 {doc?.kind === 'pdf' && (
@@ -689,7 +1098,7 @@ export function DocViewer({
                   {refs.map((r, i) => (
                     <span
                       key={`${refText(r)}-${i}`}
-                      className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs font-mono"
+                      className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-code-sm font-mono"
                     >
                       {refLabel(r)}
                       {onRemoveRef && (

@@ -101,18 +101,52 @@ function sanitizeFolder(raw: unknown): DeskFolder | null {
   };
 }
 
-function sanitizeSubtask(raw: unknown): DeskSubtask | null {
-  // Agents hand subtasks in as plain strings; stored cards hold objects.
+const STEP_KINDS: ReadonlySet<string> = new Set(['do', 'gate', 'show']);
+const STEP_ID_RE = /^s[a-f0-9]{6}$/;
+/** "[gate] Check the export" — how an agent writes a step's kind in a plain string. */
+const KIND_PREFIX_RE = /^\[(do|gate|show)\]\s*/i;
+
+/** A fresh step id. */
+export function newStepId(): string {
+  return `s${crypto.randomBytes(3).toString('hex')}`;
+}
+
+/** One card step. Agents hand steps in as strings ("[gate] …") or objects; stored cards hold objects. */
+export function sanitizeSubtask(raw: unknown): DeskSubtask | null {
   const s = (typeof raw === 'string' ? { title: raw } : raw) as Record<string, unknown> | null;
   if (!s || typeof s !== 'object') return null;
-  const title = cleanText(s.title, TASK_BRIEF_SHORT_MAX_CHARS);
+  let title = cleanText(s.title, TASK_BRIEF_SHORT_MAX_CHARS);
   if (!title) return null;
+  let kind = typeof s.kind === 'string' && STEP_KINDS.has(s.kind) ? s.kind : undefined;
+  const prefix = KIND_PREFIX_RE.exec(title);
+  if (prefix) {
+    kind ??= prefix[1].toLowerCase();
+    title = title.slice(prefix[0].length).trim();
+    if (!title) return null;
+  }
+  const ref = cleanText(s.ref, PATH_MAX_CHARS);
+  const ask = cleanText(s.ask, TASK_NOTE_MAX_CHARS);
   return {
+    ...(typeof s.id === 'string' && STEP_ID_RE.test(s.id) ? { id: s.id } : {}),
+    ...(kind && kind !== 'do' ? { kind: kind as DeskSubtask['kind'] } : {}),
     title,
+    ...(ref ? { ref } : {}),
     skip: s.skip === true,
     done: s.done === true,
+    ...(s.waiting === true ? { waiting: true } : {}),
+    ...(ask ? { ask } : {}),
     by: s.by === 'you' ? 'you' : 'agent',
   };
+}
+
+/** Steps with an id each (new ones get one). */
+export function withStepIds(steps: DeskSubtask[]): DeskSubtask[] {
+  const seen = new Set<string>();
+  return steps.map((step) => {
+    const id = step.id && !seen.has(step.id) ? step.id : newStepId();
+    seen.add(id);
+    return { ...step, id };
+  });
 }
 
 function sanitizeQuestion(raw: unknown): DeskQuestion | null {
@@ -167,7 +201,14 @@ export function briefFromInput(
     ok: true,
     brief: {
       ...brief,
-      subtasks: brief.subtasks.map((s) => ({ ...s, by: 'agent', done: false, skip: false })),
+      subtasks: withStepIds(
+        brief.subtasks.map((s) => {
+          const step: DeskSubtask = { ...s, by: 'agent', done: false, skip: false };
+          delete step.waiting;
+          delete step.ask;
+          return step;
+        }),
+      ),
     },
   };
 }

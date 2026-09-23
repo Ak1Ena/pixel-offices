@@ -4,8 +4,8 @@ import {
   CARPET_DEFAULT_COLOR,
   DEFAULT_FLOOR_COLOR,
   DEFAULT_WALL_COLOR,
-  UNDO_STACK_MAX_SIZE,
 } from '../../constants.js';
+import { tunable } from '../../tunableStore.js';
 import type { OfficeLayout, TileType as TileTypeVal } from '../types.js';
 import { EditTool, TileType } from '../types.js';
 
@@ -77,7 +77,7 @@ export class EditorState {
   pushUndo(layout: OfficeLayout): void {
     this.undoStack.push(layout);
     // Limit undo stack size
-    if (this.undoStack.length > UNDO_STACK_MAX_SIZE) {
+    if (this.undoStack.length > tunable('undoStackMax')) {
       this.undoStack.shift();
     }
   }
@@ -88,7 +88,7 @@ export class EditorState {
 
   pushRedo(layout: OfficeLayout): void {
     this.redoStack.push(layout);
-    if (this.redoStack.length > UNDO_STACK_MAX_SIZE) {
+    if (this.redoStack.length > tunable('undoStackMax')) {
       this.redoStack.shift();
     }
   }

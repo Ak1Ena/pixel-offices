@@ -1,4 +1,11 @@
-import type { DeskAgent, DeskTask, DeskTaskState } from '../../core/src/messages.js';
+import type {
+  DeskAgent,
+  DeskSubtask,
+  DeskTask,
+  DeskTaskState,
+  WorkflowStep,
+  WorkflowStepKind,
+} from '../../core/src/messages.js';
 
 /**
  * Pure helpers for the task desk panel (no DOM, no transport) — what the
@@ -231,4 +238,99 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       tasks: pick(['done']).reverse(),
     },
   ];
+}
+
+// ── Card steps ──
+
+/** How many leading steps are fixed while an agent builds (mirrors the server's lockedSteps). */
+export function lockedStepCount(task: DeskTask): number {
+  if (task.state !== 'working') return 0;
+  const steps = task.briefs[task.briefs.length - 1]?.subtasks ?? [];
+  let i = 0;
+  while (i < steps.length && (steps[i].done || steps[i].skip)) i++;
+  return Math.min(steps.length, i + 1);
+}
+
+/** Move one item from `from` to `to`, keeping the first `locked` items where they are. */
+export function moveStepTo<T>(list: T[], from: number, to: number, locked = 0): T[] {
+  if (from < locked || from >= list.length) return list;
+  const target = Math.max(locked, Math.min(list.length - 1, to));
+  if (target === from) return list;
+  const next = [...list];
+  const [item] = next.splice(from, 1);
+  next.splice(target, 0, item);
+  return next;
+}
+
+const STEP_KINDS: StepKind[] = ['do', 'gate', 'show'];
+
+/** A step id in the server's format, so a new step keeps its identity while it is moved. */
+export function newStepId(): string {
+  const bytes = new Uint8Array(3);
+  crypto.getRandomValues(bytes);
+  return `s${[...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+export type StepKind = WorkflowStepKind;
+
+/** do → gate → show → do. */
+export function nextStepKind(kind: StepKind | undefined): StepKind {
+  return STEP_KINDS[(STEP_KINDS.indexOf(kind ?? 'do') + 1) % STEP_KINDS.length];
+}
+
+/** A card's steps as workflow steps (Save as workflow). */
+export function stepsToWorkflow(steps: DeskSubtask[]): WorkflowStep[] {
+  return steps
+    .filter((s) => !s.skip)
+    .map((s) => {
+      const kind = s.kind ?? 'do';
+      const ref = s.ref?.trim();
+      return {
+        kind,
+        text: s.title,
+        ...(ref ? (kind === 'show' ? { show: ref } : { refs: [ref] }) : {}),
+      };
+    });
+}
+
+/** A workflow's steps as new card steps (Load workflow). The server gives them ids. */
+export function workflowToSteps(steps: WorkflowStep[]): DeskSubtask[] {
+  return steps.map((s) => {
+    const ref = (s.kind === 'show' ? s.show : s.refs?.[0])?.trim();
+    return {
+      ...(s.kind !== 'do' ? { kind: s.kind } : {}),
+      title: s.text,
+      ...(ref ? { ref } : {}),
+      skip: false,
+      done: false,
+      by: 'you' as const,
+    };
+  });
+}
+
+/** Gate steps agents are waiting at, for the prompt stack. `step` is 1-based. */
+export function deskGates(
+  tasks: DeskTask[],
+): Array<{ task: DeskTask; step: number; sub: DeskSubtask }> {
+  const out: Array<{ task: DeskTask; step: number; sub: DeskSubtask }> = [];
+  for (const task of tasks) {
+    if (task.state !== 'working') continue;
+    const steps = task.briefs[task.briefs.length - 1]?.subtasks ?? [];
+    steps.forEach((sub, i) => {
+      if (sub.waiting) out.push({ task, step: i + 1, sub });
+    });
+  }
+  return out;
+}
+
+/** Whether two step lists say the same thing (for "unsaved changes"). */
+export function sameSteps(a: DeskSubtask[], b: DeskSubtask[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (s, i) =>
+      s.id === b[i].id &&
+      s.title === b[i].title &&
+      (s.kind ?? 'do') === (b[i].kind ?? 'do') &&
+      (s.ref ?? '') === (b[i].ref ?? '') &&
+      s.skip === b[i].skip,
+  );
 }

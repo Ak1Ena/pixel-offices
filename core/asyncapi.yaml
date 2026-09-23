@@ -113,6 +113,10 @@ components:
         - $ref: '#/components/schemas/AgentScreen'
         - $ref: '#/components/schemas/StartAgentResult'
         - $ref: '#/components/schemas/AgentRelayState'
+        - $ref: '#/components/schemas/AgentPrefs'
+        - $ref: '#/components/schemas/AgentClearRequests'
+        - $ref: '#/components/schemas/DocEdits'
+        - $ref: '#/components/schemas/DocEditDefault'
         - $ref: '#/components/schemas/AgentPermissionAsk'
         - $ref: '#/components/schemas/AgentPermissionAnswered'
         - $ref: '#/components/schemas/FolderListing'
@@ -201,12 +205,19 @@ components:
         - $ref: '#/components/schemas/SaveDeskTask'
         - $ref: '#/components/schemas/RemoveDeskTask'
         - $ref: '#/components/schemas/DeskTaskAction'
+        - $ref: '#/components/schemas/EditDeskSteps'
+        - $ref: '#/components/schemas/AnswerDeskGate'
         - $ref: '#/components/schemas/SetDeskTaskAllow'
         - $ref: '#/components/schemas/SetAgentPickup'
         - $ref: '#/components/schemas/RenameAgent'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
         - $ref: '#/components/schemas/InterruptAgent'
+        - $ref: '#/components/schemas/ClearAgentContext'
+        - $ref: '#/components/schemas/AnswerClearRequest'
+        - $ref: '#/components/schemas/SetAgentPrefs'
+        - $ref: '#/components/schemas/SetDocEditDefault'
+        - $ref: '#/components/schemas/UndoDocEdit'
         - $ref: '#/components/schemas/AnswerScreenQuestion'
         - $ref: '#/components/schemas/SetAgentRelay'
         - $ref: '#/components/schemas/AnswerPermission'
@@ -722,6 +733,115 @@ components:
           type: boolean
         error:
           type: string
+
+    AgentPrefs:
+      description: |
+        Per-agent settings the human picks: what happens when the agent asks to
+        clear its own context, and whether its document edits wait for review
+        (absent = the office default). Persisted with the agent; sent in the
+        handshake and when they change.
+      type: object
+      additionalProperties: false
+      required: [type, id, clearPolicy]
+      properties:
+        type:
+          const: agentPrefs
+        id:
+          type: integer
+        clearPolicy:
+          $ref: '#/components/schemas/AgentClearPolicy'
+        docEditMode:
+          $ref: '#/components/schemas/DocEditMode'
+
+    AgentClearPolicy:
+      type: string
+      enum: [ask, allow, never]
+
+    DocEditMode:
+      type: string
+      enum: [ask, auto, 'off']
+
+    AgentClearRequests:
+      description: |
+        Agents that asked to have their own context cleared (`pixel-office
+        clear`) and are waiting for the human (clearPolicy `ask`). Always the
+        whole list; sent in the handshake and on every change.
+      type: object
+      additionalProperties: false
+      required: [type, requests]
+      properties:
+        type:
+          const: agentClearRequests
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentClearRequest'
+
+    AgentClearRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId, at]
+      properties:
+        agentId:
+          type: integer
+        reason:
+          type: string
+        at:
+          type: string
+
+    DocEdits:
+      description: |
+        Recent edits written to office documents (Word, PowerPoint, Excel,
+        text) — by the human in the viewer, or by an agent whose document
+        edits are auto-accepted. Newest last; always the whole list. Sent in
+        the handshake and on every change. An agent's edits that wait for
+        review are proposals instead.
+      type: object
+      additionalProperties: false
+      required: [type, edits]
+      properties:
+        type:
+          const: docEdits
+        edits:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocEditNotice'
+
+    DocEditNotice:
+      type: object
+      additionalProperties: false
+      required: [editId, path, who, at, changes, canUndo, undone]
+      properties:
+        editId:
+          type: string
+        path:
+          type: string
+        who:
+          type: string
+        agentId:
+          type: integer
+        at:
+          type: string
+        changes:
+          type: array
+          description: 'One line per edit, e.g. "¶3: Churn in the … → Enterprise churn …".'
+          items:
+            type: string
+        canUndo:
+          type: boolean
+        undone:
+          type: boolean
+
+    DocEditDefault:
+      description: What an agent's document edits do when it has no docEditMode of its own. Handshake + on change.
+      type: object
+      additionalProperties: false
+      required: [type, mode]
+      properties:
+        type:
+          const: docEditDefault
+        mode:
+          $ref: '#/components/schemas/DocEditMode'
 
     AgentRelayState:
       description: |
@@ -2141,6 +2261,9 @@ components:
           $ref: '#/components/schemas/HunkDecision'
         reason:
           type: string
+        where:
+          type: string
+          description: 'For a document suggestion, the place this change is at ("¶12", "Sheet1!C5").'
 
     ProposalLine:
       type: object
@@ -2283,7 +2406,7 @@ components:
         answer an agent's brief; `accept` and `sendBack` answer a finished
         result. `rejected` and `sendBack` need a `note`. `answers` are the
         replies to the brief's questions, by position. `subtasks` replaces the
-        newest brief's subtask list (titles and skip flags only).
+        newest brief's subtask list (steps: title, kind, ref, skip).
       type: object
       additionalProperties: false
       required: [type, taskId, action]
@@ -2304,6 +2427,46 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DeskSubtask'
+
+    EditDeskSteps:
+      description: |
+        Replace a card's steps (the newest brief's subtasks): reorder, retype,
+        change kinds, add, remove. Privileged. Allowed while the brief waits
+        for the human and during the build; mid-build, the steps already done
+        and the current one are locked and must come first, unchanged. The
+        agent learns of the change on its next `task step` / `task gate`.
+      type: object
+      additionalProperties: false
+      required: [type, taskId, steps]
+      properties:
+        type:
+          const: editDeskSteps
+        taskId:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskSubtask'
+
+    AnswerDeskGate:
+      description: |
+        The human's answer at a card's gate step (1-based `step`). `continue`
+        marks it done and the agent goes on; `stop` tells the agent to stop
+        the build and report what it has. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, taskId, step, decision]
+      properties:
+        type:
+          const: answerDeskGate
+        taskId:
+          type: string
+        step:
+          type: integer
+        decision:
+          $ref: '#/components/schemas/GateDecision'
+        note:
+          type: string
 
     SetDeskTaskAllow:
       description: |
@@ -2400,6 +2563,76 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentKey'
+
+    ClearAgentContext:
+      description: |
+        Clear an agent's context: type `/clear` (or `/compact`) into its
+        terminal once its turn has ended. Nothing is typed after it. Reaches the
+        same terminals office chat does (agentChatSendable). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: clearAgentContext
+        id:
+          type: integer
+        mode:
+          $ref: '#/components/schemas/ClearMode'
+
+    ClearMode:
+      type: string
+      enum: [clear, compact]
+
+    AnswerClearRequest:
+      description: Allow or turn down an agent's request to clear its own context. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, allow]
+      properties:
+        type:
+          const: answerClearRequest
+        id:
+          type: integer
+        allow:
+          type: boolean
+
+    SetAgentPrefs:
+      description: Change an agent's clearPolicy and/or docEditMode (see agentPrefs). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: setAgentPrefs
+        id:
+          type: integer
+        clearPolicy:
+          $ref: '#/components/schemas/AgentClearPolicy'
+        docEditMode:
+          $ref: '#/components/schemas/DocEditMode'
+
+    SetDocEditDefault:
+      description: The office-wide default for agents' document edits (see docEditDefault). Privileged; persisted.
+      type: object
+      additionalProperties: false
+      required: [type, mode]
+      properties:
+        type:
+          const: setDocEditDefault
+        mode:
+          $ref: '#/components/schemas/DocEditMode'
+
+    UndoDocEdit:
+      description: Put a document back as it was before an edit — only while nobody changed it since. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, editId]
+      properties:
+        type:
+          const: undoDocEdit
+        editId:
+          type: string
 
     InterruptAgent:
       description: |
@@ -2720,12 +2953,30 @@ components:
           type: string
 
     DeskSubtask:
+      description: |
+        One step of a card's plan. `kind` works like a workflow step: `do` is
+        work, `gate` waits for the human's go-ahead (`pixel-office task gate`),
+        `show` points the human at a file (`pixel-office show`, then `task step`).
+        Absent = do. `id` stays with the step when the human reorders the list.
       type: object
       additionalProperties: false
       required: [title, skip, done, by]
       properties:
+        id:
+          type: string
+        kind:
+          $ref: '#/components/schemas/WorkflowStepKind'
         title:
           type: string
+        ref:
+          type: string
+          description: A file (and place) the step is about, e.g. "src/app.ts --lines 10-40".
+        waiting:
+          type: boolean
+          description: A gate step the building agent reached; it waits for answerDeskGate.
+        ask:
+          type: string
+          description: What the agent asked at the gate, if anything.
         skip:
           type: boolean
         done:

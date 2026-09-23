@@ -281,7 +281,7 @@ export function VisualColorPicker({ value, onChange }: VisualColorPickerProps) {
             e.stopPropagation();
             setExpanded(true);
           }}
-          className="flex-1 min-w-0 bg-bg text-text border-2 border-border px-2 py-0.5 font-mono text-[12px]"
+          className="flex-1 min-w-0 bg-bg text-text border-2 border-border px-2 py-0.5 font-mono text-code-sm"
           spellCheck={false}
           maxLength={7}
         />

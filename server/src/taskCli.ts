@@ -3,6 +3,8 @@ import * as http from 'http';
 
 import {
   BOARD_CLI_REQUEST_TIMEOUT_MS,
+  TASK_CLI_COMMAND,
+  TASK_GATE_POLL_MS,
   TASK_NO_SUCH_CARD_ERROR,
   TASKS_API_PATH,
 } from './constants.js';
@@ -25,6 +27,7 @@ export type TaskCommand =
   | { cmd: 'show'; ref: string }
   | { cmd: 'brief'; ref: string; file?: string }
   | { cmd: 'step'; ref: string; step: number }
+  | { cmd: 'gate'; ref: string; step: number; ask?: string }
   | {
       cmd: 'done';
       ref: string;
@@ -36,7 +39,8 @@ export type TaskCommand =
 
 export const TASK_USAGE = `Usage: pixel-office task show <number>
        pixel-office task brief <number> --file brief.json   (or pipe the JSON on stdin)
-       pixel-office task step <number> <subtask number>
+       pixel-office task step <number> <step number>
+       pixel-office task gate <number> <step number> [--ask "question"]   (waits for the human)
        pixel-office task done <number> --summary "what you did" [--branch B] [--diff "3 files, +40 -2"] [--tests "result"]
 
 brief.json: {"understanding": "...", "subtasks": ["...", "..."], "files": ["..."],
@@ -48,7 +52,7 @@ const REF_RE = /^#?\d{1,9}$/;
 export function parseTaskArgs(argv: string[]): TaskCommand {
   const [cmd, rawRef, ...rest] = argv;
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return { cmd: 'help' };
-  if (cmd !== 'show' && cmd !== 'brief' && cmd !== 'step' && cmd !== 'done') {
+  if (cmd !== 'show' && cmd !== 'brief' && cmd !== 'step' && cmd !== 'gate' && cmd !== 'done') {
     throw new TaskCliError(`Unknown command "${cmd}".\n\n${TASK_USAGE}`);
   }
   if (!rawRef || !REF_RE.test(rawRef)) throw new TaskCliError(`"${cmd}" needs the card's number.`);
@@ -67,11 +71,11 @@ export function parseTaskArgs(argv: string[]): TaskCommand {
 
   if (cmd === 'show') return { cmd, ref };
   if (cmd === 'brief') return { cmd, ref, file: flags.get('--file') };
-  if (cmd === 'step') {
+  if (cmd === 'step' || cmd === 'gate') {
     const step = Number(positional[0]);
     if (!Number.isInteger(step) || step < 1)
-      throw new TaskCliError('"step" needs the subtask number.');
-    return { cmd, ref, step };
+      throw new TaskCliError(`"${cmd}" needs the step number.`);
+    return cmd === 'gate' ? { cmd, ref, step, ask: flags.get('--ask') } : { cmd, ref, step };
   }
   const summary = flags.get('--summary')?.trim();
   if (!summary) throw new TaskCliError('"done" needs --summary "what you did".');
@@ -88,6 +92,8 @@ export function parseTaskArgs(argv: string[]): TaskCommand {
 interface TaskResponse {
   status: number;
   body: unknown;
+  /** The office that answered. */
+  server: Pick<ServerConfig, 'port' | 'token'>;
 }
 
 function taskRequest(
@@ -95,6 +101,7 @@ function taskRequest(
   method: 'GET' | 'POST',
   suffix: string,
   payload?: unknown,
+  timeoutMs = BOARD_CLI_REQUEST_TIMEOUT_MS,
 ): Promise<TaskResponse> {
   return new Promise((resolve, reject) => {
     const data = payload === undefined ? undefined : JSON.stringify(payload);
@@ -110,7 +117,7 @@ function taskRequest(
             ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
             : {}),
         },
-        timeout: BOARD_CLI_REQUEST_TIMEOUT_MS,
+        timeout: timeoutMs,
       },
       (res) => {
         let text = '';
@@ -118,7 +125,7 @@ function taskRequest(
         res.on('data', (chunk: string) => (text += chunk));
         res.on('end', () => {
           try {
-            resolve({ status: res.statusCode ?? 0, body: JSON.parse(text) });
+            resolve({ status: res.statusCode ?? 0, body: JSON.parse(text), server });
           } catch {
             reject(new Error('not a task route')); // an older office answers with its SPA page
           }
@@ -217,6 +224,9 @@ export async function runTaskCommand(argv: string[], deps: TaskCliDeps = {}): Pr
     } else if (command.cmd === 'step') {
       payload = { step: command.step };
       suffix += '/step';
+    } else if (command.cmd === 'gate') {
+      payload = { step: command.step, ask: command.ask };
+      suffix += '/gate';
     } else {
       const { summary, branch, diffStat, tests } = command;
       payload = { summary, branch, diffStat, tests };
@@ -228,16 +238,71 @@ export async function runTaskCommand(argv: string[], deps: TaskCliDeps = {}): Pr
       throw new TaskCliError('No Pixel Office is running, so there is no task desk to answer.');
     if (res.status >= 400) throw new TaskCliError(errorOf(res.body));
 
-    const body = res.body as { text?: string; task?: { num: number; state: string } };
+    const body = res.body as {
+      text?: string;
+      task?: { num: number; state: string };
+      planChanged?: boolean;
+    };
+    const planNote = () => {
+      if (body.planChanged && command.cmd !== 'show') {
+        out(`\nThe human changed the steps. The card now reads:\n\n${body.text ?? ''}`);
+      }
+    };
+    if (command.cmd === 'gate') {
+      planNote();
+      return await waitAtGate(res.server, command.ref, command.step, out);
+    }
     if (command.cmd === 'show') out(body.text ?? '');
     else if (command.cmd === 'brief')
       out(`Brief handed in for card #${body.task?.num}. Stop here; a human will check it.`);
     else if (command.cmd === 'step')
-      out(`Subtask ${command.step} of card #${body.task?.num} marked done.`);
+      out(`Step ${command.step} of card #${body.task?.num} marked done.`);
     else out(`Card #${body.task?.num} reported as finished. A human will check it.`);
+    planNote();
     return 0;
   } catch (e) {
     err(e instanceof Error ? e.message : String(e));
     return 1;
+  }
+}
+
+/** Wait at a gate step until the human answers, polling the office that opened it. */
+async function waitAtGate(
+  server: Pick<ServerConfig, 'port' | 'token'>,
+  ref: string,
+  step: number,
+  out: (text: string) => void,
+): Promise<number> {
+  for (;;) {
+    let poll: { decision?: string; note?: string };
+    try {
+      const res = await taskRequest(
+        server,
+        'GET',
+        `/${ref}/gate/${step}`,
+        undefined,
+        TASK_GATE_POLL_MS + BOARD_CLI_REQUEST_TIMEOUT_MS,
+      );
+      poll = res.body as typeof poll;
+    } catch {
+      throw new TaskCliError(
+        'Lost the office while waiting at the gate. Ask the human how to go on.',
+      );
+    }
+    const note = poll.note ? ` They said: ${poll.note}` : '';
+    if (poll.decision === 'continue') {
+      out(`The human said go ahead. Step ${step} is done; carry on with the next step.${note}`);
+      return 0;
+    }
+    if (poll.decision === 'stop') {
+      out(
+        `The human said stop at step ${step}.${note} Do not go on; report what you have with: ${TASK_CLI_COMMAND} done ${ref} --summary "..."`,
+      );
+      return 0;
+    }
+    if (poll.decision === 'gone') {
+      out('This card is no longer being built here. Stop working on it.');
+      return 0;
+    }
   }
 }

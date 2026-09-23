@@ -207,6 +207,17 @@ export const PROPOSAL_POLL_MS = 25_000;
 export const PROPOSAL_WAIT_MS = 15 * 60_000;
 /** Copies of files as they were before an Apply, for Undo. */
 export const PROPOSAL_BACKUP_DIR = 'backups';
+/** Office document edits: `pixel-office doc edit` (Bearer, no browsers). */
+export const DOCS_API_PATH = '/api/docs';
+export const DOC_CLI_COMMAND = 'pixel-office doc';
+/** Edits accepted in one call (human save or agent batch). */
+export const DOC_EDITS_MAX_PER_CALL = 50;
+/** Recent document edits kept for notices and Undo. */
+export const DOC_EDITS_KEPT = 20;
+/** A change line in a notice ("¶3: before → after") clips each side to this. */
+export const DOC_EDIT_CHANGE_MAX_CHARS = 60;
+/** A text file saved from the viewer. */
+export const DOC_EDIT_TEXT_MAX_BYTES = 1_000_000;
 
 // ── Permission prompts answered from the office (permissionBroker.ts) ──
 /** How long a hook holds a permission prompt for an answer from the office before
@@ -354,8 +365,33 @@ export const TASK_DESK_TICK_MS = 3_000;
  *  installed from a release tarball, and npx would look for it on the npm registry. */
 export const TASK_CLI_COMMAND = 'pixel-office task';
 export const TASKS_API_PATH = '/api/tasks';
+/** How long one `task gate` poll waits for the human before the CLI asks again. */
+export const TASK_GATE_POLL_MS = 25_000;
 /** Every agent in the office, for `pixel-office agents` (Bearer, no browsers). */
 export const AGENTS_API_PATH = '/api/agents';
 /** How agents are told to list who is in the office. */
 export const AGENTS_CLI_COMMAND = 'pixel-office agents';
+/** An agent asks for its own context to be cleared (`pixel-office clear`; Bearer, no browsers). */
+export const CLEAR_API_PATH = '/api/agents/clear';
+/** How agents are told to ask for a clear. */
+export const CLEAR_CLI_COMMAND = 'pixel-office clear';
+/** Longest reason an agent may give with a clear request. */
+export const CLEAR_REASON_MAX_CHARS = 300;
 export const TASK_NO_SUCH_CARD_ERROR = 'No such card.';
+
+// ── Office documents (Word / PowerPoint / Excel; officeDocs.ts, docCli.ts) ──
+/** Rows of each sheet read into a DocModel before it is marked `truncated`. */
+export const DOC_MAX_ROWS = 2_000;
+/** Largest .docx/.pptx/.xlsx the office will open or edit. */
+export const DOC_MAX_FILE_BYTES = 64 * 1024 * 1024;
+/** Edits accepted in one batch. */
+export const DOC_MAX_EDITS = 500;
+/** Longest text one paragraph or shape edit may carry. */
+export const DOC_EDIT_TEXT_MAX_CHARS = 200_000;
+/** Excel's own limit on the characters in one cell. */
+export const DOC_CELL_MAX_CHARS = 32_767;
+/** `pixel-office doc outline`: characters shown per paragraph / shape line. */
+export const DOC_OUTLINE_TEXT_CHARS = 100;
+/** `pixel-office doc outline`: first rows shown per sheet, and cells per row. */
+export const DOC_OUTLINE_ROWS = 5;
+export const DOC_OUTLINE_CELLS = 8;

@@ -1,14 +1,10 @@
 import { useRef, useState } from 'react';
 
 import type { BoardPin, BoardPinKind } from '../../../core/src/messages.js';
-import {
-  BOARD_PIN_DETAIL_MAX_CHARS,
-  BOARD_PIN_DETAIL_PREVIEW_CHARS,
-  PIN_DRAG_MIME,
-  WHITEBOARD_RAIL_WIDTH_PX,
-} from '../constants.js';
+import { BOARD_PIN_DETAIL_MAX_CHARS, PIN_DRAG_MIME } from '../constants.js';
 import { dragHasFiles, pastedFiles } from '../fileUpload.js';
 import { filterPins, newPinId } from '../officeChat.js';
+import { tunable } from '../tunableStore.js';
 import { PIN_KIND_LABEL, PIN_KIND_PAPER } from './pinKinds.js';
 
 interface AgentOption {
@@ -110,7 +106,7 @@ function PinDetail({ pin, onSave }: { pin: BoardPin; onSave: (pin: BoardPin) => 
     );
   }
 
-  const long = text.length > BOARD_PIN_DETAIL_PREVIEW_CHARS;
+  const long = text.length > tunable('boardPinDetailPreviewChars');
   return (
     <div className="flex flex-col gap-2">
       {text && (
@@ -118,7 +114,7 @@ function PinDetail({ pin, onSave }: { pin: BoardPin; onSave: (pin: BoardPin) => 
           className="text-2xs leading-tight whitespace-pre-wrap break-words"
           data-testid="pin-detail-text"
         >
-          {long && !expanded ? `${text.slice(0, BOARD_PIN_DETAIL_PREVIEW_CHARS)}…` : text}
+          {long && !expanded ? `${text.slice(0, tunable('boardPinDetailPreviewChars'))}…` : text}
         </span>
       )}
       <div className="flex gap-8 text-2xs">
@@ -413,7 +409,7 @@ export function WhiteboardRail({
       className={`absolute flex flex-col bg-board text-board-ink ${
         full ? 'inset-0 z-58' : 'right-0 top-0 bottom-0 z-30 border-l-4 border-board-edge'
       }`}
-      style={full ? undefined : { width: `min(${WHITEBOARD_RAIL_WIDTH_PX}px, 100%)` }}
+      style={full ? undefined : { width: `min(${tunable('whiteboardRailWidthPx')}px, 100%)` }}
       data-full={full || undefined}
       data-testid="board-rail"
       onMouseDown={(e) => e.stopPropagation()}

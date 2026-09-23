@@ -7,9 +7,10 @@ import type {
   WorkflowStep,
   WorkflowStepKind,
 } from '../../../core/src/messages.js';
-import { WORKFLOW_DRAG_MIME, WORKFLOW_PREVIEW_STEPS } from '../constants.js';
+import { WORKFLOW_DRAG_MIME } from '../constants.js';
 import { downloadText } from '../download.js';
 import { fileSlug } from '../teams.js';
+import { tunable } from '../tunableStore.js';
 import { moveStep, previewMarkdown, runProgress } from '../workflows.js';
 import { FolderField } from './FolderField.js';
 import { Button } from './ui/Button.js';
@@ -212,7 +213,7 @@ function Editor({
                         value={step.show ?? ''}
                         onChange={(e) => setStep(i, { show: e.target.value })}
                         placeholder="File to show, e.g. ~/code/app/CHANGELOG.md --lines 1-40"
-                        className="w-full bg-bg-dark border-2 border-border px-6 py-1 text-2xs text-text font-mono"
+                        className="w-full bg-bg-dark border-2 border-border px-6 py-1 text-code-sm text-text font-mono"
                       />
                     )}
                     {(step.refs ?? []).map((ref, r) => (
@@ -225,7 +226,7 @@ function Editor({
                             })
                           }
                           placeholder="File for this step (a path)"
-                          className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-1 text-2xs text-text font-mono"
+                          className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-1 text-code-sm text-text font-mono"
                         />
                         <Button
                           size="sm"
@@ -299,11 +300,11 @@ function Editor({
       </div>
       <aside className="hidden md:flex flex-col gap-8 w-320 shrink-0 p-12 bg-bg-dark border-l-2 border-border overflow-y-auto">
         <span className="text-2xs text-text-muted uppercase">The file</span>
-        <pre className="m-0 p-8 bg-bg border-2 border-border text-2xs font-mono whitespace-pre-wrap">
+        <pre className="m-0 p-8 bg-bg border-2 border-border text-code-sm font-mono whitespace-pre-wrap">
           {previewMarkdown(title, cleaned)}
         </pre>
         <span className="text-2xs text-text-muted uppercase">What the agent receives</span>
-        <pre className="m-0 p-8 bg-chat-office border-2 border-accent text-2xs font-mono whitespace-pre-wrap">
+        <pre className="m-0 p-8 bg-chat-office border-2 border-accent text-code-sm font-mono whitespace-pre-wrap">
           {`Follow the workflow in @${initial.path ?? '~/.pixel-agents/workflows/…'} (run w…). Read it first.\n…how to mark steps and wait at gates`}
         </pre>
         <span className="text-2xs text-text-muted">
@@ -456,7 +457,7 @@ export function WorkflowRail({
               onKeyDown={(e) => e.stopPropagation()}
               rows={3}
               placeholder="How we ship a hotfix: branch off the release tag, fix, test, get my OK, then tag and deploy."
-              className="bg-bg border-2 border-border px-6 py-2 text-xs text-text font-reading resize-y"
+              className="bg-bg border-2 border-border px-6 py-2 text-read-sm text-text font-reading resize-y"
             />
             <div className="flex flex-col gap-2 text-2xs text-text-muted">
               Project folder (optional)
@@ -550,7 +551,7 @@ export function WorkflowRail({
                 </div>
                 {full && w.steps.length > 0 && (
                   <ol className="m-0 pl-0 list-none flex flex-col gap-2 text-xs">
-                    {w.steps.slice(0, WORKFLOW_PREVIEW_STEPS).map((st, i) => (
+                    {w.steps.slice(0, tunable('workflowPreviewSteps')).map((st, i) => (
                       <li key={i} className="flex gap-6 items-baseline min-w-0">
                         <span className="text-2xs text-text-muted w-16 shrink-0 text-right">
                           {i + 1}.
@@ -565,9 +566,9 @@ export function WorkflowRail({
                         )}
                       </li>
                     ))}
-                    {w.steps.length > WORKFLOW_PREVIEW_STEPS && (
+                    {w.steps.length > tunable('workflowPreviewSteps') && (
                       <li className="text-2xs text-text-muted pl-22">
-                        +{w.steps.length - WORKFLOW_PREVIEW_STEPS} more
+                        +{w.steps.length - tunable('workflowPreviewSteps')} more
                       </li>
                     )}
                   </ol>

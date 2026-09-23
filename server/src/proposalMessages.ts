@@ -30,11 +30,11 @@ export function handleProposalMessage(
     case 'decideHunk':
       proposals.decide(msg.proposalId, msg.hunkId, msg.decision, msg.reason);
       break;
-    case 'applyProposal': {
-      const result = proposals.apply(msg.proposalId);
-      if (!result.ok) notice(result.error);
+    case 'applyProposal':
+      void proposals.applyAny(msg.proposalId).then((result) => {
+        if (!result.ok) notice(result.error);
+      });
       break;
-    }
     case 'discardProposal':
       proposals.discard(msg.proposalId);
       break;

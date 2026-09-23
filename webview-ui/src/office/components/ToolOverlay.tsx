@@ -3,8 +3,6 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button.js';
 import {
   CHARACTER_SITTING_OFFSET_PX,
-  CONTEXT_CRITICAL_THRESHOLD,
-  CONTEXT_DANGER_THRESHOLD,
   CONTEXT_GAUGE_BG,
   CONTEXT_GAUGE_COLOR_CRITICAL,
   CONTEXT_GAUGE_COLOR_DANGER,
@@ -12,12 +10,12 @@ import {
   CONTEXT_GAUGE_COLOR_WARN,
   CONTEXT_GAUGE_HEIGHT_PX,
   CONTEXT_GAUGE_WIDTH_PX,
-  CONTEXT_WARN_THRESHOLD,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
   TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
+import { tunable } from '../../tunableStore.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { overlayProjection } from '../projection.js';
 import type { ToolActivity } from '../types.js';
@@ -75,9 +73,9 @@ function getActivityText(
 }
 
 function getFuelColor(ratio: number): string {
-  if (ratio >= CONTEXT_CRITICAL_THRESHOLD) return CONTEXT_GAUGE_COLOR_CRITICAL;
-  if (ratio >= CONTEXT_DANGER_THRESHOLD) return CONTEXT_GAUGE_COLOR_DANGER;
-  if (ratio >= CONTEXT_WARN_THRESHOLD) return CONTEXT_GAUGE_COLOR_WARN;
+  if (ratio >= tunable('contextCriticalThreshold')) return CONTEXT_GAUGE_COLOR_CRITICAL;
+  if (ratio >= tunable('contextDangerThreshold')) return CONTEXT_GAUGE_COLOR_DANGER;
+  if (ratio >= tunable('contextWarnThreshold')) return CONTEXT_GAUGE_COLOR_WARN;
   return CONTEXT_GAUGE_COLOR_OK;
 }
 
@@ -239,9 +237,8 @@ export function ToolOverlay({
               <div className="flex flex-col gap-0 overflow-hidden">
                 {teamRoleLabel && (
                   <span
-                    className="overflow-hidden text-ellipsis block leading-none"
+                    className="overflow-hidden text-ellipsis block leading-none text-xs"
                     style={{
-                      fontSize: '18px',
                       color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
                       fontWeight: ch.isTeamLead ? 'bold' : undefined,
                     }}
@@ -250,9 +247,8 @@ export function ToolOverlay({
                   </span>
                 )}
                 <span
-                  className="overflow-hidden text-ellipsis block leading-none"
+                  className={`overflow-hidden text-ellipsis block leading-none ${isSub ? 'text-sm' : 'text-base'}`}
                   style={{
-                    fontSize: isSub ? '20px' : '22px',
                     fontStyle: isSub ? 'italic' : undefined,
                   }}
                 >

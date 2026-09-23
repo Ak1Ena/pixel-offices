@@ -9,13 +9,12 @@ import {
   FURNITURE_ANIM_INTERVAL_SEC,
   GREETER_ID,
   GREETER_TILE_MARGIN,
-  INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
   MAX_PET_ID_LENGTH,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
-  WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
+import { tunable } from '../../tunableStore.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
 import {
   createDefaultLayout,
@@ -677,7 +676,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
       if (!ch.isActive) {
-        ch.seatTimer = INACTIVE_SEAT_TIMER_MIN_SEC + Math.random() * INACTIVE_SEAT_TIMER_RANGE_SEC;
+        ch.seatTimer = tunable('inactiveSeatSec') + Math.random() * INACTIVE_SEAT_TIMER_RANGE_SEC;
       }
     }
   }
@@ -732,7 +731,7 @@ export class OfficeState {
       ch.frame = 0;
       ch.frameTimer = 0;
       if (!ch.isActive) {
-        ch.seatTimer = INACTIVE_SEAT_TIMER_MIN_SEC + Math.random() * INACTIVE_SEAT_TIMER_RANGE_SEC;
+        ch.seatTimer = tunable('inactiveSeatSec') + Math.random() * INACTIVE_SEAT_TIMER_RANGE_SEC;
       }
     }
   }
@@ -988,7 +987,7 @@ export class OfficeState {
     if (ch) {
       ch.bubbleType = 'waiting';
       ch.waitingAwaitingInput = awaitingInput;
-      ch.bubbleTimer = WAITING_BUBBLE_DURATION_SEC;
+      ch.bubbleTimer = tunable('waitingBubbleSec');
     }
   }
 
@@ -1078,12 +1077,12 @@ export class OfficeState {
     return null;
   }
 
-  /** Show the heart bubble on a pet for WAITING_BUBBLE_DURATION_SEC. */
+  /** Show the heart bubble on a pet for as long as the "done" bubble shows. */
   showPetBubble(petId: string): void {
     const pet = this.pets.find((p) => p.id === petId);
     if (!pet) return;
     pet.bubbleType = 'heart';
-    pet.bubbleTimer = WAITING_BUBBLE_DURATION_SEC;
+    pet.bubbleTimer = tunable('waitingBubbleSec');
   }
 
   /** Dismiss the heart bubble on click; collapses timer to a fast fade. */

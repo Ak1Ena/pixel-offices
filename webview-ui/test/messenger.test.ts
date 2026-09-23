@@ -87,19 +87,14 @@ test('the outline lists the user prompts', () => {
 });
 
 test('reading prefs fall back to the defaults', () => {
-  assert.deepEqual(readPrefs(null), {
-    font: 'readable',
-    size: 'normal',
-    foldSteps: true,
-    timestamps: true,
-  });
+  assert.deepEqual(readPrefs(null), { foldSteps: true, timestamps: true });
+  // The old face/size fields are ignored here: they moved to the text settings.
   assert.deepEqual(readPrefs('{"font":"pixel","size":"huge","foldSteps":false}'), {
-    font: 'pixel',
-    size: 'normal',
     foldSteps: false,
     timestamps: true,
   });
-  assert.equal(readPrefs('not json').font, 'readable');
+  assert.deepEqual(readPrefs('not json'), { foldSteps: true, timestamps: true });
+  assert.deepEqual(readPrefs('null'), { foldSteps: true, timestamps: true });
 });
 
 test('a file edit breaks out of the steps block as its own card', () => {

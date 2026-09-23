@@ -146,6 +146,11 @@ export class ChatSender {
     this.report(agentId);
   }
 
+  /** Show an error in the agent's chat (with its current queue). */
+  notice(agentId: number, error: string): void {
+    if (this.store.get(agentId)) this.report(agentId, error);
+  }
+
   /** Try to deliver now (a writer just became able to take input). */
   retry(agentId: number): void {
     this.flush(agentId);

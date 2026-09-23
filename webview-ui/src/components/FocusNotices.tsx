@@ -1,6 +1,6 @@
-import type { FocusRequest, Proposal } from '../../../core/src/messages.js';
-import { FOCUS_NOTICES_MAX_SHOWN } from '../constants.js';
+import type { DocEditNotice, FocusRequest, Proposal } from '../../../core/src/messages.js';
 import { fileBaseName, spotLabel } from '../docViewer.js';
+import { useTunables } from '../hooks/useTunables.js';
 import { Button } from './ui/Button.js';
 
 interface FocusNoticesProps {
@@ -14,6 +14,10 @@ interface FocusNoticesProps {
   suggestions?: Proposal[];
   onReview?: (proposal: Proposal) => void;
   onLaterSuggestion?: (proposal: Proposal) => void;
+  /** Document edits agents wrote straight away (their edits are auto-accepted), not yet dismissed. */
+  docEdits?: DocEditNotice[];
+  onUndoDocEdit?: (edit: DocEditNotice) => void;
+  onDismissDocEdit?: (edit: DocEditNotice) => void;
 }
 
 /**
@@ -29,9 +33,13 @@ export function FocusNotices({
   suggestions = [],
   onReview,
   onLaterSuggestion,
+  docEdits = [],
+  onUndoDocEdit,
+  onDismissDocEdit,
 }: FocusNoticesProps) {
-  if (requests.length === 0 && suggestions.length === 0) return null;
-  const shown = requests.slice(-FOCUS_NOTICES_MAX_SHOWN);
+  const maxShown = useTunables().focusNoticesMaxShown;
+  if (requests.length === 0 && suggestions.length === 0 && docEdits.length === 0) return null;
+  const shown = requests.slice(-maxShown);
   return (
     <div
       className="absolute right-8 top-8 flex flex-col gap-6 w-320 max-w-[calc(100%-16px)] z-55"
@@ -40,7 +48,44 @@ export function FocusNotices({
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      {suggestions.slice(-FOCUS_NOTICES_MAX_SHOWN).map((p) => (
+      {docEdits.slice(-maxShown).map((edit) => (
+        <div
+          key={edit.editId}
+          role="status"
+          className="pixel-panel flex flex-col gap-6 p-8 border-status-success"
+          data-testid="doc-edit-notice"
+        >
+          <div className="text-sm">
+            <span className="text-status-success">{edit.who}</span>
+            <span className="text-text-muted"> edited </span>
+            <span>{fileBaseName(edit.path)}</span>
+          </div>
+          <ul className="m-0 pl-12 flex flex-col gap-2 font-reading text-read-sm">
+            {edit.changes.slice(0, 4).map((line, i) => (
+              <li key={i} className="break-words">
+                {line}
+              </li>
+            ))}
+            {edit.changes.length > 4 && (
+              <li className="text-text-muted">+{edit.changes.length - 4} more</li>
+            )}
+          </ul>
+          <div className="flex gap-6 items-center">
+            {onUndoDocEdit && edit.canUndo && (
+              <Button size="sm" onClick={() => onUndoDocEdit(edit)} data-testid="doc-edit-undo">
+                Undo
+              </Button>
+            )}
+            {onDismissDocEdit && (
+              <Button size="sm" variant="ghost" onClick={() => onDismissDocEdit(edit)}>
+                OK
+              </Button>
+            )}
+            <span className="ml-auto text-2xs text-text-muted">backup kept</span>
+          </div>
+        </div>
+      ))}
+      {suggestions.slice(-maxShown).map((p) => (
         <div
           key={p.proposalId}
           role="alert"

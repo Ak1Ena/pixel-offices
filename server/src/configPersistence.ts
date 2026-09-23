@@ -53,6 +53,16 @@ export interface PixelAgentsConfig {
   /** Per-provider hooks preference, machine-global for the same reason as the
    *  consent above. A provider absent from the map takes the default (true). */
   hooksEnabled: Record<string, boolean>;
+  /** What an agent's document edits do unless the agent has its own setting.
+   *  Machine-global: it guards the user's files whichever surface is open. */
+  docEditDefault: DocEditModeSetting;
+}
+
+export type DocEditModeSetting = 'ask' | 'auto' | 'off';
+const DOC_EDIT_DEFAULT: DocEditModeSetting = 'ask';
+
+function parseDocEditMode(raw: unknown): DocEditModeSetting {
+  return raw === 'ask' || raw === 'auto' || raw === 'off' ? raw : DOC_EDIT_DEFAULT;
 }
 
 const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
@@ -158,6 +168,7 @@ export function readConfig(): PixelAgentsConfig {
         externalAssetDirectories: [],
         hooksConsent: {},
         hooksEnabled: {},
+        docEditDefault: DOC_EDIT_DEFAULT,
       };
     }
     const raw = fs.readFileSync(filePath, 'utf-8');
@@ -170,6 +181,7 @@ export function readConfig(): PixelAgentsConfig {
         : [],
       hooksConsent: parseHooksConsent(parsed.hooksConsent),
       hooksEnabled: parseHooksEnabled(parsed.hooksEnabled),
+      docEditDefault: parseDocEditMode(parsed.docEditDefault),
     };
   } catch (err) {
     console.error('[Pixel Agents] Failed to read config file:', err);
@@ -179,6 +191,7 @@ export function readConfig(): PixelAgentsConfig {
       externalAssetDirectories: [],
       hooksConsent: {},
       hooksEnabled: {},
+      docEditDefault: DOC_EDIT_DEFAULT,
     };
   }
 }
@@ -296,4 +309,18 @@ export function writeConfig(config: PixelAgentsConfig): void {
   } catch (err) {
     console.error('[Pixel Agents] Failed to write config file:', err);
   }
+}
+
+// ── Documents ───────────────────────────────────────────────
+
+/** The office-wide default for agents' document edits. */
+export function getDocEditDefault(): DocEditModeSetting {
+  return readConfig().docEditDefault;
+}
+
+export function setDocEditDefault(mode: DocEditModeSetting): void {
+  const cfg = readConfig();
+  if (cfg.docEditDefault === mode) return;
+  cfg.docEditDefault = mode;
+  writeConfig(cfg);
 }

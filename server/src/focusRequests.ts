@@ -134,7 +134,7 @@ export class FocusRequests {
       return {
         ok: false,
         error:
-          'The office viewer opens PDF, Word (.docx), Excel (.xlsx), CSV, text, markdown, JSON, logs and images.',
+          'The office viewer opens PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, text, markdown, JSON, logs and images.',
       };
     }
     try {

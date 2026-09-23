@@ -22,6 +22,8 @@ export function handleTaskDeskMessage(
     type !== 'removeDeskTask' &&
     type !== 'deskTaskAction' &&
     type !== 'setDeskTaskAllow' &&
+    type !== 'editDeskSteps' &&
+    type !== 'answerDeskGate' &&
     type !== 'setAgentPickup'
   ) {
     return false;
@@ -68,6 +70,12 @@ export function handleTaskDeskMessage(
           subtasks: Array.isArray(msg.subtasks) ? (msg.subtasks as DeskSubtask[]) : undefined,
         }),
       );
+      break;
+    case 'editDeskSteps':
+      report(desk.editSteps(msg.taskId, msg.steps));
+      break;
+    case 'answerDeskGate':
+      report(desk.answerGate(msg.taskId, msg.step, msg.decision, msg.note));
       break;
     case 'setDeskTaskAllow':
       report(desk.setAllow(msg.taskId, msg.allow));

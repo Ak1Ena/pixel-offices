@@ -84,7 +84,7 @@ function MemberEditor({
               ★ lead
             </span>
           )}
-          <span className="block text-2xs text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
+          <span className="block text-code-sm text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
             {member.command || 'claude'} · {member.role || 'no role yet'}
           </span>
         </button>
@@ -121,7 +121,7 @@ function MemberEditor({
               value={member.instructions}
               onChange={(e) => onChange({ instructions: e.target.value })}
               rows={3}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text font-reading resize-y"
+              className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading resize-y"
             />
           </label>
           <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -130,7 +130,7 @@ function MemberEditor({
               value={member.command}
               onChange={(e) => onChange({ command: e.target.value })}
               placeholder="claude --model claude-sonnet-5"
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-xs text-text font-mono"
+              className="bg-bg-dark border-2 border-border px-6 py-2 text-code text-text font-mono"
             />
           </label>
           <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -235,7 +235,7 @@ function TeamEditor({
           <input
             value={team.description ?? ''}
             onChange={(e) => setTeam((t) => ({ ...t, description: e.target.value }))}
-            className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text font-reading"
+            className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading"
           />
         </label>
         <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -245,7 +245,7 @@ function TeamEditor({
             onChange={(e) => setTeam((t) => ({ ...t, goalTemplate: e.target.value }))}
             rows={2}
             placeholder="Build this feature: {goal}. Split the work, keep the plan on the board, and tell me when it's ready."
-            className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text font-reading resize-y"
+            className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading resize-y"
           />
         </label>
         <div className="flex flex-col gap-6">
@@ -358,7 +358,7 @@ function StartDialog({
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             rows={3}
-            className="bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text font-reading resize-y"
+            className="bg-bg-dark border-2 border-accent px-6 py-2 text-read text-text font-reading resize-y"
             data-testid="team-goal"
           />
         </label>
@@ -372,13 +372,13 @@ function StartDialog({
                 {m.name}
                 {!m.lead && <span className="text-text-muted"> · on call</span>}
               </span>
-              <code className="text-2xs text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
+              <code className="text-code-sm text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
                 {m.command || 'claude'}
               </code>
             </div>
           ))}
         </div>
-        <span className="text-2xs text-text-muted font-reading">
+        <span className="text-read-sm text-text-muted font-reading">
           Only the lead starts now, with your goal. It calls in the teammates the task needs by
           writing @name; each starts then, with the lead's message. Each running member counts
           toward the office's limit of agents it runs.
@@ -449,7 +449,7 @@ function ExportDialog({
           </div>
         )}
         <span className="text-2xs text-text-muted">Share code</span>
-        <div className="p-6 bg-bg-dark border-2 border-border text-2xs font-mono break-all max-h-80 overflow-y-auto">
+        <div className="p-6 bg-bg-dark border-2 border-border text-code-sm font-mono break-all max-h-80 overflow-y-auto">
           {encodeShareCode(bundle)}
         </div>
       </div>
@@ -543,7 +543,7 @@ function ImportDialog({
           onKeyDown={(e) => e.stopPropagation()}
           rows={3}
           placeholder="…or paste a share code (PXT1-…)"
-          className="bg-bg-dark border-2 border-border px-6 py-2 text-2xs text-text font-mono"
+          className="bg-bg-dark border-2 border-border px-6 py-2 text-code-sm text-text font-mono"
         />
         {error && <span className="text-2xs text-danger">{error}</span>}
         {text.trim() && !bundle && !error && (
@@ -554,7 +554,7 @@ function ImportDialog({
             <span className="text-sm">{bundle.team.title}</span>
             <Crew members={bundle.team.members} />
             {bundle.team.description && (
-              <span className="text-xs text-text-muted font-reading">
+              <span className="text-read-sm text-text-muted font-reading">
                 {bundle.team.description}
               </span>
             )}
@@ -565,7 +565,7 @@ function ImportDialog({
                   {m.lead ? '★ ' : ''}
                   {m.name}
                 </span>
-                <code className="flex-1 min-w-0 text-2xs font-mono overflow-hidden text-ellipsis whitespace-nowrap">
+                <code className="flex-1 min-w-0 text-code-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap">
                   {m.command || 'claude (your default)'}
                 </code>
               </div>
@@ -683,7 +683,7 @@ function AiDialog({
               onKeyDown={(e) => e.stopPropagation()}
               rows={5}
               placeholder="A team that turns a screenshot into a React page, checks it on mobile, and asks me before merging."
-              className="bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text font-reading resize-y"
+              className="bg-bg-dark border-2 border-accent px-6 py-2 text-read text-text font-reading resize-y"
               data-testid="team-ai-description"
             />
           </label>
@@ -767,10 +767,10 @@ function AiDialog({
                       {m.name} {m.lead && <span className="text-2xs text-pin-note">★ lead</span>}
                       <span className="text-2xs text-text-muted"> · {m.role}</span>
                     </span>
-                    <code className="text-2xs font-mono text-text-muted">
+                    <code className="text-code-sm font-mono text-text-muted">
                       {m.command || 'claude'}
                     </code>
-                    <span className="text-xs font-reading italic text-text-muted">
+                    <span className="text-read-sm font-reading italic text-text-muted">
                       {m.instructions}
                     </span>
                   </div>
@@ -789,7 +789,7 @@ function AiDialog({
             {history.map((h, i) => (
               <span
                 key={i}
-                className={`text-xs font-reading ${h.who === 'you' ? 'self-end text-text' : 'text-text-muted'}`}
+                className={`text-read-sm font-reading ${h.who === 'you' ? 'self-end text-text' : 'text-text-muted'}`}
               >
                 {h.text}
               </span>
@@ -809,7 +809,7 @@ function AiDialog({
                 onChange={(e) => setChange(e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder='Ask for changes, e.g. "add a copywriter"'
-                className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text font-reading"
+                className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading"
               />
               <Button size="sm" variant="accent" type="submit" disabled={busy}>
                 Send
@@ -852,7 +852,7 @@ function RunningTeams({
               </Button>
             )}
           </div>
-          <span className="text-2xs text-text-muted font-reading">
+          <span className="text-read-sm text-text-muted font-reading">
             {c.goal} · {c.folder}
           </span>
           <div className="flex gap-6 flex-wrap">
@@ -933,7 +933,7 @@ export function TeamsPanel({
       }}
     >
       <div className="flex items-center gap-8 px-16 py-8 border-b-2 border-border flex-wrap">
-        <span className="text-xl">Teams</span>
+        <span className="text-lg">Teams</span>
         <span className="flex-1" />
         {view.kind === 'library' && (
           <>
@@ -1014,7 +1014,7 @@ export function TeamsPanel({
                 </div>
                 <Crew members={t.members} />
                 {t.description && (
-                  <span className="text-xs text-text-muted font-reading">{t.description}</span>
+                  <span className="text-read-sm text-text-muted font-reading">{t.description}</span>
                 )}
                 <div className="flex gap-4 flex-wrap">
                   {t.members.map((m) => (

@@ -60,7 +60,8 @@ export function parseProposeArgs(argv: string[]): ProposeCommand {
   return cmd;
 }
 
-function request(
+/** One call to the office's proposals route (also used by `doc edit --wait`). */
+export function request(
   server: ServerConfig,
   method: 'GET' | 'POST',
   suffix: string,

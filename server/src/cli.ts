@@ -23,6 +23,7 @@ import {
   loadAllPets,
 } from './assetReload.js';
 import { runBoardCommand } from './boardCli.js';
+import { runClearCommand } from './clearCli.js';
 import type { AssetCache, ReloadAssetsSideEffect } from './clientMessageHandler.js';
 import {
   getHooksConsent,
@@ -31,6 +32,7 @@ import {
   readConfig,
 } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
+import { runDocCommand } from './docCli.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { runLauncher } from './launcher.js';
 import { OfficeSessions } from './officeSessions.js';
@@ -97,6 +99,8 @@ export function parseArgs(argv: string[]): CliArgs {
                                            can be sent messages; other programs run as usual)
        pixel-office task <show|brief|step|done> …  Answer a task desk card (for agents)
        pixel-office agents [--json]         List every agent in the office (any CLI)
+       pixel-office clear [--reason T]      Ask the office to clear your context (for agents)
+       pixel-office doc <outline|read|edit> …  Word, PowerPoint, Excel by numbered place
        pixel-office board <list|add|rm> …  Read and post to the shared whiteboard
                                            (pixel-office board --help for details)
 
@@ -248,6 +252,14 @@ async function main(): Promise<void> {
   // `pixel-office agents`: agents list who is in the office (any CLI).
   if (first === 'agents') {
     process.exit(await runAgentsCommand(process.argv.slice(3)));
+  }
+  // `pixel-office doc …`: Word / PowerPoint / Excel by numbered place (outline, read, edit).
+  if (first === 'doc') {
+    process.exit(await runDocCommand(process.argv.slice(3)));
+  }
+  // `pixel-office clear`: an agent asks for its own context to be cleared.
+  if (first === 'clear') {
+    process.exit(await runClearCommand(process.argv.slice(3)));
   }
   // `pixel-office task …`: agents answer the task desk.
   if (first === 'task') {

@@ -22,7 +22,9 @@ import {
   DEFAULT_MAX_CONTEXT_TOKENS,
   TOKEN_BURN_TICK_MS,
 } from './constants.js';
+import { ContextClear } from './contextClear.js';
 import { DismissalTracker } from './dismissalTracker.js';
+import { DocEdits } from './docEdits.js';
 import {
   adoptExternalSessionFromHook,
   ensureProjectScan,
@@ -112,9 +114,12 @@ export class AgentRuntime {
   readonly permissions: PermissionBroker;
   /** Sessions started with `pixel-agents claude`: their launchers poll here for office input. */
   readonly launchers: LauncherHub;
+  /** Clearing agents' context (/clear), by the human or on an agent's own request. */
+  readonly contextClear: ContextClear;
   private boardStore: BoardStore | null = null;
   private focusRequests: FocusRequests | null = null;
   private proposalStore: Proposals | null = null;
+  private docEditor: DocEdits | null = null;
   private workflowStore: WorkflowStore | null = null;
   private workflowRuns: WorkflowRuns | null = null;
   private teamStore: TeamStore | null = null;
@@ -161,6 +166,7 @@ export class AgentRuntime {
     this.chatSender = new ChatSender(store);
     this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
     this.permissions = new PermissionBroker(store);
+    this.contextClear = new ContextClear(store, this.chatSender);
     setReplyListener((id, text) => {
       this.relay.onReply(id, text);
       this.teamRuns?.onReply(id, text);
@@ -661,6 +667,9 @@ export class AgentRuntime {
         displayName: p.displayName,
         cwd: p.cwd,
         pickup: p.pickup,
+        launchKey: p.launchKey,
+        clearPolicy: p.clearPolicy,
+        docEditMode: p.docEditMode,
       };
 
       assignPaletteIfNeeded(agent, this.store);
@@ -812,7 +821,8 @@ export class AgentRuntime {
 
   adoptLaunchedSession(sessionId: string, cwd: string): void {
     for (const agent of this.store.values()) {
-      if (agent.sessionId === sessionId) return;
+      // launchKey: the agent moved to a new transcript (/clear) but is still this run.
+      if (agent.sessionId === sessionId || agent.launchKey === sessionId) return;
       // Team discovery may already track this transcript under another session id.
       if (agent.jsonlFile && path.basename(agent.jsonlFile, '.jsonl') === sessionId) return;
     }
@@ -871,6 +881,12 @@ export class AgentRuntime {
   get proposals(): Proposals {
     this.proposalStore ??= new Proposals(this.store, (id, text) => this.chatSender.send(id, text));
     return this.proposalStore;
+  }
+
+  /** Edits to office documents (viewer saves, agents' `pixel-office doc edit`). */
+  get docs(): DocEdits {
+    this.docEditor ??= new DocEdits(this.store, () => this.proposals);
+    return this.docEditor;
   }
 
   /** Saved workflows (~/.pixel-agents/workflows/*.md); read and watched on first use. */
@@ -966,6 +982,7 @@ export class AgentRuntime {
     this.hookChat.dispose();
     this.chatSender.dispose();
     this.permissions.dispose();
+    this.contextClear.dispose();
     clearInterval(this.tokenBurnTimer);
     this.launchers.dispose();
     this.boardStore?.dispose();

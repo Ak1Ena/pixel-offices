@@ -131,16 +131,18 @@ export function chatOutline(
     }));
 }
 
+/**
+ * The Messenger's own reading settings. Its face and size used to live here too
+ * ("Message font", "Text size"); they are the viewer-wide text settings now
+ * (textPrefs.ts), which the Messenger's menu edits in place, so Settings and the
+ * Messenger can't disagree. `readTextPrefs` reads the old fields once to seed them.
+ */
 export interface ReadingPrefs {
-  font: 'readable' | 'pixel';
-  size: 'normal' | 'large';
   foldSteps: boolean;
   timestamps: boolean;
 }
 
 export const DEFAULT_READING_PREFS: ReadingPrefs = {
-  font: 'readable',
-  size: 'normal',
   foldSteps: true,
   timestamps: true,
 };
@@ -149,12 +151,10 @@ export const DEFAULT_READING_PREFS: ReadingPrefs = {
 export function readPrefs(raw: string | null): ReadingPrefs {
   if (!raw) return { ...DEFAULT_READING_PREFS };
   try {
-    const p = JSON.parse(raw) as Partial<Record<keyof ReadingPrefs, unknown>>;
+    const p = JSON.parse(raw) as Partial<Record<keyof ReadingPrefs, unknown>> | null;
     return {
-      font: p.font === 'pixel' ? 'pixel' : 'readable',
-      size: p.size === 'large' ? 'large' : 'normal',
-      foldSteps: typeof p.foldSteps === 'boolean' ? p.foldSteps : true,
-      timestamps: typeof p.timestamps === 'boolean' ? p.timestamps : true,
+      foldSteps: typeof p?.foldSteps === 'boolean' ? p.foldSteps : true,
+      timestamps: typeof p?.timestamps === 'boolean' ? p.timestamps : true,
     };
   } catch {
     return { ...DEFAULT_READING_PREFS };

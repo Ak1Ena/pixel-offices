@@ -12,6 +12,7 @@ import {
   writeConfig,
 } from './configPersistence.js';
 import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
+import { handleContextClearMessage } from './contextClearMessages.js';
 import { listFolder } from './folderBrowser.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { OfficeSessions } from './officeSessions.js';
@@ -101,6 +102,7 @@ export function handleClientMessage(
 
   if (handleTaskDeskMessage(msg, send, runtime?.desk, ctx.privileged === true)) return;
   if (handleWorkflowMessage(msg, send, runtime, ctx.privileged === true)) return;
+  if (handleContextClearMessage(msg, send, runtime, ctx.privileged === true)) return;
   if (handleTeamMessage(msg, send, runtime, ctx.privileged === true)) return;
   if (handleProposalMessage(msg, send, runtime, ctx.privileged === true)) return;
 

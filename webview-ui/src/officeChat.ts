@@ -1,12 +1,6 @@
 import type { BoardPin, ChatEntry } from '../../core/src/messages.js';
-import {
-  AGENTS_LIST_COMMAND,
-  BOARD_POST_COMMAND,
-  BURN_FIRE_PER_MIN,
-  BURN_WARM_PER_MIN,
-  CHAT_CLIENT_HISTORY_LIMIT,
-  CHAT_PEEK_MAX_CHARS,
-} from './constants.js';
+import { AGENTS_LIST_COMMAND, BOARD_POST_COMMAND, CHAT_CLIENT_HISTORY_LIMIT } from './constants.js';
+import { tunable } from './tunableStore.js';
 
 /**
  * Pure helpers for the office chat and whiteboard (DOM-free, Node-testable).
@@ -58,7 +52,8 @@ export function chatPreview(entries: ChatEntry[] | undefined): string | null {
     const entry = entries[i];
     if (entry.role !== 'assistant') continue;
     const line = entry.text.replace(/\s+/g, ' ').trim();
-    return line.length > CHAT_PEEK_MAX_CHARS ? `${line.slice(0, CHAT_PEEK_MAX_CHARS)}…` : line;
+    const max = tunable('chatPeekMaxChars');
+    return line.length > max ? `${line.slice(0, max)}…` : line;
   }
   return null;
 }
@@ -106,9 +101,13 @@ export function formatTokens(n: number): string {
 }
 
 /** Burn level from new tokens per minute: 0 normal, 1 warm, 2 on fire. */
-export function burnLevelFor(burnPerMinute: number): 0 | 1 | 2 {
-  if (burnPerMinute >= BURN_FIRE_PER_MIN) return 2;
-  if (burnPerMinute >= BURN_WARM_PER_MIN) return 1;
+export function burnLevelFor(
+  burnPerMinute: number,
+  warmAt: number = tunable('burnWarmPerMin'),
+  fireAt: number = tunable('burnFirePerMin'),
+): 0 | 1 | 2 {
+  if (burnPerMinute >= fireAt) return 2;
+  if (burnPerMinute >= warmAt) return 1;
   return 0;
 }
 

@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import Fastify from 'fastify';
 import * as fs from 'fs';
 
+import type { DocEdit } from '../../core/src/docModel.js';
 import type { BoardPin } from '../../core/src/messages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
@@ -31,6 +32,9 @@ import {
   BOARD_PINS_API_PATH,
   CHAT_FILE_API_PREFIX,
   CHAT_FILE_NAME_PATTERN,
+  CLEAR_API_PATH,
+  DOC_EDIT_TEXT_MAX_BYTES,
+  DOCS_API_PATH,
   FOCUS_API_PATH,
   FOCUS_POLL_MS,
   HOOK_API_PREFIX,
@@ -42,6 +46,7 @@ import {
   PERMISSION_POLL_SEGMENT,
   PROPOSAL_POLL_MS,
   PROPOSALS_API_PATH,
+  TASK_GATE_POLL_MS,
   TASK_NO_SUCH_CARD_ERROR,
   TASKS_API_PATH,
   WORKFLOW_GATE_POLL_MS,
@@ -151,6 +156,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   registerBoardUploadRoute(app, options);
   registerBoardPinRoutes(app, options);
   registerFocusRoutes(app, options);
+  registerDocRoutes(app, options);
   registerProposalRoutes(app, options);
   registerWorkflowRoutes(app, options);
   registerTaskRoutes(app, options);
@@ -328,6 +334,77 @@ function registerBoardFileRoute(app: FastifyInstance, options: HttpServerOptions
   );
 }
 
+/**
+ * Office documents. The viewer (token in hand, like the file route above)
+ * reads a pinned document's numbered places and saves the human's edits; an
+ * AGENT sends its edits with `pixel-office doc edit` (Bearer, browsers
+ * refused) and the office applies them, or holds them for review, as the
+ * human set for that agent (docEdits.ts).
+ */
+function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): void {
+  const { getBoardPins, runtime } = options;
+  if (!getBoardPins || !runtime) return;
+  const pinParams = {
+    params: {
+      type: 'object',
+      properties: { pinId: { type: 'string', pattern: '^[A-Za-z0-9_-]{1,64}$' } },
+      required: ['pinId'],
+    },
+  };
+  type Pin = { Params: { pinId: string } };
+
+  app.get<Pin>(
+    `${BOARD_FILE_API_PREFIX}/:pinId/model`,
+    { preHandler: bearerAuth(options.token), schema: pinParams },
+    async (request, reply) => {
+      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      if (!file.ok) return reply.code(file.status).send({ error: file.error });
+      const result = await runtime.docs.model(file.filePath);
+      if (!result.ok) return reply.code(415).send({ error: result.error });
+      return reply
+        .header('Cache-Control', 'no-store')
+        .send({ sha: result.sha, model: result.model });
+    },
+  );
+
+  app.post<Pin & { Body: { sha?: unknown; edits?: unknown; text?: unknown } | null }>(
+    `${BOARD_FILE_API_PREFIX}/:pinId/edits`,
+    {
+      preHandler: bearerAuth(options.token),
+      schema: pinParams,
+      bodyLimit: DOC_EDIT_TEXT_MAX_BYTES * 2,
+    },
+    async (request, reply) => {
+      const file = resolvePinFile(getBoardPins(), request.params.pinId);
+      if (!file.ok) return reply.code(file.status).send({ error: file.error });
+      const body = request.body ?? {};
+      const sha = typeof body.sha === 'string' ? body.sha : undefined;
+      const who = { label: 'You' };
+      const result =
+        body.text !== undefined
+          ? await runtime.docs.writeText(file.filePath, body.text, who, sha)
+          : Array.isArray(body.edits)
+            ? await runtime.docs.write(file.filePath, body.edits as DocEdit[], who, sha)
+            : ({ ok: false, status: 400, error: 'Send edits or text.' } as const);
+      if (!result.ok) return reply.code(result.status).send({ error: result.error });
+      return { sha: result.sha, edit: result.notice };
+    },
+  );
+
+  const noBrowsers = async (request: FastifyRequest, reply: FastifyReply) => {
+    if (request.headers.origin !== undefined) reply.code(403).send('forbidden');
+  };
+  app.post<{ Body: unknown }>(
+    `${DOCS_API_PATH}/edits`,
+    { preHandler: [noBrowsers, bearerAuth(options.token)] },
+    async (request, reply) => {
+      const result = await runtime.docs.fromAgent(request.body);
+      if (result.ok) return result;
+      return reply.code(result.status === 'refused' ? 403 : 400).send(result);
+    },
+  );
+}
+
 /** Upload a document from the browser: stored locally and pinned to the whiteboard. Token required. */
 function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptions): void {
   const { saveBoardPin } = options;
@@ -350,7 +427,8 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
       if (!Buffer.isBuffer(request.body)) return reply.code(400).send({ error: 'No file sent.' });
       if (!isViewableName(name)) {
         return reply.code(415).send({
-          error: 'The viewer opens PDF, Word (.docx), Excel (.xlsx), CSV, text and image files.',
+          error:
+            'The viewer opens PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, text and image files.',
         });
       }
       const id = `pin_${crypto.randomUUID().replace(/-/g, '')}`;
@@ -456,7 +534,14 @@ function registerTaskRoutes(app: FastifyInstance, options: HttpServerOptions): v
   };
   type Ref = { Params: { ref: string }; Body: unknown };
   const answer = (reply: FastifyReply, result: DeskReply) => {
-    if (result.ok) return { task: result.value, text: describeTask(result.value) };
+    if (result.ok) {
+      const changed = taskDesk().takePlanChange(result.value.id);
+      return {
+        task: result.value,
+        text: describeTask(result.value),
+        ...(changed ? { planChanged: true } : {}),
+      };
+    }
     const status =
       result.error === TASK_NO_SUCH_CARD_ERROR
         ? 404
@@ -480,6 +565,29 @@ function registerTaskRoutes(app: FastifyInstance, options: HttpServerOptions): v
   );
   app.post<Ref>(`${TASKS_API_PATH}/:ref/done`, route, async (request, reply) =>
     answer(reply, taskDesk().submitResult(request.params.ref, request.body)),
+  );
+  // A building agent reached a gate step (POST opens it; GET long-polls the answer).
+  app.post<Ref>(`${TASKS_API_PATH}/:ref/gate`, route, async (request, reply) => {
+    const body = request.body as { step?: unknown; ask?: unknown } | null;
+    return answer(reply, taskDesk().openGate(request.params.ref, body?.step, body?.ask));
+  });
+  app.get<Ref & { Params: { step: string } }>(
+    `${TASKS_API_PATH}/:ref/gate/:step`,
+    {
+      preHandler: route.preHandler,
+      schema: {
+        params: {
+          type: 'object',
+          properties: {
+            ref: { type: 'string', pattern: '^[A-Za-z0-9_#-]{1,64}$' },
+            step: { type: 'string', pattern: '^[0-9]{1,3}$' },
+          },
+          required: ['ref', 'step'],
+        },
+      },
+    },
+    async (request) =>
+      taskDesk().waitGate(request.params.ref, Number(request.params.step), TASK_GATE_POLL_MS),
   );
 }
 
@@ -510,6 +618,24 @@ function registerRosterRoute(app: FastifyInstance, options: HttpServerOptions): 
       },
     },
     async (request) => ({ agents: officeRoster(options.store, request.query.session) }),
+  );
+
+  // An agent asks to have its own context cleared (`pixel-office clear`).
+  // 404 = not a session of this office: the CLI tries the next one.
+  const runtime = options.runtime;
+  if (!runtime) return;
+  app.post<{ Body: { session?: unknown; reason?: unknown } | null }>(
+    CLEAR_API_PATH,
+    { preHandler: [noBrowsers, bearerAuth(options.token)] },
+    async (request, reply) => {
+      const result = runtime.contextClear.requestFromAgent(
+        request.body?.session,
+        request.body?.reason,
+      );
+      if (result.ok) return { status: result.status };
+      const code = result.status === 'unknown' ? 404 : result.status === 'refused' ? 403 : 409;
+      return reply.code(code).send({ status: result.status, error: result.error });
+    },
   );
 }
 

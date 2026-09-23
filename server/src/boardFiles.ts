@@ -30,6 +30,7 @@ const SERVABLE: Record<string, string> = {
   '.pdf': 'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   '.csv': 'text/plain; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.md': 'text/plain; charset=utf-8',
@@ -103,7 +104,8 @@ export function resolvePinFile(pins: BoardPin[], pinId: string): PinFileResult {
     return {
       ok: false,
       status: 415,
-      error: 'The viewer opens PDF, Word (.docx), Excel (.xlsx), CSV, text and image files.',
+      error:
+        'The viewer opens PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, text and image files.',
     };
   }
   let stat: fs.Stats;

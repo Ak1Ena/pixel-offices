@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type {
+  AgentClearPolicy,
+  AgentClearRequest,
   AgentKey,
   AgentTokenUsage,
   BoardPin,
   ChatEntry,
+  ClearMode,
+  DocEditMode,
   WorkflowRun,
 } from '../../../core/src/messages.js';
 import {
   AGENT_NAME_INPUT_MAX_CHARS,
   CHAT_CARD_EDGE_MARGIN_PX,
   CHAT_CARD_GAP_PX,
-  CHAT_CARD_HEIGHT_PX,
-  CHAT_CARD_WIDTH_PX,
-  CHAT_SHEET_HEIGHT_FRACTION,
   MOBILE_BREAKPOINT_PX,
   PIN_DRAG_MIME,
 } from '../constants.js';
@@ -25,6 +26,7 @@ import type { ChatQueueState } from '../hooks/useOfficeChat.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { overlayProjection } from '../office/projection.js';
 import { burnLevelFor, formatTokens } from '../officeChat.js';
+import { tunable } from '../tunableStore.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
@@ -71,7 +73,25 @@ interface ChatCardProps {
   onStop?: () => void;
   /** Take this agent out of the office. An agent the office runs is stopped too. */
   onRemove?: () => void;
+  /** Clear (or compact) the agent's context. Absent when the office can't type into it. */
+  onClearContext?: (mode: ClearMode) => void;
+  /** What happens when this agent asks to clear its own context. */
+  clearPolicy?: AgentClearPolicy;
+  onSetClearPolicy?: (policy: AgentClearPolicy) => void;
+  /** The agent's own open request to be cleared, if any. */
+  clearRequest?: AgentClearRequest;
+  onAnswerClear?: (allow: boolean) => void;
+  /** This agent's own document edit mode (absent = the office default, `docEditDefault`). */
+  docEditMode?: DocEditMode;
+  docEditDefault?: DocEditMode;
+  onSetDocEditMode?: (mode: DocEditMode) => void;
 }
+
+const DOC_EDIT_LABEL: Record<DocEditMode, string> = {
+  ask: 'Ask before applying',
+  auto: 'Auto-accept',
+  off: 'Read only',
+};
 
 const SCREEN_KEYS: Array<{ label: string; keys: AgentKey[] }> = [
   { label: 'Enter', keys: ['enter'] },
@@ -122,7 +142,7 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
         </span>
       </div>
       <div
-        className={`px-8 py-4 border-2 text-sm whitespace-pre-wrap break-words ${
+        className={`px-8 py-4 border-2 font-reading text-read leading-snug whitespace-pre-wrap break-words ${
           isUser
             ? fromOffice
               ? 'bg-chat-office border-accent'
@@ -185,10 +205,21 @@ export function ChatCard({
   onKeys,
   onStop,
   onRemove,
+  onClearContext,
+  clearPolicy = 'ask',
+  onSetClearPolicy,
+  clearRequest,
+  onAnswerClear,
+  docEditMode,
+  docEditDefault = 'ask',
+  onSetDocEditMode,
 }: ChatCardProps) {
   const [showWorkflows, setShowWorkflows] = useState(false);
   const [showScreen, setShowScreen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [showClear, setShowClear] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
+  const [clearMode, setClearMode] = useState<ClearMode>('clear');
   const [draft, setDraft] = useState('');
   const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [isDropTarget, setIsDropTarget] = useState(false);
@@ -234,8 +265,8 @@ export function ChatCard({
   );
   const charX = project.toScreenX(ch.x);
   const charY = project.toScreenY(ch.y);
-  const width = Math.min(CHAT_CARD_WIDTH_PX, rect.width - CHAT_CARD_EDGE_MARGIN_PX * 2);
-  const height = Math.min(CHAT_CARD_HEIGHT_PX, rect.height - CHAT_CARD_EDGE_MARGIN_PX * 2);
+  const width = Math.min(tunable('chatCardWidthPx'), rect.width - CHAT_CARD_EDGE_MARGIN_PX * 2);
+  const height = Math.min(tunable('chatCardHeightPx'), rect.height - CHAT_CARD_EDGE_MARGIN_PX * 2);
   const fitsRight = charX + CHAT_CARD_GAP_PX + width <= rect.width - CHAT_CARD_EDGE_MARGIN_PX;
   const rawLeft = fitsRight ? charX + CHAT_CARD_GAP_PX : charX - CHAT_CARD_GAP_PX - width;
   const left = Math.max(
@@ -248,13 +279,14 @@ export function ChatCard({
   );
   const tailTop = Math.max(16, Math.min(charY - top - 12, height - 40));
   // Small screens: a bottom sheet across the whole panel, no anchoring.
+  const sheetFraction = tunable('chatSheetHeightFraction');
   const isSheet = rect.width < MOBILE_BREAKPOINT_PX;
   const frame = isSheet
     ? {
         left: 0,
-        top: Math.round(rect.height * (1 - CHAT_SHEET_HEIGHT_FRACTION)),
+        top: Math.round(rect.height * (1 - sheetFraction)),
         width: rect.width,
-        height: Math.round(rect.height * CHAT_SHEET_HEIGHT_FRACTION),
+        height: Math.round(rect.height * sheetFraction),
       }
     : { left, top, width, height };
   const showTail = !isSheet && left === rawLeft;
@@ -427,6 +459,29 @@ export function ChatCard({
             ■ Stop
           </Button>
         )}
+        {(onSetClearPolicy || onSetDocEditMode) && (
+          <Button
+            size="sm"
+            variant={showPrefs ? 'active' : 'default'}
+            onClick={() => setShowPrefs((v) => !v)}
+            title="What this agent may do: clear its own context, edit documents"
+            aria-label="Agent settings"
+            data-testid="chat-prefs"
+          >
+            ⚙
+          </Button>
+        )}
+        {onClearContext && (
+          <Button
+            size="sm"
+            variant={showClear ? 'active' : 'default'}
+            onClick={() => setShowClear((v) => !v)}
+            title="Clear this agent's context (/clear), or change whether it may clear itself"
+            data-testid="chat-clear"
+          >
+            Clear…
+          </Button>
+        )}
         {screen && (
           <Button
             size="sm"
@@ -468,6 +523,126 @@ export function ChatCard({
           ×
         </Button>
       </div>
+
+      {clearRequest && onAnswerClear && (
+        <div
+          role="alertdialog"
+          aria-label="Agent asks to clear its context"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-warning text-xs flex-wrap"
+          data-testid="chat-clear-request"
+        >
+          <span className="flex-1 min-w-0">
+            <span className="text-warning">Asks to clear its context.</span>
+            {clearRequest.reason ? ` “${clearRequest.reason}”` : ''} Nothing is carried over.
+          </span>
+          <Button size="sm" onClick={() => onAnswerClear(true)} data-testid="chat-clear-allow">
+            Allow
+          </Button>
+          <Button size="sm" onClick={() => onAnswerClear(false)}>
+            Not now
+          </Button>
+        </div>
+      )}
+
+      {onClearContext && showClear && (
+        <div
+          role="dialog"
+          aria-label="Clear context"
+          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b-2 border-danger text-xs"
+          data-testid="chat-clear-panel"
+        >
+          <fieldset className="flex flex-col gap-2">
+            <legend className="sr-only">How to clear</legend>
+            <label className="flex items-start gap-6">
+              <input
+                type="radio"
+                name={`clear-mode-${agentId}`}
+                checked={clearMode === 'clear'}
+                onChange={() => setClearMode('clear')}
+              />
+              <span>
+                <strong>Clear</strong> — /clear when the turn ends. Nothing is typed after it; the
+                agent starts blank.
+              </span>
+            </label>
+            <label className="flex items-start gap-6">
+              <input
+                type="radio"
+                name={`clear-mode-${agentId}`}
+                checked={clearMode === 'compact'}
+                onChange={() => setClearMode('compact')}
+              />
+              <span>
+                <strong>Compact instead</strong> — /compact keeps a summary in the session.
+              </span>
+            </label>
+          </fieldset>
+          <div className="flex items-center gap-8 flex-wrap">
+            <Button
+              size="sm"
+              className="bg-danger! border-danger text-white"
+              onClick={() => {
+                setShowClear(false);
+                onClearContext(clearMode);
+              }}
+              data-testid="chat-clear-yes"
+            >
+              {clearMode === 'clear' ? 'Clear context' : 'Compact'}
+            </Button>
+            <Button size="sm" onClick={() => setShowClear(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {showPrefs && (onSetClearPolicy || onSetDocEditMode) && (
+        <div
+          role="dialog"
+          aria-label="Agent settings"
+          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b-2 border-border text-xs"
+          data-testid="chat-prefs-panel"
+        >
+          {onSetClearPolicy && (
+            <label
+              className="flex items-center gap-8 flex-wrap"
+              htmlFor={`clear-policy-${agentId}`}
+            >
+              <span className="flex-1 min-w-0">When it asks to clear its own context</span>
+              <select
+                id={`clear-policy-${agentId}`}
+                value={clearPolicy}
+                onChange={(e) => onSetClearPolicy(e.target.value as AgentClearPolicy)}
+                className="bg-bg text-text border-2 border-border rounded-none px-2"
+                data-testid="chat-clear-policy"
+              >
+                <option value="ask">Ask me</option>
+                <option value="allow">Allow</option>
+                <option value="never">Never</option>
+              </select>
+            </label>
+          )}
+          {onSetDocEditMode && (
+            <label className="flex items-center gap-8 flex-wrap" htmlFor={`doc-mode-${agentId}`}>
+              <span className="flex-1 min-w-0">Document edits (Word, PowerPoint, Excel)</span>
+              <select
+                id={`doc-mode-${agentId}`}
+                value={docEditMode ?? docEditDefault}
+                onChange={(e) => onSetDocEditMode(e.target.value as DocEditMode)}
+                className="bg-bg text-text border-2 border-border rounded-none px-2"
+                data-testid="chat-doc-mode"
+              >
+                {(['ask', 'auto', 'off'] as const).map((mode) => (
+                  <option key={mode} value={mode}>
+                    {DOC_EDIT_LABEL[mode]}
+                    {!docEditMode && mode === docEditDefault ? ' (office default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
 
       {onRemove && confirmRemove && (
         <div
@@ -557,7 +732,7 @@ export function ChatCard({
           className="flex flex-col gap-4 p-8 bg-bg-dark border-b-2 border-bg-thumb"
           data-testid="chat-screen"
         >
-          <pre className="m-0 max-h-200 overflow-auto p-6 bg-chat-tool text-text text-2xs leading-tight whitespace-pre">
+          <pre className="m-0 max-h-200 overflow-auto p-6 bg-chat-tool text-text text-code-sm leading-tight whitespace-pre">
             {screen.length > 0 ? screen.join('\n') : '(nothing on screen yet)'}
           </pre>
           {onKeys && (
@@ -611,7 +786,7 @@ export function ChatCard({
             className="self-end flex flex-col items-end gap-2 max-w-[85%]"
             data-testid="chat-queued"
           >
-            <div className="px-8 py-4 border-2 border-dashed border-accent-bright text-sm text-text-muted whitespace-pre-wrap break-words">
+            <div className="px-8 py-4 border-2 border-dashed border-accent-bright font-reading text-read leading-snug text-text-muted whitespace-pre-wrap break-words">
               {message.text}
             </div>
             <div className="flex gap-8 text-2xs text-text-muted">
@@ -716,7 +891,7 @@ export function ChatCard({
               {docRefs.map((ref, i) => (
                 <span
                   key={`${refLabel(ref)}-${i}`}
-                  className="flex items-center gap-4 px-4 border border-accent bg-active-bg text-2xs font-mono"
+                  className="flex items-center gap-4 px-4 border border-accent bg-active-bg text-code-sm font-mono"
                 >
                   {refLabel(ref)}
                   {onRemoveDocRef && (
@@ -758,7 +933,7 @@ export function ChatCard({
                   void submit();
                 }
               }}
-              className={`flex-1 min-w-0 resize-none p-6 bg-bg text-text text-sm border-2 rounded-none outline-none ${
+              className={`flex-1 min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 rounded-none outline-none ${
                 isDropTarget ? 'border-dashed border-pin-note' : 'border-border focus:border-accent'
               }`}
               data-testid="chat-input"

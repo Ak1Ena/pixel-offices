@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type {
+  AgentClearPolicy,
+  AgentClearRequest,
   AgentKey,
   AgentTokenUsage,
   BoardPin,
   ChatEntry,
+  ClearMode,
+  DocEditMode,
   QueuedChatMessage,
   ScreenQuestion,
 } from '../../../core/src/messages.js';
@@ -45,6 +49,13 @@ export interface OfficeChatState {
   setRelay: (enabled: boolean) => void;
   sendKeys: (agentId: number, keys: AgentKey[]) => void;
   interruptAgent: (agentId: number) => void;
+  /** Per-agent settings the human picks (server state: agentPrefs). */
+  prefs: Record<number, AgentPrefsState>;
+  setAgentPrefs: (agentId: number, patch: Partial<AgentPrefsState>) => void;
+  /** Agents that asked to have their own context cleared, waiting for an answer. */
+  clearRequests: AgentClearRequest[];
+  clearAgent: (agentId: number, mode: ClearMode) => void;
+  answerClearRequest: (agentId: number, allow: boolean) => void;
   renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
   sendMessage: (agentId: number, text: string) => void;
@@ -52,6 +63,12 @@ export interface OfficeChatState {
   markRead: (agentId: number) => void;
   savePin: (pin: BoardPin) => void;
   removePin: (pinId: string) => void;
+}
+
+export interface AgentPrefsState {
+  clearPolicy: AgentClearPolicy;
+  /** Absent = the office default. */
+  docEditMode?: DocEditMode;
 }
 
 /**
@@ -74,6 +91,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [relayEnabled, setRelayEnabled] = useState(false);
   const [pins, setPins] = useState<BoardPin[]>([]);
+  const [prefs, setPrefs] = useState<Record<number, AgentPrefsState>>({});
+  const [clearRequests, setClearRequests] = useState<AgentClearRequest[]>([]);
 
   useEffect(() => {
     return transport.onMessage((msg) => {
@@ -104,6 +123,13 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
           delete next[msg.id];
           return next;
         });
+      } else if (msg.type === 'agentPrefs') {
+        setPrefs((prev) => ({
+          ...prev,
+          [msg.id]: { clearPolicy: msg.clearPolicy, docEditMode: msg.docEditMode },
+        }));
+      } else if (msg.type === 'agentClearRequests') {
+        setClearRequests(msg.requests);
       } else if (msg.type === 'agentRelayState') {
         setRelayEnabled(msg.enabled);
       } else if (msg.type === 'officeCapabilities') {
@@ -130,6 +156,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         setScreens(drop);
         setQuestions(drop);
         setAsking(drop);
+        setPrefs(drop);
       }
     });
   }, []);
@@ -176,6 +203,18 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'interruptAgent', id: agentId });
   }, []);
 
+  const setAgentPrefs = useCallback((agentId: number, patch: Partial<AgentPrefsState>) => {
+    transport.send({ type: 'setAgentPrefs', id: agentId, ...patch });
+  }, []);
+
+  const clearAgent = useCallback((agentId: number, mode: ClearMode) => {
+    transport.send({ type: 'clearAgentContext', id: agentId, mode });
+  }, []);
+
+  const answerClearRequest = useCallback((agentId: number, allow: boolean) => {
+    transport.send({ type: 'answerClearRequest', id: agentId, allow });
+  }, []);
+
   const answerQuestion = useCallback((agentId: number, key: string, option: number) => {
     transport.send({ type: 'answerScreenQuestion', id: agentId, key, option });
   }, []);
@@ -202,6 +241,11 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     setRelay,
     sendKeys,
     interruptAgent,
+    prefs,
+    setAgentPrefs,
+    clearRequests,
+    clearAgent,
+    answerClearRequest,
     renameAgent,
     pins,
     sendMessage,

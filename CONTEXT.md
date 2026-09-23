@@ -65,6 +65,10 @@ The character-level visual event: a character materializing into or dissolving o
 Remove an agent from the office by user choice, without judging its session. A dismissed session is not re-adopted.
 _Avoid_: close, delete
 
+**Clear**:
+Reset an agent's conversation (`/clear`) while its character, seat and settings stay. Nothing is carried over. An agent may ask to be cleared; whether it happens is the human's per-agent choice.
+_Avoid_: reset, restart (a restart ends the session)
+
 **Orphaned**:
 An agent whose transcript has been deleted, so the session it represents no longer exists. The office removes orphaned agents automatically.
 _Avoid_: stale (implies inactivity or age, which never removes an agent), dead, ended
@@ -95,8 +99,11 @@ _Avoid_: scout, triage
 **Brief**:
 What a looking agent hands back: what it understood, a subtask list, files, questions, risk, size. A card keeps every brief it ever got; the last one is current.
 
-**Desk subtask**:
-One step in a brief, numbered `#12.3`. Belongs to exactly one card. Not a Sub-agent and not a Subtask character.
+**Desk subtask** / **Step**:
+One step in a brief, numbered `#12.3`. Belongs to exactly one card. Not a Sub-agent and not a Subtask character. Has a kind like a workflow step — do, gate (waits for the human's go-ahead), show (points the human at a file) — and can be moved and edited by the human.
+
+**Gate**:
+A step where the building agent stops until the human says Continue or Stop.
 
 **Call**:
 The human's decision on a card waiting for them: Verified, Do the task, Rejected (on a brief); Accept, Send back (on a result).
@@ -106,6 +113,14 @@ The git top-level folder the card's work happens in — what agents are matched 
 
 **Pick-up**:
 Per-agent switch: whether the desk may hand this agent a card. On by default only for agents the office started.
+
+## Documents
+
+**Place**:
+A numbered spot in a document the office and agents agree on: a Word paragraph (`¶12`), a slide and its text box, a sheet cell or range, a PDF page, a line. References carry the path and the place, never the text.
+
+**Doc edit mode**:
+Per agent (else the office default): whether its document edits wait for review (Ask before applying), are written at once (Auto-accept), or are refused (Read only).
 
 ## First Run
 

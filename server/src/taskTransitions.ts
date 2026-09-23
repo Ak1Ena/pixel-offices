@@ -236,18 +236,164 @@ export function startWork(task: DeskTask, agentId: number): Transition {
   };
 }
 
-/** The building agent ticked one of its subtasks (1-based, counting skipped ones). */
-export function subtaskDone(task: DeskTask, position: number): Transition {
-  if (task.state !== 'working') return fail('Nobody is building this card right now.');
+/** The newest brief with its steps replaced. */
+function withSteps(task: DeskTask, subtasks: DeskSubtask[]): DeskBrief[] {
   const current = task.briefs[task.briefs.length - 1];
+  return current ? [...task.briefs.slice(0, -1), { ...current, subtasks }] : task.briefs;
+}
+
+function stepsOf(task: DeskTask): DeskSubtask[] {
+  return task.briefs[task.briefs.length - 1]?.subtasks ?? [];
+}
+
+/**
+ * How many leading steps are fixed while an agent builds the card: the ones
+ * it has finished or passed, and the one it is on. The human may change
+ * everything after them. Nothing is locked before the build starts.
+ */
+export function lockedSteps(task: DeskTask): number {
+  if (task.state !== 'working') return 0;
+  const steps = stepsOf(task);
+  let i = 0;
+  while (i < steps.length && (steps[i].done || steps[i].skip)) i++;
+  return Math.min(steps.length, i + 1);
+}
+
+/** Mark step `index` with `change`; pending steps before it count as skipped (out-of-order reports are fine). */
+function reachStep(
+  steps: DeskSubtask[],
+  index: number,
+  change: Partial<DeskSubtask>,
+): DeskSubtask[] {
+  return steps.map((step, i) =>
+    i === index
+      ? { ...step, ...change }
+      : i < index && !step.done && !step.skip
+        ? { ...step, skip: true, waiting: undefined }
+        : step,
+  );
+}
+
+function stepIndex(task: DeskTask, position: number): number | null {
   const index = position - 1;
-  if (!current || !Number.isInteger(index) || !current.subtasks[index]) {
-    return fail(`This card has no subtask ${position}.`);
+  return Number.isInteger(index) && stepsOf(task)[index] ? index : null;
+}
+
+/**
+ * The human replaces the card's steps (reorder, retype, change kinds, add,
+ * remove). While the brief waits for them anything goes; during the build the
+ * locked steps (lockedSteps) must come first, unchanged. `steps` must already
+ * be sanitized and carry ids.
+ */
+export function editSteps(task: DeskTask, steps: DeskSubtask[], at: string): Transition {
+  if (task.state !== 'brief' && task.state !== 'ready' && task.state !== 'working') {
+    return fail('Steps can be changed while the brief waits for you or while an agent builds.');
   }
-  const subtasks = current.subtasks.map((sub, i) => (i === index ? { ...sub, done: true } : sub));
+  if (task.briefs.length === 0) return fail('This card has no brief to change.');
+  if (steps.length > TASK_MAX_SUBTASKS) return fail(`At most ${TASK_MAX_SUBTASKS} steps.`);
+  const old = stepsOf(task);
+  const locked = lockedSteps(task);
+  for (let i = 0; i < locked; i++) {
+    if (steps[i]?.id !== old[i].id) {
+      return fail('Steps already done, and the one the agent is on, cannot be moved or removed.');
+    }
+  }
+  const oldIds = new Set(old.map((step) => step.id));
+  const next = [
+    ...old.slice(0, locked),
+    ...steps.slice(locked).map((step) => {
+      const clean: DeskSubtask = {
+        ...step,
+        done: false,
+        by: step.id && oldIds.has(step.id) ? step.by : 'you',
+      };
+      delete clean.waiting;
+      delete clean.ask;
+      return clean;
+    }),
+  ];
   return {
     ok: true,
-    task: { ...task, briefs: [...task.briefs.slice(0, -1), { ...current, subtasks }] },
+    task: {
+      ...task,
+      briefs: withSteps(task, next),
+      log: logged(task, 'system', YOU, 'Changed the steps.', at),
+    },
+  };
+}
+
+/** The building agent finished step `position` (1-based, counting skipped ones). */
+export function subtaskDone(task: DeskTask, position: number): Transition {
+  if (task.state !== 'working') return fail('Nobody is building this card right now.');
+  const index = stepIndex(task, position);
+  if (index === null) return fail(`This card has no step ${position}.`);
+  const subtasks = reachStep(stepsOf(task), index, { done: true, waiting: undefined });
+  return { ok: true, task: { ...task, briefs: withSteps(task, subtasks) } };
+}
+
+/** The building agent reached gate step `position`: it waits for the human. */
+export function gateOpened(
+  task: DeskTask,
+  position: number,
+  ask: string,
+  who: string,
+  at: string,
+): Transition {
+  if (task.state !== 'working') return fail('Nobody is building this card right now.');
+  const index = stepIndex(task, position);
+  if (index === null) return fail(`This card has no step ${position}.`);
+  const step = stepsOf(task)[index];
+  if (step.done) return { ok: true, task };
+  const subtasks = reachStep(stepsOf(task), index, { waiting: true, ask: ask || undefined });
+  return {
+    ok: true,
+    task: {
+      ...task,
+      briefs: withSteps(task, subtasks),
+      log: logged(
+        task,
+        'agent',
+        who,
+        ask
+          ? `Waiting at step ${position} for your go-ahead: ${ask}`
+          : `Waiting at step ${position} for your go-ahead.`,
+        at,
+      ),
+    },
+  };
+}
+
+/** The human answered at a gate step the agent is waiting at. */
+export function gateAnswered(
+  task: DeskTask,
+  position: number,
+  decision: 'continue' | 'stop',
+  note: string,
+  at: string,
+): Transition {
+  const index = stepIndex(task, position);
+  if (index === null) return fail(`This card has no step ${position}.`);
+  if (!stepsOf(task)[index].waiting) return fail('Nobody is waiting at that step.');
+  const subtasks = stepsOf(task).map((step, i) =>
+    i === index
+      ? { ...step, waiting: undefined, ask: undefined, done: decision === 'continue' }
+      : step,
+  );
+  const said =
+    decision === 'continue' ? `Go ahead at step ${position}.` : `Stop at step ${position}.`;
+  return {
+    ok: true,
+    task: {
+      ...task,
+      briefs: withSteps(task, subtasks),
+      log: logged(
+        task,
+        decision === 'continue' ? 'verified' : 'rejected',
+        YOU,
+        note ? `${said} ${note}` : said,
+        at,
+      ),
+    },
   };
 }
 

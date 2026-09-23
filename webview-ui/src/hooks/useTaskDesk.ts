@@ -7,6 +7,7 @@ import type {
   DeskTask,
   DeskTaskKind,
   DeskTaskPriority,
+  GateDecision,
 } from '../../../core/src/messages.js';
 import { transport } from '../transport/index.js';
 
@@ -36,6 +37,10 @@ export interface TaskDeskState {
     extra?: { note?: string; answers?: string[]; subtasks?: DeskSubtask[] },
   ) => void;
   setAllow: (taskId: string, allow: number[]) => void;
+  /** Replace a card's steps (brief waiting for you, or mid-build after the locked ones). */
+  editSteps: (taskId: string, steps: DeskSubtask[]) => void;
+  /** Answer an agent waiting at a gate step (1-based). */
+  answerGate: (taskId: string, step: number, decision: GateDecision, note?: string) => void;
   setPickup: (agentId: number, enabled: boolean) => void;
 }
 
@@ -77,9 +82,31 @@ export function useTaskDesk(): TaskDeskState {
     setNotice(null);
     transport.send({ type: 'setDeskTaskAllow', taskId, allow });
   }, []);
+  const editSteps = useCallback((taskId: string, steps: DeskSubtask[]) => {
+    setNotice(null);
+    transport.send({ type: 'editDeskSteps', taskId, steps });
+  }, []);
+  const answerGate = useCallback(
+    (taskId: string, step: number, decision: GateDecision, note?: string) => {
+      setNotice(null);
+      transport.send({ type: 'answerDeskGate', taskId, step, decision, ...(note ? { note } : {}) });
+    },
+    [],
+  );
   const setPickup = useCallback((agentId: number, enabled: boolean) => {
     transport.send({ type: 'setAgentPickup', id: agentId, enabled });
   }, []);
 
-  return { tasks, agents, notice, saveCard, removeCard, call, setAllow, setPickup };
+  return {
+    tasks,
+    agents,
+    notice,
+    saveCard,
+    removeCard,
+    call,
+    setAllow,
+    editSteps,
+    answerGate,
+    setPickup,
+  };
 }

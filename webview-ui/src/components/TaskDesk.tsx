@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 import type {
   DeskAgent,
@@ -7,16 +7,14 @@ import type {
   DeskTask,
   DeskTaskKind,
   DeskTaskPriority,
+  Workflow,
 } from '../../../core/src/messages.js';
 import {
   TASK_BODY_MAX_CHARS,
-  TASK_DESK_COLUMN_MIN_PX,
   TASK_DESK_COMMAND_KEY,
   TASK_DESK_FIRST_MESSAGE,
   TASK_DESK_MODELS,
-  TASK_DESK_WIDTH_PX,
   TASK_NOTE_MAX_CHARS,
-  TASK_SUBTASK_MAX_CHARS,
   TASK_TITLE_MAX_CHARS,
 } from '../constants.js';
 import type { TaskDeskState } from '../hooks/useTaskDesk.js';
@@ -29,15 +27,27 @@ import {
   deskSections,
   filterCards,
   isFiltering,
+  lockedStepCount,
   needsYou,
   NO_FILTER,
+  sameSteps,
   STATE_LABEL,
+  stepsToWorkflow,
   stuckReason,
   subtaskProgress,
+  workflowToSteps,
 } from '../taskDesk.js';
 import { transport } from '../transport/index.js';
+import { tunable } from '../tunableStore.js';
+import { DeskSteps } from './DeskSteps.js';
 import { FolderPicker } from './FolderPicker.js';
 import { Button } from './ui/Button.js';
+
+/** Saved workflows, for a card's "Load workflow" / "Save as workflow". Absent = not offered. */
+const DeskWorkflowsContext = createContext<{
+  list: Workflow[];
+  save: (workflow: Workflow) => void;
+} | null>(null);
 
 interface FolderChoice {
   name: string;
@@ -59,6 +69,9 @@ interface TaskDeskProps {
   workspaceFolders: FolderChoice[];
   /** The office can start agents itself (standalone with node-pty, privileged). */
   canStartAgents: boolean;
+  /** Saved workflows a card's steps can be loaded from or saved as. */
+  workflows?: Workflow[];
+  onSaveWorkflow?: (workflow: Workflow) => void;
 }
 
 const KINDS: DeskTaskKind[] = ['task', 'issue', 'feature'];
@@ -393,7 +406,6 @@ function CardDetail({
   const [note, setNote] = useState('');
   const [answers, setAnswers] = useState<string[]>(brief?.questions.map((q) => q.a) ?? []);
   const [subtasks, setSubtasks] = useState<DeskSubtask[]>(brief?.subtasks ?? []);
-  const [newSub, setNewSub] = useState('');
   const [needNote, setNeedNote] = useState(false);
 
   // A new brief (or a rebuilt one) replaces whatever was being edited.
@@ -406,7 +418,27 @@ function CardDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the brief's identity, not its object
   }, [briefKey]);
 
-  const shown = judging ? subtasks : (brief?.subtasks ?? []);
+  // Mid-build the human edits a draft of the steps and saves it; before, the
+  // edits ride the verify / do call like the answers do.
+  const serverSteps = brief?.subtasks ?? [];
+  const [draft, setDraft] = useState<DeskSubtask[]>(serverSteps);
+  const stepsDirty = task.state === 'working' && !sameSteps(draft, serverSteps);
+  const serverStepsKey = JSON.stringify(serverSteps);
+  useEffect(() => {
+    // The agent moved on (a step done, a gate reached): take the server's list
+    // unless the human is mid-edit, in which case their locked prefix follows it.
+    setDraft((current) =>
+      sameSteps(current, serverSteps) || task.state !== 'working'
+        ? serverSteps
+        : [...serverSteps.slice(0, lockedStepCount(task)), ...current.slice(lockedStepCount(task))],
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the steps' content
+  }, [serverStepsKey, task.state]);
+  const deskWorkflows = useContext(DeskWorkflowsContext);
+  const stepsEditable = judging || task.state === 'working';
+  const locked = lockedStepCount(task);
+  const shown = judging ? subtasks : task.state === 'working' ? draft : serverSteps;
+  const setSteps = judging ? setSubtasks : setDraft;
   const stuck = stuckReason(task, desk.agents);
   const noAgentHere = agentsInFolder(task, desk.agents).length === 0;
   const send = (action: 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack') => {
@@ -415,12 +447,6 @@ function CardDetail({
       return;
     }
     desk.call(task.id, action, judging ? { note, answers, subtasks } : { note });
-  };
-  const addSubtask = () => {
-    const title = newSub.trim();
-    if (!title) return;
-    setSubtasks((list) => [...list, { title, skip: false, done: false, by: 'you' }]);
-    setNewSub('');
   };
 
   if (isEditing) {
@@ -498,61 +524,76 @@ function CardDetail({
           </span>
           <BriefView brief={brief} />
 
-          {shown.length > 0 && (
-            <div className="flex flex-col gap-2" data-testid="desk-subtasks">
-              <span className="text-2xs text-text-muted">Subtasks · linked to #{task.num}</span>
-              {shown.map((sub, index) => (
-                <label
-                  key={index}
-                  className={`flex gap-6 items-start text-sm px-6 py-2 border-2 ${
-                    sub.done ? 'border-status-success' : 'border-border'
-                  } ${sub.skip ? 'opacity-50 line-through' : ''}`}
-                >
-                  {judging && (
-                    <input
-                      type="checkbox"
-                      checked={!sub.skip}
-                      aria-label={`Include subtask ${index + 1}`}
-                      onChange={() =>
-                        setSubtasks((list) =>
-                          list.map((s, i) => (i === index ? { ...s, skip: !s.skip } : s)),
-                        )
-                      }
-                    />
-                  )}
-                  <span className="text-text-muted">
-                    #{task.num}.{index + 1}
-                  </span>
-                  <span className="flex-1 break-words">
-                    {sub.title}
-                    {sub.by === 'you' && <span className="text-text-muted"> (yours)</span>}
-                  </span>
-                  <span className="text-2xs text-text-muted">
-                    {sub.skip ? 'skipped' : sub.done ? 'done' : ''}
-                  </span>
-                </label>
-              ))}
-            </div>
+          {(shown.length > 0 || stepsEditable) && (
+            <DeskSteps
+              taskNum={task.num}
+              steps={shown}
+              locked={locked}
+              onChange={stepsEditable ? setSteps : undefined}
+              onAnswerGate={
+                task.state === 'working'
+                  ? (step, decision) => desk.answerGate(task.id, step, decision)
+                  : undefined
+              }
+            />
           )}
-          {judging && (
-            <div className="flex gap-6">
-              <input
-                className={fieldClass}
-                value={newSub}
-                maxLength={TASK_SUBTASK_MAX_CHARS}
-                placeholder="Add a subtask the agent missed"
-                aria-label="New subtask"
-                onChange={(e) => setNewSub(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    addSubtask();
-                  }
-                }}
-              />
-              <Button size="sm" onClick={addSubtask}>
-                Add
-              </Button>
+          {stepsEditable && (
+            <div className="flex flex-wrap gap-6 items-center">
+              {task.state === 'working' && stepsDirty && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="accent"
+                    onClick={() => desk.editSteps(task.id, draft)}
+                    data-testid="desk-steps-save"
+                  >
+                    Save steps
+                  </Button>
+                  <Button size="sm" onClick={() => setDraft(serverSteps)}>
+                    Undo changes
+                  </Button>
+                  <span className="text-2xs text-text-muted">
+                    The agent sees them on its next step report.
+                  </span>
+                </>
+              )}
+              {deskWorkflows && (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      deskWorkflows.save({
+                        id: '',
+                        title: task.title,
+                        steps: stepsToWorkflow(shown),
+                      })
+                    }
+                    disabled={shown.length === 0}
+                    title="Save these steps as a workflow you can reuse"
+                  >
+                    Save as workflow
+                  </Button>
+                  {deskWorkflows.list.length > 0 && (
+                    <select
+                      className="bg-bg-dark text-text text-sm border-2 border-border rounded-none px-4"
+                      value=""
+                      aria-label="Load steps from a workflow"
+                      onChange={(e) => {
+                        const workflow = deskWorkflows.list.find((w) => w.id === e.target.value);
+                        if (!workflow) return;
+                        setSteps([...shown.slice(0, locked), ...workflowToSteps(workflow.steps)]);
+                      }}
+                    >
+                      <option value="">Load workflow…</option>
+                      {deskWorkflows.list.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.title} ({w.steps.length})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -739,7 +780,7 @@ function Card({
               round {task.round}
             </span>
           )}
-          {progress && task.state !== 'inbox' && <span>{progress} subtasks</span>}
+          {progress && task.state !== 'inbox' && <span>{progress} steps</span>}
           {who && <span>{who}</span>}
         </span>
         {stuck && <span className="text-2xs text-warning">{stuck}</span>}
@@ -865,7 +906,20 @@ function FilterBar({
  * "Full board" swaps the rail for every column at once, with the open card
  * beside them. Both views share one search + filter.
  */
-export function TaskDesk({
+export function TaskDesk(props: TaskDeskProps) {
+  const { workflows, onSaveWorkflow } = props;
+  const value = useMemo(
+    () => (workflows && onSaveWorkflow ? { list: workflows, save: onSaveWorkflow } : null),
+    [workflows, onSaveWorkflow],
+  );
+  return (
+    <DeskWorkflowsContext.Provider value={value}>
+      <DeskPanel {...props} />
+    </DeskWorkflowsContext.Provider>
+  );
+}
+
+function DeskPanel({
   isOpen,
   onToggle,
   desk,
@@ -1009,7 +1063,7 @@ export function TaskDesk({
           {isAdding && (
             <div
               className="shrink-0 border-r-2 border-border overflow-y-auto"
-              style={{ width: `min(${TASK_DESK_WIDTH_PX}px, 100%)` }}
+              style={{ width: `min(${tunable('taskDeskWidthPx')}px, 100%)` }}
             >
               {form}
             </div>
@@ -1018,7 +1072,7 @@ export function TaskDesk({
             <div
               className="grid gap-8 items-start h-full"
               style={{
-                gridTemplateColumns: `repeat(${columns.length}, minmax(${TASK_DESK_COLUMN_MIN_PX}px, 1fr))`,
+                gridTemplateColumns: `repeat(${columns.length}, minmax(${tunable('taskDeskColumnMinPx')}px, 1fr))`,
               }}
             >
               {columns.map((column) => (
@@ -1057,7 +1111,7 @@ export function TaskDesk({
             <aside
               aria-label={`Card #${open.num}`}
               className="shrink-0 flex flex-col border-l-4 border-accent bg-bg overflow-y-auto"
-              style={{ width: `min(${TASK_DESK_WIDTH_PX}px, 100%)` }}
+              style={{ width: `min(${tunable('taskDeskWidthPx')}px, 100%)` }}
               data-testid="desk-board-detail"
             >
               <div className="flex items-start gap-8 p-10">
@@ -1103,7 +1157,7 @@ export function TaskDesk({
     <aside
       aria-label="Task desk"
       className="absolute left-0 top-0 bottom-0 z-30 flex flex-col bg-bg text-text border-r-4 border-border"
-      style={{ width: `min(${TASK_DESK_WIDTH_PX}px, 100%)` }}
+      style={{ width: `min(${tunable('taskDeskWidthPx')}px, 100%)` }}
       data-testid="desk-rail"
       {...stop}
     >

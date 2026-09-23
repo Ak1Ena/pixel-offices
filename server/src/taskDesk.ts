@@ -8,17 +8,28 @@ import type {
 import type { AgentStateStore } from './agentStateStore.js';
 import type { ChatSender } from './chatSender.js';
 import {
+  SHOW_CLI_COMMAND,
   TASK_CLI_COMMAND,
   TASK_DESK_TICK_MS,
   TASK_NO_SUCH_CARD_ERROR,
   TASK_NOTE_MAX_CHARS,
 } from './constants.js';
 import { type FolderRoot, resolveFolderRoot, sameRoot } from './gitRoot.js';
-import { briefFromInput, cleanText, sanitizeResult, TaskStore } from './taskStore.js';
+import {
+  briefFromInput,
+  cleanText,
+  sanitizeResult,
+  sanitizeSubtask,
+  TaskStore,
+  withStepIds,
+} from './taskStore.js';
 import {
   applyHumanCall,
   briefIn,
   claimForLook,
+  editSteps,
+  gateAnswered,
+  gateOpened,
   type HumanCall,
   lookFailed,
   startWork,
@@ -47,6 +58,10 @@ import type { AgentState } from './types.js';
  */
 
 export type DeskReply<T = DeskTask> = { ok: true; value: T } | { ok: false; error: string };
+
+/** What an agent waiting at a gate step hears back. */
+export type DeskGatePoll =
+  { decision: 'continue' | 'stop'; note?: string } | { decision: 'pending' } | { decision: 'gone' };
 
 export interface TaskDeskOptions {
   store: AgentStateStore;
@@ -89,6 +104,12 @@ export class TaskDesk {
   private readonly claims = new Map<number, Claim>();
   /** agent id → where it works, as last resolved. */
   private readonly roots = new Map<number, { cwd: string; root: FolderRoot | null }>();
+  /** Cards whose steps the human changed mid-build; the agent hears on its next report. */
+  private readonly planChanged = new Set<string>();
+  /** `${taskId}:${stepId}` → agents long-polling that gate. */
+  private readonly gateWaiters = new Map<string, Set<(poll: DeskGatePoll) => void>>();
+  /** Answers given while nobody was polling (the CLI polls in rounds). */
+  private readonly gateAnswers = new Map<string, DeskGatePoll>();
   private lastSnapshot = '';
   private inflight: Promise<void> | null = null;
   private rerun = false;
@@ -112,6 +133,7 @@ export class TaskDesk {
     clearInterval(this.timer);
     this.agents.off('broadcast', this.onBroadcast);
     this.agents.off('agentRemoved', this.onAgentRemoved);
+    for (const key of [...this.gateWaiters.keys()]) this.settleGate(key, { decision: 'gone' });
     this.cards.dispose();
   }
 
@@ -197,6 +219,7 @@ export class TaskDesk {
     const task = this.cards.find(taskId);
     if (!task) return false;
     this.dropClaimOn(task.id);
+    this.releaseGates({ ...task, state: 'done' });
     return this.cards.remove(task.id);
   }
 
@@ -209,10 +232,35 @@ export class TaskDesk {
       answers: Array.isArray(call.answers)
         ? call.answers.map((a) => cleanText(a, TASK_NOTE_MAX_CHARS) ?? '')
         : undefined,
-      subtasks: Array.isArray(call.subtasks) ? (call.subtasks as DeskSubtask[]) : undefined,
+      subtasks: Array.isArray(call.subtasks) ? cleanSteps(call.subtasks) : undefined,
     };
     const reply = this.commit(applyHumanCall(task, clean, this.now()));
     if (reply.ok) void this.tick();
+    return reply;
+  }
+
+  /** The human reorders, retypes, adds or removes a card's steps. */
+  editSteps(taskId: unknown, steps: unknown): DeskReply {
+    const task = this.cards.find(taskId);
+    if (!task) return { ok: false, error: NO_CARD };
+    if (!Array.isArray(steps)) return { ok: false, error: 'steps must be a list.' };
+    const reply = this.commit(editSteps(task, cleanSteps(steps), this.now()));
+    if (reply.ok && task.state === 'working') this.planChanged.add(task.id);
+    return reply;
+  }
+
+  /** The human answers an agent waiting at a gate step. */
+  answerGate(taskId: unknown, position: unknown, decision: unknown, note: unknown): DeskReply {
+    const task = this.cards.find(taskId);
+    if (!task) return { ok: false, error: NO_CARD };
+    if (decision !== 'continue' && decision !== 'stop')
+      return { ok: false, error: 'Unknown answer.' };
+    const step = stepAt(task, position);
+    const text = cleanText(note, TASK_NOTE_MAX_CHARS) ?? '';
+    const reply = this.commit(gateAnswered(task, Number(position), decision, text, this.now()));
+    if (reply.ok && step?.id) {
+      this.settleGate(`${task.id}:${step.id}`, { decision, ...(text ? { note: text } : {}) });
+    }
     return reply;
   }
 
@@ -259,6 +307,54 @@ export class TaskDesk {
     const task = this.cards.find(ref);
     if (!task) return { ok: false, error: NO_CARD };
     return this.commit(subtaskDone(task, Number(position)));
+  }
+
+  /** The building agent reached a gate step: the human is asked (prompt stack + card). */
+  openGate(ref: unknown, position: unknown, ask: unknown): DeskReply {
+    const task = this.cards.find(ref);
+    if (!task) return { ok: false, error: NO_CARD };
+    if (!this.isOurs(task))
+      return { ok: false, error: 'Nobody here is building this card right now.' };
+    const text = cleanText(ask, TASK_NOTE_MAX_CHARS) ?? '';
+    return this.commit(
+      gateOpened(task, Number(position), text, this.labelOf(task.claimedBy), this.now()),
+    );
+  }
+
+  /** Long-poll the human's answer at a gate step (`pixel-office task gate` polls in rounds). */
+  waitGate(ref: unknown, position: unknown, ms: number): Promise<DeskGatePoll> {
+    const task = this.cards.find(ref);
+    const step = task ? stepAt(task, position) : undefined;
+    if (!task || !step?.id) return Promise.resolve({ decision: 'gone' });
+    const key = `${task.id}:${step.id}`;
+    const answered = this.gateAnswers.get(key);
+    if (answered) {
+      this.gateAnswers.delete(key);
+      return Promise.resolve(answered);
+    }
+    if (task.state !== 'working' || !step.waiting) {
+      return Promise.resolve(step.done ? { decision: 'continue' } : { decision: 'gone' });
+    }
+    return new Promise((resolve) => {
+      const waiters = this.gateWaiters.get(key) ?? new Set();
+      this.gateWaiters.set(key, waiters);
+      const waiter = (poll: DeskGatePoll) => {
+        clearTimeout(timer);
+        resolve(poll);
+      };
+      const timer = setTimeout(() => {
+        waiters.delete(waiter);
+        resolve({ decision: 'pending' });
+      }, ms);
+      timer.unref?.();
+      waiters.add(waiter);
+    });
+  }
+
+  /** True once per mid-build step change: the agent's next report says the plan changed. */
+  takePlanChange(ref: unknown): boolean {
+    const task = this.cards.find(ref);
+    return !!task && this.planChanged.delete(task.id);
   }
 
   submitResult(ref: unknown, raw: unknown): DeskReply {
@@ -446,7 +542,31 @@ export class TaskDesk {
     const task = { ...transition.task, ...extra };
     if (task.claimedBy === undefined) delete task.owner;
     if (!this.cards.replace(task)) return { ok: false, error: 'The card could not be saved.' };
+    this.releaseGates(task);
     return { ok: true, value: this.cards.find(task.id)! };
+  }
+
+  private settleGate(key: string, poll: DeskGatePoll): void {
+    const waiters = this.gateWaiters.get(key);
+    this.gateWaiters.delete(key);
+    if (!waiters || waiters.size === 0) {
+      // Nobody is polling right now: keep a real answer for the next round.
+      if (poll.decision === 'continue' || poll.decision === 'stop') this.gateAnswers.set(key, poll);
+      return;
+    }
+    for (const waiter of waiters) waiter(poll);
+  }
+
+  /** A card that stopped being built: anyone waiting at its gates gets `gone`. */
+  private releaseGates(task: DeskTask): void {
+    if (task.state === 'working') return;
+    this.planChanged.delete(task.id);
+    for (const key of [...this.gateWaiters.keys()]) {
+      if (key.startsWith(`${task.id}:`)) this.settleGate(key, { decision: 'gone' });
+    }
+    for (const key of [...this.gateAnswers.keys()]) {
+      if (key.startsWith(`${task.id}:`)) this.gateAnswers.delete(key);
+    }
   }
 
   private dropClaimOn(taskId: string): void {
@@ -491,7 +611,8 @@ export function lookPrompt(task: DeskTask): string {
     `Task desk card #${task.num} (${task.kind}${task.priority === 'p1' ? ', P1' : ''}): look only. Do not change any file.${again}`,
     `Read it: ${TASK_CLI_COMMAND} show ${task.num}`,
     `Then hand in what you understood: ${TASK_CLI_COMMAND} brief ${task.num} --file <brief.json>`,
-    'brief.json: {"understanding": "...", "subtasks": ["...", "..."], "files": ["..."], "questions": ["..."], "risk": "low|medium|high", "size": "..."}',
+    'brief.json: {"understanding": "...", "subtasks": ["...", "[gate] ...", "[show] ..."], "files": ["..."], "questions": ["..."], "risk": "low|medium|high", "size": "..."}',
+    'Subtasks are steps: plain = work, "[gate] …" = stop for the human\'s go-ahead, "[show] …" = show the human a file.',
     'Write brief.json outside the project (a temp folder). Ask questions in the brief, not here.',
   ].join('\n');
 }
@@ -499,12 +620,19 @@ export function lookPrompt(task: DeskTask): string {
 /** What a building agent is told. */
 export function buildPrompt(task: DeskTask): string {
   const brief: DeskBrief | undefined = task.briefs[task.briefs.length - 1];
-  const steps = brief?.subtasks.filter((s) => !s.skip).length ?? 0;
+  const live = brief?.subtasks.filter((s) => !s.skip) ?? [];
+  const has = (kind: 'gate' | 'show') => live.some((s) => s.kind === kind);
   return [
     `Task desk card #${task.num}: the brief is approved. Do the task.`,
     `Read the approved brief, my notes and answers: ${TASK_CLI_COMMAND} show ${task.num}`,
-    steps > 0
-      ? `Work through its ${steps} subtasks; after each one run: ${TASK_CLI_COMMAND} step ${task.num} <subtask number>`
+    live.length > 0
+      ? `Work through its ${live.length} steps in order; after each one run: ${TASK_CLI_COMMAND} step ${task.num} <step number>`
+      : '',
+    has('gate')
+      ? `At a [gate] step, run ${TASK_CLI_COMMAND} gate ${task.num} <step number> [--ask "question"] and do what it prints.`
+      : '',
+    has('show')
+      ? `At a [show] step, show the human with ${SHOW_CLI_COMMAND} <file> [--lines A-B] --why "..." (the step's ref names the file), then mark it done.`
       : '',
     `When finished: ${TASK_CLI_COMMAND} done ${task.num} --summary "what you did" [--branch B] [--tests "result"]`,
   ]
@@ -529,10 +657,10 @@ export function describeTask(task: DeskTask): string {
     );
     if (brief.understanding) lines.push(brief.understanding);
     if (brief.subtasks.length) {
-      lines.push('', 'Subtasks:');
+      lines.push('', 'Steps:');
       brief.subtasks.forEach((s, i) =>
         lines.push(
-          `${i + 1}. [${s.skip ? 'skip' : s.done ? 'done' : ' '}] ${s.title}${s.by === 'you' ? ' (added by the human)' : ''}`,
+          `${i + 1}. [${s.skip ? 'skip' : s.done ? 'done' : s.waiting ? 'waiting' : ' '}]${s.kind && s.kind !== 'do' ? ` [${s.kind}]` : ''} ${s.title}${s.ref ? ` — ref: ${s.ref}` : ''}${s.by === 'you' ? ' (added by the human)' : ''}`,
         ),
       );
     }
@@ -544,4 +672,15 @@ export function describeTask(task: DeskTask): string {
     for (const entry of task.log) lines.push(`- ${entry.who}: ${entry.text}`);
   }
   return lines.join('\n');
+}
+
+/** Human-sent steps, sanitized, with ids. */
+function cleanSteps(raw: unknown[]): DeskSubtask[] {
+  return withStepIds(raw.map(sanitizeSubtask).filter((step) => step !== null));
+}
+
+/** The newest brief's step at 1-based `position`. */
+function stepAt(task: DeskTask, position: unknown): DeskSubtask | undefined {
+  const index = Number(position) - 1;
+  return Number.isInteger(index) ? task.briefs[task.briefs.length - 1]?.subtasks[index] : undefined;
 }

@@ -26,10 +26,11 @@ function Inline({ hunk }: { hunk: ProposalHunk }) {
   let oldN = hunk.oldStart - hunk.lines.findIndex((l) => l.kind !== 'context');
   let newN = hunk.newStart - hunk.lines.findIndex((l) => l.kind !== 'context');
   return (
-    <div className="font-mono text-xs py-4">
+    <div className="font-mono text-code py-4">
       {hunk.lines.map((l, i) => {
-        const o = l.kind !== 'add' ? oldN++ : '';
-        const n = l.kind !== 'del' ? newN++ : '';
+        // A document change has a place (hunk.where), not line numbers.
+        const o = hunk.where ? '' : l.kind !== 'add' ? oldN++ : '';
+        const n = hunk.where ? '' : l.kind !== 'del' ? newN++ : '';
         return (
           <div
             key={i}
@@ -66,7 +67,7 @@ function SideBySide({ hunk }: { hunk: ProposalHunk }) {
   const before = hunk.lines.filter((l) => l.kind !== 'add');
   const after = hunk.lines.filter((l) => l.kind !== 'del');
   const col = (lines: ProposalHunk['lines'], title: string) => (
-    <div className="flex-1 min-w-0 p-6 font-mono text-xs">
+    <div className="flex-1 min-w-0 p-6 font-mono text-code">
       <span className="block text-2xs text-text-muted uppercase mb-2">{title}</span>
       {lines.map((l, i) => (
         <div
@@ -167,7 +168,8 @@ export function ReviewPanel({
                 {hunkName(h)}
               </span>
               <span className="block text-2xs text-text-muted">
-                line {h.oldStart} · {h.decision === 'pending' ? 'to review' : h.decision}
+                {h.where ?? `line ${h.oldStart}`} ·{' '}
+                {h.decision === 'pending' ? 'to review' : h.decision}
               </span>
             </span>
           </button>
@@ -184,7 +186,7 @@ export function ReviewPanel({
       <div className="flex-1 min-w-0 flex flex-col min-h-0">
         <div className="flex items-center gap-8 px-12 py-6 border-b-2 border-border flex-wrap">
           <span className="text-base">{fileBaseName(proposal.path)}</span>
-          <span className="flex-1 min-w-0 text-2xs text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
+          <span className="flex-1 min-w-0 text-code-sm text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
             {proposal.path}
           </span>
           <span className="flex">
@@ -215,7 +217,7 @@ export function ReviewPanel({
             {accepted} accepted · {rejected} rejected · {left} left
           </span>
           {proposal.why && (
-            <span className="text-xs text-text-muted font-reading">“{proposal.why}”</span>
+            <span className="text-read-sm text-text-muted font-reading">“{proposal.why}”</span>
           )}
           <span className="flex-1" />
           {open && canDecide && (
@@ -261,7 +263,7 @@ export function ReviewPanel({
             >
               <div className="flex items-center gap-8 px-8 py-4 border-b-2 border-bg-thumb text-xs">
                 <span>{hunkName(h)}</span>
-                <span className="text-2xs text-text-muted">line {h.oldStart}</span>
+                <span className="text-2xs text-text-muted">{h.where ?? `line ${h.oldStart}`}</span>
                 {h.reason && <span className="text-2xs text-danger">“{h.reason}”</span>}
                 <span className="flex-1" />
                 {open && canDecide && h.decision === 'pending' && (
@@ -300,7 +302,7 @@ export function ReviewPanel({
                 onChange={(e) => setReason(e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder="optional"
-                className="flex-1 min-w-120 bg-bg-dark border-2 border-border px-6 py-2 text-xs text-text font-reading"
+                className="flex-1 min-w-120 bg-bg-dark border-2 border-border px-6 py-2 text-read-sm text-text font-reading"
               />
               <Button size="sm" onClick={() => proposals.discard(proposal.proposalId)}>
                 Discard

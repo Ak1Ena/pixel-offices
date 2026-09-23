@@ -2,19 +2,27 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import type { DeskAgent, DeskTask } from '../../core/src/messages.js';
+import type { DeskAgent, DeskSubtask, DeskTask } from '../../core/src/messages.js';
 import {
   agentsInFolder,
   branchMismatch,
   cardFolders,
   deskColumns,
   type DeskFilter,
+  deskGates,
   deskSections,
   filterCards,
   isFiltering,
+  lockedStepCount,
+  moveStepTo,
+  newStepId,
+  nextStepKind,
   NO_FILTER,
+  sameSteps,
+  stepsToWorkflow,
   stuckReason,
   subtaskProgress,
+  workflowToSteps,
 } from '../src/taskDesk.js';
 
 const task = (overrides: Partial<DeskTask>): DeskTask => ({
@@ -192,4 +200,96 @@ test('the full board puts every card in exactly one column, yours marked', () =>
     columns.reduce((n, c) => n + c.tasks.length, 0),
     cards.length,
   );
+});
+
+// ── Card steps ──
+
+const sub = (id: string, extra: Partial<DeskSubtask> = {}): DeskSubtask => ({
+  id,
+  title: id,
+  skip: false,
+  done: false,
+  by: 'agent',
+  ...extra,
+});
+const withSteps = (state: DeskTask['state'], subtasks: DeskSubtask[]): DeskTask =>
+  task({
+    state,
+    briefs: [
+      {
+        by: 'Mina',
+        understanding: 'u',
+        subtasks,
+        files: [],
+        questions: [],
+        risk: '',
+        size: '',
+        createdAt: '2026-09-23T00:00:00.000Z',
+      },
+    ],
+  });
+
+test('steps are locked only mid-build: done ones and the current one', () => {
+  assert.equal(lockedStepCount(withSteps('brief', [sub('a'), sub('b')])), 0);
+  assert.equal(
+    lockedStepCount(withSteps('working', [sub('a', { done: true }), sub('b'), sub('c')])),
+    2,
+  );
+});
+
+test('moving a step never moves it into or out of the locked ones', () => {
+  const list = ['a', 'b', 'c', 'd'];
+  assert.deepEqual(moveStepTo(list, 3, 1), ['a', 'd', 'b', 'c']);
+  assert.deepEqual(moveStepTo(list, 3, 0, 2), ['a', 'b', 'd', 'c']);
+  assert.equal(moveStepTo(list, 1, 3, 2), list);
+  assert.deepEqual(moveStepTo(list, 0, 99), ['b', 'c', 'd', 'a']);
+});
+
+test('kinds cycle do → gate → show → do', () => {
+  assert.equal(nextStepKind(undefined), 'gate');
+  assert.equal(nextStepKind('gate'), 'show');
+  assert.equal(nextStepKind('show'), 'do');
+});
+
+test('steps round-trip through a workflow; skipped ones stay behind', () => {
+  const steps = [
+    sub('a', { kind: 'show', ref: 'src/a.ts --lines 1-5' }),
+    sub('b', { ref: 'b.ts' }),
+    sub('c', { skip: true }),
+    sub('d', { kind: 'gate' }),
+  ];
+  const workflow = stepsToWorkflow(steps);
+  assert.deepEqual(workflow, [
+    { kind: 'show', text: 'a', show: 'src/a.ts --lines 1-5' },
+    { kind: 'do', text: 'b', refs: ['b.ts'] },
+    { kind: 'gate', text: 'd' },
+  ]);
+  assert.deepEqual(
+    workflowToSteps(workflow).map((s) => [s.kind, s.title, s.ref, s.by]),
+    [
+      ['show', 'a', 'src/a.ts --lines 1-5', 'you'],
+      [undefined, 'b', 'b.ts', 'you'],
+      ['gate', 'd', undefined, 'you'],
+    ],
+  );
+});
+
+test('the prompt stack lists gates agents wait at, on cards being built', () => {
+  const waiting = withSteps('working', [sub('a', { done: true }), sub('b', { waiting: true })]);
+  const gates = deskGates([waiting, withSteps('brief', [sub('x', { waiting: true })])]);
+  assert.deepEqual(
+    gates.map((g) => [g.task.id, g.step, g.sub.id]),
+    [['t1', 2, 'b']],
+  );
+});
+
+test('sameSteps compares what the human can change', () => {
+  assert.ok(sameSteps([sub('a')], [sub('a', { done: true })]));
+  assert.ok(!sameSteps([sub('a')], [sub('a', { kind: 'gate' })]));
+  assert.ok(!sameSteps([sub('a')], [sub('a', { title: 'x' })]));
+  assert.ok(sameSteps([sub('a', { kind: 'do' })], [sub('a')]));
+});
+
+test('new step ids use the server format', () => {
+  assert.match(newStepId(), /^s[a-f0-9]{6}$/);
 });

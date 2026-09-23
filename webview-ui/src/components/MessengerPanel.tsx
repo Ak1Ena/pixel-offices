@@ -7,12 +7,10 @@ import type {
   FocusRequest,
 } from '../../../core/src/messages.js';
 import {
-  MESSENGER_DOCK_DEFAULT_PX,
   MESSENGER_DOCK_KEY_STEP_PX,
   MESSENGER_DOCK_MIN_PX,
   MESSENGER_DOCK_OFFICE_MIN_PX,
   MESSENGER_DOCK_WIDTH_KEY,
-  MESSENGER_EDIT_PREVIEW_ROWS,
   MESSENGER_PREFS_KEY,
 } from '../constants.js';
 import type { DocRef } from '../docViewer.js';
@@ -32,6 +30,7 @@ import {
   stepCounts,
 } from '../messenger.js';
 import { formatTokens, teamUsage } from '../officeChat.js';
+import { tunable } from '../tunableStore.js';
 import {
   AttachFileButton,
   FileChips,
@@ -40,6 +39,7 @@ import {
   MessageText,
 } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
+import { TextSettings } from './TextSettings.js';
 import { Button } from './ui/Button.js';
 
 export type MessengerStatus = 'working' | 'idle' | 'asking';
@@ -127,9 +127,9 @@ function savePrefs(prefs: ReadingPrefs): void {
 function loadDockWidth(): number {
   try {
     const n = Number(localStorage.getItem(MESSENGER_DOCK_WIDTH_KEY));
-    return Number.isFinite(n) && n >= MESSENGER_DOCK_MIN_PX ? n : MESSENGER_DOCK_DEFAULT_PX;
+    return Number.isFinite(n) && n >= MESSENGER_DOCK_MIN_PX ? n : tunable('messengerDockDefaultPx');
   } catch {
-    return MESSENGER_DOCK_DEFAULT_PX;
+    return tunable('messengerDockDefaultPx');
   }
 }
 
@@ -182,7 +182,7 @@ function CodeBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
-      <pre className="m-0 p-10 bg-bg-dark border-2 border-bg-thumb overflow-x-auto font-mono text-[13px] leading-snug">
+      <pre className="m-0 p-10 bg-bg-dark border-2 border-bg-thumb overflow-x-auto font-mono text-code leading-snug">
         {text}
       </pre>
       <button
@@ -253,7 +253,7 @@ function EditCard({ entry }: { entry: ChatEntry }) {
     [edit],
   );
   const counts = useMemo(() => editCounts(edit.hunks), [edit]);
-  const shown = showAll ? rows : rows.slice(0, MESSENGER_EDIT_PREVIEW_ROWS);
+  const shown = showAll ? rows : rows.slice(0, tunable('messengerEditPreviewRows'));
   return (
     <details open className="border-2 border-bg-thumb bg-chat-tool" data-testid="messenger-edit">
       <summary className="flex items-center gap-8 px-8 py-2 text-xs cursor-pointer select-none">
@@ -264,12 +264,12 @@ function EditCard({ entry }: { entry: ChatEntry }) {
         <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap" title={edit.path}>
           <FileLink path={edit.path} text={fileBaseName(edit.path)} />
         </span>
-        <span className="ml-auto flex gap-6 font-mono text-2xs shrink-0">
+        <span className="ml-auto flex gap-6 font-mono text-code-sm shrink-0">
           {counts.added > 0 && <span className="text-status-success">+{counts.added}</span>}
           {counts.removed > 0 && <span className="text-danger">−{counts.removed}</span>}
         </span>
       </summary>
-      <div className="border-t-2 border-bg-thumb overflow-x-auto font-mono text-[12px] leading-snug">
+      <div className="border-t-2 border-bg-thumb overflow-x-auto font-mono text-code-sm leading-snug">
         {shown.map((r, i) =>
           r.kind === 'gap' ? (
             <div key={i} className="px-8 text-text-muted">
@@ -280,17 +280,16 @@ function EditCard({ entry }: { entry: ChatEntry }) {
               key={i}
               className={`flex whitespace-pre ${r.kind === 'del' ? 'bg-diff-del' : r.kind === 'add' ? 'bg-diff-add' : 'text-text-muted'}`}
             >
-              {/* font-mono on each span: the global `* { font-pixel }` rule beats inheritance. */}
-              <span className="w-16 shrink-0 text-center select-none font-mono">
+              <span className="w-16 shrink-0 text-center select-none">
                 {r.kind === 'del' ? '−' : r.kind === 'add' ? '+' : ' '}
               </span>
-              <span className="font-mono pr-8">{r.text || ' '}</span>
+              <span className="pr-8">{r.text || ' '}</span>
             </div>
           ),
         )}
-        {(rows.length > MESSENGER_EDIT_PREVIEW_ROWS || edit.clipped) && (
-          <div className="flex gap-8 px-8 py-2 text-2xs text-text-muted border-t border-bg-thumb font-reading">
-            {rows.length > MESSENGER_EDIT_PREVIEW_ROWS && (
+        {(rows.length > tunable('messengerEditPreviewRows') || edit.clipped) && (
+          <div className="flex gap-8 px-8 py-2 text-read-sm text-text-muted border-t border-bg-thumb font-reading">
+            {rows.length > tunable('messengerEditPreviewRows') && (
               <button
                 className="bg-transparent border-0 p-0 underline text-2xs text-text-muted cursor-pointer"
                 onClick={() => setShowAll((v) => !v)}
@@ -333,7 +332,7 @@ function Steps({ entries, open }: { entries: ChatEntry[]; open: boolean }) {
         {entries.map((e) => (
           <div
             key={e.entryId}
-            className="flex gap-8 px-8 py-1 border-t border-bg-thumb text-2xs font-mono"
+            className="flex gap-8 px-8 py-1 border-t border-bg-thumb text-code-sm font-mono"
           >
             <span className={e.toolDone ? 'text-status-success' : 'text-status-active'}>
               {e.toolDone ? '✓' : '▶'}
@@ -463,8 +462,6 @@ export function MessengerPanel(props: MessengerPanelProps) {
   const teamUse = team ? teamUsage(team.members, usage) : null;
   const labelOf = (id: number) => agents.find((a) => a.id === id)?.label ?? `#${id}`;
   const files = props.requests.filter((r) => r.agentId === selectedId);
-  const textSize = prefs.size === 'large' ? 'text-[18px]' : 'text-[15px]';
-  const bodyFont = prefs.font === 'pixel' ? 'font-pixel' : 'font-reading';
 
   const list = (
     <div
@@ -512,7 +509,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
               <span className="block text-sm overflow-hidden text-ellipsis whitespace-nowrap">
                 {a.label}
               </span>
-              <span className="block text-2xs text-text-muted font-reading overflow-hidden text-ellipsis whitespace-nowrap">
+              <span className="block text-read-sm text-text-muted font-reading overflow-hidden text-ellipsis whitespace-nowrap">
                 {preview(a.id) || STATUS_TEXT[a.status]}
               </span>
             </span>
@@ -572,7 +569,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
             title="Drag to resize · double-click to reset"
             className="absolute -left-4 top-0 bottom-0 w-8 z-10 cursor-col-resize touch-none hover:bg-accent focus-visible:bg-accent outline-none max-sm:hidden"
             onPointerDown={startDockDrag}
-            onDoubleClick={() => resizeDock(MESSENGER_DOCK_DEFAULT_PX)}
+            onDoubleClick={() => resizeDock(tunable('messengerDockDefaultPx'))}
             onKeyDown={(e) => {
               if (e.key === 'ArrowLeft') resizeDock(dockWidth + MESSENGER_DOCK_KEY_STEP_PX);
               else if (e.key === 'ArrowRight') resizeDock(dockWidth - MESSENGER_DOCK_KEY_STEP_PX);
@@ -639,42 +636,11 @@ export function MessengerPanel(props: MessengerPanelProps) {
                 )}
                 {showPrefs && (
                   <div
-                    className="absolute right-12 top-full mt-4 z-10 w-240 pixel-panel p-10 flex flex-col gap-8 text-sm"
+                    className="absolute right-12 top-full mt-4 z-10 w-300 pixel-panel p-10 flex flex-col gap-8 text-sm"
                     data-testid="messenger-prefs"
                   >
                     <span>Reading</span>
-                    <label className="flex flex-col gap-2 text-xs text-text-muted">
-                      Message font
-                      <span className="flex">
-                        {(['readable', 'pixel'] as const).map((f) => (
-                          <Button
-                            key={f}
-                            size="sm"
-                            variant={prefs.font === f ? 'active' : 'default'}
-                            className="flex-1"
-                            onClick={() => update({ font: f })}
-                          >
-                            {f === 'readable' ? 'Readable' : 'Pixel'}
-                          </Button>
-                        ))}
-                      </span>
-                    </label>
-                    <label className="flex flex-col gap-2 text-xs text-text-muted">
-                      Text size
-                      <span className="flex">
-                        {(['normal', 'large'] as const).map((sz) => (
-                          <Button
-                            key={sz}
-                            size="sm"
-                            variant={prefs.size === sz ? 'active' : 'default'}
-                            className="flex-1"
-                            onClick={() => update({ size: sz })}
-                          >
-                            {sz === 'normal' ? 'Normal' : 'Large'}
-                          </Button>
-                        ))}
-                      </span>
-                    </label>
+                    <TextSettings compact />
                     <label className="flex items-center justify-between text-xs cursor-pointer">
                       Fold tool steps
                       <input
@@ -706,7 +672,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                   data-testid="messenger-read"
                 >
                   <div
-                    className={`max-w-680 mx-auto px-16 flex flex-col gap-14 ${bodyFont} ${textSize} leading-relaxed`}
+                    className={`max-w-680 mx-auto px-16 flex flex-col gap-14 font-reading text-read leading-relaxed`}
                   >
                     {entries.length === 0 && (
                       <div className="m-auto text-sm text-text-muted font-pixel">
@@ -841,7 +807,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                           {props.docRefs(agent.id).map((ref, i) => (
                             <span
                               key={`${refLabel(ref)}-${i}`}
-                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs font-mono"
+                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-code-sm font-mono"
                             >
                               {refLabel(ref)}
                               <button
@@ -875,7 +841,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                         }}
                         rows={3}
                         placeholder={`Message ${agent.label}…`}
-                        className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-[15px] text-text"
+                        className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-read text-text"
                         data-testid="messenger-input"
                       />
                       <div className="flex items-center gap-6 relative">
@@ -992,7 +958,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                 {outline.map((o) => (
                   <button
                     key={o.entryId}
-                    className="text-left bg-transparent border-0 border-l-2 border-bg-thumb px-6 py-2 text-xs text-text font-reading cursor-pointer hover:border-accent"
+                    className="text-left bg-transparent border-0 border-l-2 border-bg-thumb px-6 py-2 text-read-sm text-text font-reading cursor-pointer hover:border-accent"
                     onClick={() =>
                       document
                         .getElementById(`msg-${o.entryId}`)

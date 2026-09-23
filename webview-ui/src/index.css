@@ -65,28 +65,69 @@
   /* Non-utility values */
   --vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
   --btn-disabled-opacity: 0.35;
+
+  /* Typography. Two faces with two jobs: the INTERFACE face (--font-ui) draws
+     chrome — toolbars, labels, buttons, meta lines; the READING face
+     (--font-read) draws what agents and people wrote — chat and Messenger
+     bodies, long descriptions. Settings → Text (textPrefs.ts) overrides the
+     knobs below on <html>: --font-scale (text size), the two faces, and each
+     face's size factor (-k), since a pixel face looks smaller than a system one
+     at the same px. Components use the text-* utilities, never literal sizes. */
+  --font-stack-pixel: 'FS Pixel Sans', sans-serif;
+  --font-stack-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-stack-serif: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  --font-stack-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-scale: 1;
+  --font-ui: var(--font-stack-pixel);
+  --font-ui-k: 1;
+  --font-read: var(--font-stack-sans);
+  --font-read-k: 1;
+
+  /* Interface scale (tuned for the pixel face, base = 22px) */
+  --fs-2xs: calc(16px * var(--font-scale) * var(--font-ui-k));
+  --fs-xs: calc(18px * var(--font-scale) * var(--font-ui-k));
+  --fs-sm: calc(20px * var(--font-scale) * var(--font-ui-k));
+  --fs-base: calc(22px * var(--font-scale) * var(--font-ui-k));
+  --fs-lg: calc(26px * var(--font-scale) * var(--font-ui-k));
+  --fs-xl: calc(30px * var(--font-scale) * var(--font-ui-k));
+  --fs-2xl: calc(36px * var(--font-scale) * var(--font-ui-k));
+  --fs-3xl: calc(44px * var(--font-scale) * var(--font-ui-k));
+  --fs-4xl: calc(52px * var(--font-scale) * var(--font-ui-k));
+  --fs-5xl: calc(64px * var(--font-scale) * var(--font-ui-k));
+  /* Reading scale (tuned for a system face): message bodies and prose */
+  --fs-read-sm: calc(13px * var(--font-scale) * var(--font-read-k));
+  --fs-read: calc(15px * var(--font-scale) * var(--font-read-k));
+  /* Code and diffs: always monospace, so only the text size moves them */
+  --fs-code-sm: calc(12px * var(--font-scale));
+  --fs-code: calc(13px * var(--font-scale));
 }
 
 @theme inline {
   /* 1px base so Tailwind spacing maps directly to pixels (pixel-art project) */
   --spacing: 1px;
 
-  --font-pixel: 'FS Pixel Sans', sans-serif;
-  /* Long replies in the Messenger: the system's own reading face */
-  --font-reading: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* font-pixel = the interface face (pixel unless Settings → Text says System);
+     font-reading = the reading face. Both resolve through :root above. */
+  --font-pixel: var(--font-ui);
+  --font-reading: var(--font-read);
+  --font-mono: var(--font-stack-mono);
 
-  /* Text sizes (pixel-art scale, base = 22px) */
+  /* Text sizes: every step follows Settings → Text size (see :root) */
   --text-*: initial;
-  --text-2xs: 16px;
-  --text-xs: 18px;
-  --text-sm: 20px;
-  --text-base: 22px;
-  --text-lg: 26px;
-  --text-xl: 30px;
-  --text-2xl: 36px;
-  --text-3xl: 44px;
-  --text-4xl: 52px;
-  --text-5xl: 64px;
+  --text-2xs: var(--fs-2xs);
+  --text-xs: var(--fs-xs);
+  --text-sm: var(--fs-sm);
+  --text-base: var(--fs-base);
+  --text-lg: var(--fs-lg);
+  --text-xl: var(--fs-xl);
+  --text-2xl: var(--fs-2xl);
+  --text-3xl: var(--fs-3xl);
+  --text-4xl: var(--fs-4xl);
+  --text-5xl: var(--fs-5xl);
+  --text-read-sm: var(--fs-read-sm);
+  --text-read: var(--fs-read);
+  --text-code-sm: var(--fs-code-sm);
+  --text-code: var(--fs-code);
 
   /* Colors — reference :root vars so VS Code shows swatches */
   --color-bg: var(--color-bg);
@@ -135,9 +176,11 @@
     @apply m-0 w-full h-full overflow-hidden font-pixel text-base text-text;
   }
 
-  * {
-    @apply font-pixel;
-  }
+  /* The face is INHERITED (preflight gives form controls `font: inherit`), so a
+     font-reading / font-mono container reaches every element inside it. A
+     `* { font-pixel }` rule used to re-set each child to the pixel face, which
+     left message bodies half pixel, half reading (paragraphs, list items and
+     links inside a reading container all came out pixel). */
 }
 
 @layer components {

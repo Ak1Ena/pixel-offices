@@ -38,6 +38,10 @@ export interface AgentState {
   /** For a run the office follows by process id (agy): the key its terminal is
    *  known by (launcher inbox / owned pty), when that differs from sessionId. */
   launchKey?: string;
+  /** What happens when the agent asks to clear its own context; absent = 'ask'. */
+  clearPolicy?: 'ask' | 'allow' | 'never';
+  /** Whether the agent's document edits wait for review; absent = the office default. */
+  docEditMode?: 'ask' | 'auto' | 'off';
   /** Provider that created this agent (defaults to 'claude') */
   providerId?: string;
   /** Set when SessionEnd(reason=clear) fires; cleared when SessionStart(source=clear) reassigns */
@@ -151,4 +155,11 @@ export interface PersistedAgent {
   cwd?: string;
   /** Task desk pick-up switch; absent = default for how it was started. */
   pickup?: boolean;
+  /** The id the agent's terminal was started with, when /clear has moved the
+   *  agent onto a new session (the launcher and office ptys know it by this). */
+  launchKey?: string;
+  /** What happens when the agent asks to clear its own context; absent = 'ask'. */
+  clearPolicy?: 'ask' | 'allow' | 'never';
+  /** Whether the agent's document edits wait for review; absent = the office default. */
+  docEditMode?: 'ask' | 'auto' | 'off';
 }

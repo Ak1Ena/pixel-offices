@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ChatEntry } from '../../../core/src/messages.js';
-import { GROUP_CHAT_WIDTH_PX } from '../constants.js';
 import { canSendChatFiles, dragHasFiles, pastedFiles, withFileMentions } from '../fileUpload.js';
 import { useFileAttachments } from '../hooks/useFileAttachments.js';
 import type { ChatChannel } from '../officeChat.js';
@@ -17,6 +16,7 @@ import {
   mergeTimeline,
   teamUsage,
 } from '../officeChat.js';
+import { tunable } from '../tunableStore.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { Button } from './ui/Button.js';
 
@@ -129,7 +129,7 @@ export function GroupChatPanel({
     <aside
       aria-label="Group chat"
       className="absolute right-0 top-0 bottom-0 z-35 flex flex-col pixel-panel max-w-full"
-      style={{ width: GROUP_CHAT_WIDTH_PX }}
+      style={{ width: tunable('groupChatWidthPx') }}
       data-testid="group-chat"
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -216,7 +216,7 @@ export function GroupChatPanel({
                 </button>
               </div>
               <div
-                className={`px-8 py-4 border-2 text-sm whitespace-pre-wrap break-words ${
+                className={`px-8 py-4 border-2 font-reading text-read leading-snug whitespace-pre-wrap break-words ${
                   mine ? 'bg-chat-office border-accent' : 'bg-bg-dark border-bg-thumb'
                 }`}
               >
@@ -325,7 +325,7 @@ export function GroupChatPanel({
                     void send();
                   }
                 }}
-                className="flex-1 min-w-0 resize-none p-6 bg-bg text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent"
+                className="flex-1 min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 border-border rounded-none outline-none focus:border-accent"
                 data-testid="group-input"
               />
               {filesEnabled && <AttachFileButton attachments={attachments} />}

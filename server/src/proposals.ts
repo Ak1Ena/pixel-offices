@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { DocEdit } from '../../core/src/docModel.js';
 import type { Proposal, ProposalHunk } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import {
@@ -15,6 +16,7 @@ import {
 import { guessAgent } from './focusRequests.js';
 import type { Hunk } from './lineDiff.js';
 import { applyHunks, diffLines, joinText, splitText, toHunks } from './lineDiff.js';
+import { applyDocEdits, docKindOf } from './officeDocs.js';
 
 /**
  * "Review changes": an agent suggests a new version of a file instead of
@@ -28,6 +30,7 @@ import { applyHunks, diffLines, joinText, splitText, toHunks } from './lineDiff.
 const NOT_TEXT = new Set([
   '.docx',
   '.xlsx',
+  '.pptx',
   '.pdf',
   '.png',
   '.jpg',
@@ -44,13 +47,23 @@ interface Entry {
   baseHash: string;
   backupPath?: string;
   appliedHash?: string;
+  /** A document suggestion (Word, PowerPoint, Excel): one edit per hunk, by position. */
+  doc?: { edits: DocEdit[] };
 }
 
 export type ProposalResult =
   { state: 'applied' | 'discarded'; summary: string } | { state: 'pending' } | { state: 'gone' };
 
-function sha(text: string): string {
+function sha(text: string | Buffer): string {
   return crypto.createHash('sha256').update(text).digest('hex');
+}
+
+function readBytes(filePath: string): Buffer | null {
+  try {
+    return fs.readFileSync(filePath);
+  } catch {
+    return null;
+  }
 }
 
 function readText(filePath: string): string | null {
@@ -67,6 +80,11 @@ function readText(filePath: string): string | null {
 
 /** "Install steps (line 12)" — how a hunk is named to the agent. */
 function hunkTitle(h: ProposalHunk): string {
+  if (h.where) {
+    const after = h.lines.find((l) => l.kind === 'add')?.text ?? '';
+    const text = after.replace(/\s+/g, ' ').trim().slice(0, 50);
+    return text ? `${h.where}: "${text}"` : `${h.where}: cleared`;
+  }
   const changed = h.lines.find((l) => l.kind !== 'context');
   const text = (changed?.text ?? '').trim().slice(0, 50) || 'blank line';
   return `line ${h.oldStart}: "${text}"`;
@@ -107,7 +125,7 @@ export class Proposals {
       return {
         ok: false,
         error:
-          'Only text files can be reviewed line by line for now (not Word, Excel, PDF or images).',
+          'Only text files can be reviewed line by line. For Word, PowerPoint and Excel use `pixel-office doc edit`.',
       };
     }
     const exists = fs.existsSync(filePath);
@@ -162,6 +180,122 @@ export class Proposals {
     this.prune();
     this.broadcast();
     return { ok: true, proposal: structuredClone(proposal) };
+  }
+
+  /**
+   * An agent's edits to a Word, PowerPoint or Excel file, waiting for review:
+   * one hunk per edit showing what is there and what would replace it. The
+   * edits are checked against the file now, so a suggestion that can't apply
+   * is refused up front.
+   */
+  async openDoc(input: {
+    path: string;
+    edits: DocEdit[];
+    why?: string;
+    agentId?: number;
+  }): Promise<{ ok: true; proposal: Proposal } | { ok: false; error: string }> {
+    const filePath = path.normalize(input.path);
+    const kind = docKindOf(filePath);
+    if (!kind) return { ok: false, error: 'Not a Word, PowerPoint or Excel file.' };
+    const current = readBytes(filePath);
+    if (!current) return { ok: false, error: `Can't read ${filePath}.` };
+    const checked = await applyDocEdits(current, kind, input.edits);
+    if (!checked.ok) return { ok: false, error: checked.error };
+    for (const old of this.entries.filter(
+      (e) => e.proposal.path === filePath && e.proposal.state === 'open',
+    )) {
+      this.finish(old, 'discarded', 'A newer suggestion for the same file replaced this one.');
+    }
+    const why = (input.why ?? '')
+      .replace(/[\x00-\x1f\x7f]/g, ' ')
+      .trim()
+      .slice(0, 280);
+    const proposal: Proposal = {
+      proposalId: `p${crypto.randomBytes(4).toString('hex')}`,
+      path: filePath,
+      ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
+      ...(why ? { why } : {}),
+      state: 'open',
+      createdAt: new Date().toISOString(),
+      hunks: docHunks(checked.previews),
+    };
+    this.entries.push({
+      proposal,
+      hunks: [],
+      proposedPath: '',
+      baseHash: sha(current),
+      doc: { edits: input.edits },
+    });
+    this.prune();
+    this.broadcast();
+    return { ok: true, proposal: structuredClone(proposal) };
+  }
+
+  /** Apply — text or document suggestion. */
+  async applyAny(
+    proposalId: unknown,
+  ): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+    const entry = this.find(proposalId);
+    if (!entry?.doc) return this.apply(proposalId);
+    if (entry.proposal.state !== 'open')
+      return { ok: false, error: 'That suggestion is no longer open.' };
+    const filePath = entry.proposal.path;
+    const kind = docKindOf(filePath)!;
+    const accepted = entry.proposal.hunks
+      .map((h, i) => (h.decision === 'accepted' ? i : -1))
+      .filter((i) => i >= 0);
+    if (accepted.length === 0)
+      return { ok: false, error: 'Accept at least one change, or discard the suggestion.' };
+    const current = readBytes(filePath);
+    if (!current) return { ok: false, error: `Can't read ${filePath} any more.` };
+    if (sha(current) !== entry.baseHash) {
+      // Show the edits again against the file as it is now, decisions reset.
+      const again = await applyDocEdits(current, kind, entry.doc.edits);
+      entry.baseHash = sha(current);
+      if (!again.ok) {
+        entry.proposal.note = `${path.basename(filePath)} changed since the suggestion and the edits no longer fit: ${again.error}`;
+        this.broadcast();
+        return { ok: false, error: entry.proposal.note };
+      }
+      entry.proposal.hunks = docHunks(again.previews);
+      entry.proposal.note = `${path.basename(filePath)} changed since the suggestion. The changes are shown again against the file as it is now; review them again.`;
+      this.broadcast();
+      return { ok: false, error: entry.proposal.note };
+    }
+    const result = await applyDocEdits(
+      current,
+      kind,
+      accepted.map((i) => entry.doc!.edits[i]),
+    );
+    if (!result.ok) return { ok: false, error: result.error };
+    let backupPath: string;
+    try {
+      fs.mkdirSync(this.backupDir, { recursive: true });
+      backupPath = path.join(
+        this.backupDir,
+        `${Date.now()}-${entry.proposal.proposalId}-${path.basename(filePath)}`,
+      );
+      fs.writeFileSync(backupPath, current, { mode: 0o600 });
+      const mode = fs.statSync(filePath).mode;
+      const tmp = `${filePath}.pixel-agents.tmp`;
+      fs.writeFileSync(tmp, result.buffer, { mode });
+      fs.renameSync(tmp, filePath);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Couldn't write ${filePath}: ${err instanceof Error ? err.message : String(err)}. Nothing was changed.`,
+      };
+    }
+    entry.backupPath = backupPath;
+    entry.appliedHash = sha(result.buffer);
+    const summary = this.summary(entry, 'applied');
+    this.finish(
+      entry,
+      'applied',
+      `Applied ${accepted.length} of ${entry.proposal.hunks.length} changes.`,
+      summary,
+    );
+    return { ok: true, summary };
   }
 
   decide(proposalId: unknown, hunkId: unknown, decision: unknown, reason?: unknown): boolean {
@@ -283,7 +417,7 @@ export class Proposals {
     const entry = this.find(proposalId);
     if (!entry || entry.proposal.state !== 'applied' || !entry.backupPath)
       return { ok: false, error: 'Nothing to undo.' };
-    const current = readText(entry.proposal.path);
+    const current = entry.doc ? readBytes(entry.proposal.path) : readText(entry.proposal.path);
     if (current === null || sha(current) !== entry.appliedHash) {
       return {
         ok: false,
@@ -393,4 +527,21 @@ export class Proposals {
   private broadcast(): void {
     this.store.broadcast(this.snapshot());
   }
+}
+
+/** One review hunk per document edit: what is there now, what would replace it. */
+function docHunks(
+  previews: Array<{ where: string; before: string; after: string }>,
+): ProposalHunk[] {
+  return previews.map((p, i) => ({
+    hunkId: `d${i + 1}`,
+    oldStart: 0,
+    newStart: 0,
+    where: p.where,
+    lines: [
+      ...(p.before ? [{ kind: 'del' as const, text: p.before }] : []),
+      ...(p.after ? [{ kind: 'add' as const, text: p.after }] : []),
+    ],
+    decision: 'pending' as const,
+  }));
 }

@@ -3,13 +3,20 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import {
+  cellEditText,
   cellRange,
   columnLetter,
   fileBaseName,
+  isTextEditableName,
+  lastEditKeyFor,
+  mergeDocEdit,
+  modelSheetGrid,
+  modelSheetView,
   parseCellRef,
   parseCsv,
   refLabel,
   refText,
+  samePath,
   spotLabel,
   toSheetView,
   viewerKind,
@@ -91,4 +98,111 @@ test('references name the place, never the content', () => {
 test('clicked cells become a range', () => {
   assert.equal(cellRange({ r: 5, c: 3 }, { r: 3, c: 1 }, 'Q3'), 'Q3!B4:D6');
   assert.equal(cellRange({ r: 0, c: 0 }, { r: 0, c: 0 }), 'A1');
+});
+
+// ── Word / PowerPoint places, model sheets, staged edits ──
+
+test('paragraph and slide refs name the place, never the text', () => {
+  assert.equal(
+    refText({ path: '/w/report.docx', paraStart: 3, paraEnd: 4 }),
+    '[@/w/report.docx paragraphs 3-4]',
+  );
+  assert.equal(refText({ path: '/w/report.docx', paraStart: 3 }), '[@/w/report.docx paragraph 3]');
+  assert.equal(
+    refText({ path: '/w/pitch.pptx', slide: 2, shape: 'Content "3"' }),
+    `[@/w/pitch.pptx slide 2 "Content '3'"]`,
+  );
+  assert.equal(refLabel({ path: '/w/report.docx', paraStart: 3, paraEnd: 4 }), 'report.docx ¶3–4');
+  assert.equal(refLabel({ path: '/w/pitch.pptx', slide: 2 }), 'pitch.pptx slide 2');
+  assert.equal(viewerKind('deck.PPTX'), 'slides');
+});
+
+test('a model sheet becomes a grid placed by cell refs, with staged edits drawn in', () => {
+  const sheet = {
+    name: 'Q3',
+    range: 'A1:C3',
+    rows: [
+      [
+        { ref: 'A1', value: 'Team' },
+        { ref: 'C1', value: 'Total' },
+      ],
+      [{ ref: 'B3', value: '12', formula: 'SUM(B1:B2)' }],
+    ],
+  };
+  const grid = modelSheetGrid(sheet);
+  assert.equal(grid.cols, 3);
+  assert.equal(grid.rows[0][1], null);
+  assert.equal(cellEditText(grid.rows[2][1]), '=SUM(B1:B2)');
+  assert.equal(cellEditText(grid.rows[0][0]), 'Team');
+  const view = modelSheetView(sheet, [
+    { kind: 'cell', sheet: 'Q3', ref: 'B2', value: '7' },
+    { kind: 'cell', sheet: 'Other', ref: 'A1', value: 'x' },
+  ]);
+  assert.deepEqual(view.rows, [
+    ['Team', '', 'Total'],
+    ['', '7', ''],
+    ['', '12', ''],
+  ]);
+});
+
+test('staged edits keep one change per place; new paragraphs all stay', () => {
+  let edits = mergeDocEdit([], { kind: 'para', n: 3, text: 'a' });
+  edits = mergeDocEdit(edits, { kind: 'para', n: 3, text: 'b' });
+  edits = mergeDocEdit(edits, { kind: 'cell', ref: 'b2', value: '1' });
+  edits = mergeDocEdit(edits, { kind: 'cell', ref: 'B2', value: '2' });
+  edits = mergeDocEdit(edits, { kind: 'insertAfter', n: 3, text: '' });
+  edits = mergeDocEdit(edits, { kind: 'insertAfter', n: 3, text: '' });
+  assert.deepEqual(edits, [
+    { kind: 'para', n: 3, text: 'b' },
+    { kind: 'cell', ref: 'B2', value: '2' },
+    { kind: 'insertAfter', n: 3, text: '' },
+    { kind: 'insertAfter', n: 3, text: '' },
+  ]);
+});
+
+test('only plain text formats are editable as text', () => {
+  assert.ok(isTextEditableName('notes.md'));
+  assert.ok(isTextEditableName('data.CSV'));
+  assert.ok(!isTextEditableName('app.ts'));
+});
+
+test('a notice path matches a pin written with ~', () => {
+  assert.ok(samePath('/Users/me/q3/report.docx', '~/q3/report.docx'));
+  assert.ok(samePath('/w/a.docx', '/w/a.docx'));
+  assert.ok(!samePath('/w/a.docx', '/w/b.docx'));
+  assert.equal(
+    lastEditKeyFor(
+      [
+        {
+          editId: 'e1',
+          path: '/w/a.docx',
+          who: 'You',
+          at: '',
+          changes: [],
+          canUndo: false,
+          undone: false,
+        },
+        {
+          editId: 'e2',
+          path: '/w/a.docx',
+          who: 'You',
+          at: '',
+          changes: [],
+          canUndo: true,
+          undone: true,
+        },
+      ],
+      '/w/a.docx',
+    ),
+    'e2:true',
+  );
+});
+
+test('a message with office refs says how to read them, once', () => {
+  const text = withRefs('why?', [
+    { path: '/w/a.docx', paraStart: 1 },
+    { path: '/w/b.pptx', slide: 2 },
+  ]);
+  assert.equal(text.match(/pixel-office doc read/g)?.length, 1);
+  assert.ok(!withRefs('x', [{ path: '/w/a.ts', lineStart: 3 }]).includes('pixel-office doc'));
 });

@@ -1,5 +1,6 @@
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { prefsMessage } from './contextClear.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 import { tokenUsageMessage } from './tokenUsage.js';
 
@@ -94,6 +95,8 @@ export function resendAgentActivity(
 
     // 6. Name + token usage
     if (agent.displayName) send({ type: 'agentRenamed', id, name: agent.displayName });
+    // Only what the human changed: the client's defaults cover the rest.
+    if (agent.clearPolicy || agent.docEditMode) send(prefsMessage(id, agent));
     const usage = tokenUsageMessage(id, agent);
     if (usage) send(usage);
 
@@ -124,6 +127,9 @@ export function sendOfficeChatState(
   send({ ...runtime.desk.snapshot() });
   void runtime.desk.tick(); // agents' folders resolve asynchronously; this broadcasts them
   send({ type: 'agentRelayState', enabled: runtime.relay.enabled });
+  send({ ...runtime.contextClear.snapshot() });
+  send({ ...runtime.docs.snapshot() });
+  send({ type: 'docEditDefault', mode: runtime.docs.defaultMode });
   for (const ask of runtime.permissions.snapshot()) send(ask);
   for (const id of runtime.chatSender.sendableSnapshot()) {
     send({ type: 'agentChatSendable', id, sendable: true });

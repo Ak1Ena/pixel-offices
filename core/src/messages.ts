@@ -35,6 +35,10 @@ export type ServerMessage =
   | AgentScreen
   | StartAgentResult
   | AgentRelayState
+  | AgentPrefs
+  | AgentClearRequests
+  | DocEdits
+  | DocEditDefault
   | AgentPermissionAsk
   | AgentPermissionAnswered
   | FolderListing
@@ -114,12 +118,19 @@ export type ClientMessage =
   | SaveDeskTask
   | RemoveDeskTask
   | DeskTaskAction
+  | EditDeskSteps
+  | AnswerDeskGate
   | SetDeskTaskAllow
   | SetAgentPickup
   | RenameAgent
   | StartAgent
   | SendAgentKeys
   | InterruptAgent
+  | ClearAgentContext
+  | AnswerClearRequest
+  | SetAgentPrefs
+  | SetDocEditDefault
+  | UndoDocEdit
   | AnswerScreenQuestion
   | SetAgentRelay
   | AnswerPermission
@@ -368,6 +379,49 @@ export interface AgentRelayState {
   enabled: boolean;
 }
 
+export interface AgentPrefs {
+  type: 'agentPrefs';
+  id: number;
+  clearPolicy: AgentClearPolicy;
+  docEditMode?: DocEditMode;
+}
+
+export type AgentClearPolicy = 'ask' | 'allow' | 'never';
+
+export type DocEditMode = 'ask' | 'auto' | 'off';
+
+export interface AgentClearRequests {
+  type: 'agentClearRequests';
+  requests: AgentClearRequest[];
+}
+
+export interface AgentClearRequest {
+  agentId: number;
+  reason?: string;
+  at: string;
+}
+
+export interface DocEdits {
+  type: 'docEdits';
+  edits: DocEditNotice[];
+}
+
+export interface DocEditNotice {
+  editId: string;
+  path: string;
+  who: string;
+  agentId?: number;
+  at: string;
+  changes: string[];
+  canUndo: boolean;
+  undone: boolean;
+}
+
+export interface DocEditDefault {
+  type: 'docEditDefault';
+  mode: DocEditMode;
+}
+
 export interface AgentPermissionAsk {
   type: 'agentPermissionAsk';
   id: number;
@@ -597,6 +651,7 @@ export interface ProposalHunk {
   lines: ProposalLine[];
   decision: HunkDecision;
   reason?: string;
+  where?: string;
 }
 
 export interface ProposalLine {
@@ -662,7 +717,12 @@ export interface DeskBrief {
 }
 
 export interface DeskSubtask {
+  id?: string;
+  kind?: WorkflowStepKind;
   title: string;
+  ref?: string;
+  waiting?: boolean;
+  ask?: string;
   skip: boolean;
   done: boolean;
   by: DeskSubtaskAuthor;
@@ -1109,6 +1169,20 @@ export interface DeskTaskAction {
 
 export type DeskHumanAction = 'publish' | 'verified' | 'do' | 'rejected' | 'accept' | 'sendBack';
 
+export interface EditDeskSteps {
+  type: 'editDeskSteps';
+  taskId: string;
+  steps: DeskSubtask[];
+}
+
+export interface AnswerDeskGate {
+  type: 'answerDeskGate';
+  taskId: string;
+  step: number;
+  decision: GateDecision;
+  note?: string;
+}
+
 export interface SetDeskTaskAllow {
   type: 'setDeskTaskAllow';
   taskId: string;
@@ -1147,6 +1221,37 @@ export type AgentKey = 'enter' | 'escape' | 'up' | 'down' | 'tab' | '1' | '2' | 
 export interface InterruptAgent {
   type: 'interruptAgent';
   id: number;
+}
+
+export interface ClearAgentContext {
+  type: 'clearAgentContext';
+  id: number;
+  mode?: ClearMode;
+}
+
+export type ClearMode = 'clear' | 'compact';
+
+export interface AnswerClearRequest {
+  type: 'answerClearRequest';
+  id: number;
+  allow: boolean;
+}
+
+export interface SetAgentPrefs {
+  type: 'setAgentPrefs';
+  id: number;
+  clearPolicy?: AgentClearPolicy;
+  docEditMode?: DocEditMode;
+}
+
+export interface SetDocEditDefault {
+  type: 'setDocEditDefault';
+  mode: DocEditMode;
+}
+
+export interface UndoDocEdit {
+  type: 'undoDocEdit';
+  editId: string;
 }
 
 export interface AnswerScreenQuestion {

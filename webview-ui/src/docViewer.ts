@@ -1,14 +1,19 @@
-import { DOC_TABLE_MAX_ROWS } from './constants.js';
+import type { DocCell, DocEdit, DocSheet } from '../../core/src/docModel.js';
+import type { DocEditNotice } from '../../core/src/messages.js';
+import { DOC_READ_HINT } from './constants.js';
+import { tunable } from './tunableStore.js';
 
 /**
  * Pure helpers for the document viewer (DOM-free, Node-testable).
  */
 
-export type ViewerKind = 'pdf' | 'word' | 'sheet' | 'csv' | 'text' | 'image' | 'unsupported';
+export type ViewerKind =
+  'pdf' | 'word' | 'slides' | 'sheet' | 'csv' | 'text' | 'image' | 'unsupported';
 
 const KIND_BY_EXT: Record<string, ViewerKind> = {
   pdf: 'pdf',
   docx: 'word',
+  pptx: 'slides',
   xlsx: 'sheet',
   csv: 'csv',
   txt: 'text',
@@ -120,7 +125,7 @@ export interface SheetView {
 
 /** Cap a sheet for display and turn every cell into text. */
 export function toSheetView(name: string, data: unknown[][]): SheetView {
-  const rows = data.slice(0, DOC_TABLE_MAX_ROWS).map((r) =>
+  const rows = data.slice(0, tunable('docTableMaxRows')).map((r) =>
     r.map((cell) => {
       if (cell === null || cell === undefined) return '';
       if (cell instanceof Date) return cell.toISOString().slice(0, 10);
@@ -200,11 +205,30 @@ export interface DocRef {
   lineEnd?: number;
   page?: number;
   cell?: string;
+  /** Word paragraphs (the office's numbering, see core/src/docModel.ts). */
+  paraStart?: number;
+  paraEnd?: number;
+  /** A PowerPoint slide, and optionally one shape on it. */
+  slide?: number;
+  shape?: string;
+}
+
+/** "¶3–4", "slide 2 “Content 3”" — the place part of a Word / PowerPoint ref. */
+function docPlace(ref: DocRef): string {
+  if (ref.paraStart) {
+    return ref.paraEnd && ref.paraEnd !== ref.paraStart
+      ? `¶${ref.paraStart}–${ref.paraEnd}`
+      : `¶${ref.paraStart}`;
+  }
+  if (ref.slide) return ref.shape ? `slide ${ref.slide} “${ref.shape}”` : `slide ${ref.slide}`;
+  return '';
 }
 
 /** "session.ts:41–43", "budget.xlsx Q3!B4:D6", "plan.pdf p.3" — for chips. */
 export function refLabel(ref: DocRef): string {
   const name = fileBaseName(ref.path);
+  const place = docPlace(ref);
+  if (place) return `${name} ${place}`;
   if (ref.lineStart) {
     return ref.lineEnd && ref.lineEnd !== ref.lineStart
       ? `${name}:${ref.lineStart}–${ref.lineEnd}`
@@ -217,6 +241,16 @@ export function refLabel(ref: DocRef): string {
 
 /** What the agent gets: the path and the place, never the text. */
 export function refText(ref: DocRef): string {
+  if (ref.paraStart) {
+    const range =
+      ref.paraEnd && ref.paraEnd !== ref.paraStart
+        ? `paragraphs ${ref.paraStart}-${ref.paraEnd}`
+        : `paragraph ${ref.paraStart}`;
+    return `[@${ref.path} ${range}]`;
+  }
+  if (ref.slide) {
+    return `[@${ref.path} slide ${ref.slide}${ref.shape ? ` "${ref.shape.replace(/"/g, "'")}"` : ''}]`;
+  }
   const where = ref.lineStart
     ? ref.lineEnd && ref.lineEnd !== ref.lineStart
       ? ` lines ${ref.lineStart}-${ref.lineEnd}`
@@ -233,6 +267,10 @@ export function refText(ref: DocRef): string {
 export function withRefs(text: string, refs: DocRef[]): string {
   if (refs.length === 0) return text;
   const lines = refs.map(refText);
+  // Office files can't be read with a plain file read: say how, once.
+  if (refs.some((r) => r.paraStart || r.slide || (r.cell && /\.xlsx$/i.test(r.path)))) {
+    lines.push(DOC_READ_HINT);
+  }
   return text.trim() ? `${text.trim()}\n\n${lines.join('\n')}` : lines.join('\n');
 }
 
@@ -250,4 +288,98 @@ export function cellRange(
   const end = `${columnLetter(c1)}${r1 + 1}`;
   const range = start === end ? start : `${start}:${end}`;
   return sheet ? `${sheet}!${range}` : range;
+}
+
+// ── Office document models (core/src/docModel.ts) ──
+
+/** A model sheet as a grid: cells placed by their refs, gaps empty. */
+export function modelSheetGrid(sheet: DocSheet): {
+  rows: Array<Array<DocCell | null>>;
+  cols: number;
+} {
+  const grid: Array<Array<DocCell | null>> = [];
+  let cols = 0;
+  for (const row of sheet.rows) {
+    for (const cell of row) {
+      const at = parseCellRef(cell.ref);
+      if (!at) continue;
+      while (grid.length <= at.r0) grid.push([]);
+      const line = grid[at.r0];
+      while (line.length <= at.c0) line.push(null);
+      line[at.c0] = cell;
+      cols = Math.max(cols, at.c0 + 1);
+    }
+  }
+  return { rows: grid, cols };
+}
+
+/** What a cell holds for editing: its formula ("=SUM(…)") or its value. */
+export function cellEditText(cell: DocCell | null | undefined): string {
+  if (!cell) return '';
+  return cell.formula ? `=${cell.formula}` : cell.value;
+}
+
+/** Edits the human made in the viewer, one per place (a later change to the same place wins). */
+export function mergeDocEdit(edits: DocEdit[], next: DocEdit): DocEdit[] {
+  const same = (e: DocEdit): boolean =>
+    e.kind === next.kind &&
+    ((e.kind === 'para' && next.kind === 'para' && e.n === next.n) ||
+      (e.kind === 'shape' &&
+        next.kind === 'shape' &&
+        e.slide === next.slide &&
+        e.shape === next.shape) ||
+      (e.kind === 'cell' &&
+        next.kind === 'cell' &&
+        (e.sheet ?? '') === (next.sheet ?? '') &&
+        e.ref.toUpperCase() === next.ref.toUpperCase()));
+  // insertAfter edits each add a paragraph: never merged.
+  if (next.kind === 'insertAfter') return [...edits, next];
+  return [...edits.filter((e) => !same(e)), next];
+}
+
+/** Text files the viewer can edit (mirrors the server's list; code files stay read-only). */
+const TEXT_EDITABLE_EXT = new Set([
+  'txt',
+  'md',
+  'csv',
+  'log',
+  'json',
+  'yaml',
+  'yml',
+  'toml',
+  'ini',
+]);
+
+export function isTextEditableName(name: string): boolean {
+  return TEXT_EDITABLE_EXT.has(fileExtension(name));
+}
+
+/** A model sheet as the table view shows it, with staged cell edits drawn in. */
+export function modelSheetView(sheet: DocSheet, edits: DocEdit[] = []): SheetView {
+  const { rows, cols } = modelSheetGrid(sheet);
+  const text = rows.map((row) => Array.from({ length: cols }, (_, c) => row[c]?.value ?? ''));
+  for (const e of edits) {
+    if (e.kind !== 'cell' || (e.sheet && e.sheet !== sheet.name)) continue;
+    const at = parseCellRef(e.ref);
+    if (!at) continue;
+    while (text.length <= at.r0) text.push([]);
+    while (text[at.r0].length <= at.c0) text[at.r0].push('');
+    text[at.r0][at.c0] = e.value;
+  }
+  return { name: sheet.name, rows: text, totalRows: text.length };
+}
+
+/** Whether a notice's path (absolute, resolved by the server) is the pin's path (may start with ~). */
+export function samePath(noticePath: string, pinPath: string): boolean {
+  const pin = pinPath.trim();
+  if (noticePath === pin) return true;
+  return pin.startsWith('~/') && noticePath.endsWith(pin.slice(1));
+}
+
+/** "<editId>:<undone>" of the newest edit to `path`, so a viewer knows to reload. */
+export function lastEditKeyFor(edits: DocEditNotice[], path: string): string | undefined {
+  for (let i = edits.length - 1; i >= 0; i--) {
+    if (samePath(edits[i].path, path)) return `${edits[i].editId}:${edits[i].undone}`;
+  }
+  return undefined;
 }

@@ -167,8 +167,10 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^10.1.2",
     "@fastify/websocket": "^11.2.0",
+    "@xmldom/xmldom": "^0.8.15",
     "@xterm/headless": "^6.0.0",
-    "fastify": "^5.8.5"
+    "fastify": "^5.8.5",
+    "jszip": "^3.10.2"
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"

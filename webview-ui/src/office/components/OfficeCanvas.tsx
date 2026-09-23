@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 import {
-  CAMERA_FOLLOW_LERP,
   CAMERA_FOLLOW_SNAP_THRESHOLD,
   PAN_MARGIN_FRACTION,
   PIN_DRAG_MIME,
@@ -13,6 +12,7 @@ import {
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
 import { transport } from '../../transport/index.js';
+import { tunable } from '../../tunableStore.js';
 import { getColorizedSprite } from '../colorize.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js';
 import type { EditorState } from '../editor/editorState.js';
@@ -266,8 +266,8 @@ export function OfficeCanvas({
             panRef.current = { x: targetX, y: targetY };
           } else {
             panRef.current = {
-              x: panRef.current.x + dx * CAMERA_FOLLOW_LERP,
-              y: panRef.current.y + dy * CAMERA_FOLLOW_LERP,
+              x: panRef.current.x + dx * tunable('cameraFollowLerp'),
+              y: panRef.current.y + dy * tunable('cameraFollowLerp'),
             };
           }
         }

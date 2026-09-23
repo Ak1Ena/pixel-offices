@@ -176,6 +176,9 @@ export class AgentStateStore {
         displayName: agent.displayName,
         cwd: agent.cwd,
         pickup: agent.pickup,
+        launchKey: agent.launchKey,
+        clearPolicy: agent.clearPolicy,
+        docEditMode: agent.docEditMode,
       });
     }
     this.adapter.saveAgents(persisted);

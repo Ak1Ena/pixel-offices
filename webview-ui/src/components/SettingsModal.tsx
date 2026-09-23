@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react';
 
+import type { DocEditMode } from '../../../core/src/messages.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
+import { AdvancedSettings } from './AdvancedSettings.js';
+import { TextSettings } from './TextSettings.js';
 import { Button } from './ui/Button.js';
 import { Checkbox } from './ui/Checkbox.js';
 import { MenuItem } from './ui/MenuItem.js';
@@ -40,6 +43,9 @@ interface SettingsModalProps {
   onUseCityOffice: () => void;
   /** Replay the welcome tour (it shows by itself only once). */
   onShowIntro: () => void;
+  /** What agents' document edits do unless an agent has its own setting; absent = not offered. */
+  docEditDefault?: DocEditMode;
+  onDocEditDefault?: (mode: DocEditMode) => void;
 }
 
 export function SettingsModal({
@@ -63,13 +69,20 @@ export function SettingsModal({
   onImportLayout,
   onUseCityOffice,
   onShowIntro,
+  docEditDefault,
+  onDocEditDefault,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assetDirDraft, setAssetDirDraft] = useState('');
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Settings">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Settings"
+      className="max-h-[90vh] overflow-y-auto"
+    >
       {/* Open Sessions Folder opens an OS file manager — impossible in the browser. */}
       {!isBrowserRuntime && (
         <MenuItem
@@ -229,6 +242,36 @@ export function SettingsModal({
         <Checkbox label="Show Areas" checked={showAreas} onChange={onToggleShowAreas} />
       )}
       <Checkbox label="Debug View" checked={isDebugMode} onChange={onToggleDebugMode} />
+      {docEditDefault && onDocEditDefault && (
+        <div
+          className="mt-4 pt-8 pb-6 px-10 border-t border-border flex flex-col gap-6"
+          data-testid="settings-doc-edits"
+        >
+          <div className="text-base">Agents editing documents</div>
+          <label className="flex items-center gap-8 text-sm" htmlFor="settings-doc-edit-default">
+            Default for new agents
+            <select
+              id="settings-doc-edit-default"
+              value={docEditDefault}
+              onChange={(e) => onDocEditDefault(e.target.value as DocEditMode)}
+              className="bg-bg-dark text-text border-2 border-border rounded-none px-4"
+            >
+              <option value="ask">Ask before applying</option>
+              <option value="auto">Auto-accept</option>
+              <option value="off">Read only</option>
+            </select>
+          </label>
+          <span className="text-2xs text-text-muted">
+            Word, PowerPoint and Excel edits from `pixel-office doc edit`. Change it per agent in
+            its chat card (⚙).
+          </span>
+        </div>
+      )}
+      <div className="mt-4 pt-8 pb-6 px-10 border-t border-border" data-testid="settings-text">
+        <div className="text-base mb-6">Text</div>
+        <TextSettings />
+      </div>
+      <AdvancedSettings />
     </Modal>
   );
 }

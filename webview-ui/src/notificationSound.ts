@@ -4,15 +4,14 @@ import {
   NOTIFICATION_NOTE_2_HZ,
   NOTIFICATION_NOTE_2_START_SEC,
   NOTIFICATION_NOTE_DURATION_SEC,
-  NOTIFICATION_VOLUME,
   PERMISSION_NOTE_1_HZ,
   PERMISSION_NOTE_1_START_SEC,
   PERMISSION_NOTE_2_HZ,
   PERMISSION_NOTE_2_START_SEC,
   PERMISSION_NOTE_DURATION_SEC,
-  PERMISSION_VOLUME,
 } from './constants.js';
 import { isE2E } from './runtime.js';
+import { tunable } from './tunableStore.js';
 
 let soundEnabled = true;
 let audioCtx: AudioContext | null = null;
@@ -44,8 +43,9 @@ function playNote(
   freq: number,
   startOffset: number,
   duration: number = NOTIFICATION_NOTE_DURATION_SEC,
-  volume: number = NOTIFICATION_VOLUME,
+  volume: number = tunable('doneChimeVolume'),
 ): void {
+  if (volume <= 0) return; // muted in Settings → Advanced
   const t = ctx.currentTime + startOffset;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -98,14 +98,14 @@ export async function playPermissionSound(): Promise<void> {
       PERMISSION_NOTE_1_HZ,
       PERMISSION_NOTE_1_START_SEC,
       PERMISSION_NOTE_DURATION_SEC,
-      PERMISSION_VOLUME,
+      tunable('permissionChimeVolume'),
     );
     playNote(
       audioCtx,
       PERMISSION_NOTE_2_HZ,
       PERMISSION_NOTE_2_START_SEC,
       PERMISSION_NOTE_DURATION_SEC,
-      PERMISSION_VOLUME,
+      tunable('permissionChimeVolume'),
     );
   } catch {
     // Audio may not be available

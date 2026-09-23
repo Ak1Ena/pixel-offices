@@ -1,5 +1,4 @@
 import {
-  PET_FOLLOW_CHANCE,
   PET_FOLLOW_DURATION_MAX_SEC,
   PET_FOLLOW_DURATION_MIN_SEC,
   PET_FOLLOW_RADIUS_TILES,
@@ -8,10 +7,10 @@ import {
   PET_IDLE_SEQUENCE,
   PET_WALK_FRAME_DURATION_SEC,
   PET_WALK_SEQUENCE,
-  PET_WALK_SPEED_PX_PER_SEC,
   PET_WANDER_PAUSE_MAX_SEC,
   PET_WANDER_PAUSE_MIN_SEC,
 } from '../../constants.js';
+import { tunable } from '../../tunableStore.js';
 import { findPath, isWalkable } from '../layout/tileMap.js';
 import type { PetSpriteFrames } from '../sprites/petSpriteData.js';
 import type { Character, Pet, SpriteData, TileType as TileTypeVal } from '../types.js';
@@ -117,7 +116,7 @@ function movePetAlongPath(pet: Pet, dt: number): void {
   const nextTile = pet.path[0];
   pet.dir = directionBetween(pet.tileCol, pet.tileRow, nextTile.col, nextTile.row);
 
-  pet.moveProgress += (PET_WALK_SPEED_PX_PER_SEC / TILE_SIZE) * dt;
+  pet.moveProgress += (tunable('petWalkSpeedPxPerSec') / TILE_SIZE) * dt;
 
   const fromCenter = tileCenter(pet.tileCol, pet.tileRow);
   const toCenter = tileCenter(nextTile.col, nextTile.row);
@@ -181,7 +180,7 @@ export function updatePet(
       if (pet.wanderTimer > 0) break;
 
       // Roll for follow first
-      if (Math.random() < PET_FOLLOW_CHANCE) {
+      if (Math.random() < tunable('petFollowChance')) {
         const target = findNearbyCharacter(pet, characters);
         if (target) {
           pet.state = PetState.FOLLOW;

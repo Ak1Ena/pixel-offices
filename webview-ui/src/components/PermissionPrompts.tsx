@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 
 import type {
+  AgentClearRequest,
   AgentPermissionAsk,
+  DeskSubtask,
+  DeskTask,
   GateDecision,
   PermissionDecision,
   ScreenQuestion,
   WorkflowRun,
 } from '../../../core/src/messages.js';
-import {
-  PERMISSION_PROMPTS_MAX_SHOWN,
-  PERMISSION_PROMPTS_WIDTH_PX,
-  PERMISSION_PROMPTS_Z_INDEX,
-} from '../constants.js';
+import { PERMISSION_PROMPTS_Z_INDEX } from '../constants.js';
+import { useTunables } from '../hooks/useTunables.js';
+import { tunable } from '../tunableStore.js';
 import { ScreenQuestionCard } from './ScreenQuestionCard.js';
 import { Button } from './ui/Button.js';
 
@@ -26,6 +27,12 @@ interface PermissionPromptsProps {
   /** Workflow gates waiting on the user (privileged clients only). */
   gates?: Array<{ run: WorkflowRun; step: number }>;
   onAnswerGate?: (runId: string, step: number, decision: GateDecision) => void;
+  /** Agents asking to have their own context cleared (privileged clients only). */
+  clearRequests?: AgentClearRequest[];
+  onAnswerClear?: (agentId: number, allow: boolean) => void;
+  /** Task desk cards whose agent waits at a gate step (privileged clients only). */
+  deskGates?: Array<{ task: DeskTask; step: number; sub: DeskSubtask }>;
+  onAnswerDeskGate?: (taskId: string, step: number, decision: GateDecision) => void;
 }
 
 function secondsLeft(ask: AgentPermissionAsk, now: number): number | null {
@@ -48,6 +55,10 @@ export function PermissionPrompts({
   onChooseQuestion,
   gates = [],
   onAnswerGate,
+  clearRequests = [],
+  onAnswerClear,
+  deskGates = [],
+  onAnswerDeskGate,
 }: PermissionPromptsProps) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -56,27 +67,79 @@ export function PermissionPrompts({
     return () => clearInterval(timer);
   }, [asks.length]);
 
-  const shownGates = onAnswerGate ? gates.slice(0, PERMISSION_PROMPTS_MAX_SHOWN) : [];
-  const shownQuestions = onChooseQuestion
-    ? questions.slice(0, Math.max(0, PERMISSION_PROMPTS_MAX_SHOWN - shownGates.length))
-    : [];
-  if (asks.length === 0 && shownQuestions.length === 0 && shownGates.length === 0) return null;
-  const shown = asks.slice(
-    0,
-    Math.max(0, PERMISSION_PROMPTS_MAX_SHOWN - shownQuestions.length - shownGates.length),
-  );
+  const maxShown = useTunables().permissionPromptsMaxShown;
+  // Fill the stack in this order, each kind taking what the earlier ones left.
+  let room = maxShown;
+  const take = <T,>(list: T[], offered: boolean): T[] => {
+    const out = offered ? list.slice(0, Math.max(0, room)) : [];
+    room -= out.length;
+    return out;
+  };
+  const shownDeskGates = take(deskGates, !!onAnswerDeskGate);
+  const shownGates = take(gates, !!onAnswerGate);
+  const shownQuestions = take(questions, !!onChooseQuestion);
+  const shownClears = take(clearRequests, !!onAnswerClear);
+  const shownOthers =
+    shownDeskGates.length + shownGates.length + shownQuestions.length + shownClears.length;
+  if (asks.length === 0 && shownOthers === 0) return null;
+  const shown = asks.slice(0, Math.max(0, maxShown - shownOthers));
   const waiting =
-    asks.length + (onChooseQuestion ? questions.length : 0) + (onAnswerGate ? gates.length : 0);
+    asks.length +
+    (onChooseQuestion ? questions.length : 0) +
+    (onAnswerGate ? gates.length : 0) +
+    (onAnswerClear ? clearRequests.length : 0) +
+    (onAnswerDeskGate ? deskGates.length : 0);
 
   return (
     <div
       className="absolute left-1/2 -translate-x-1/2 top-8 flex flex-col gap-6 max-w-[calc(100%-16px)]"
-      style={{ width: PERMISSION_PROMPTS_WIDTH_PX, zIndex: PERMISSION_PROMPTS_Z_INDEX }}
+      style={{ width: tunable('permissionPromptsWidthPx'), zIndex: PERMISSION_PROMPTS_Z_INDEX }}
       aria-live="polite"
       data-testid="permission-prompts"
       onMouseDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
+      {shownDeskGates.map(({ task, step, sub }) => (
+        <div
+          key={`desk:${task.id}:${step}`}
+          role="alertdialog"
+          aria-label={`Card #${task.num} needs your go-ahead`}
+          className="pixel-panel flex flex-col gap-6 p-8 border-status-permission"
+          data-testid="desk-gate"
+        >
+          <div className="flex items-baseline gap-6 text-sm">
+            {task.claimedBy !== undefined ? (
+              <button
+                onClick={() => onOpenAgent(task.claimedBy!)}
+                className="bg-transparent border-0 p-0 text-text underline cursor-pointer text-sm"
+              >
+                {labelOf(task.claimedBy)}
+              </button>
+            ) : (
+              <span>An agent</span>
+            )}
+            <span className="text-text-muted">needs your go-ahead</span>
+          </div>
+          <span className="text-2xs text-status-permission uppercase">
+            Card #{task.num} · step {step}
+          </span>
+          <span className="text-sm">{sub.title}</span>
+          {sub.ask && <span className="text-sm text-text-muted">“{sub.ask}”</span>}
+          <div className="flex gap-6 justify-end">
+            <Button size="sm" onClick={() => onAnswerDeskGate?.(task.id, step, 'stop')}>
+              Stop
+            </Button>
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => onAnswerDeskGate?.(task.id, step, 'continue')}
+              data-testid="desk-gate-prompt-continue"
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      ))}
       {shownGates.map(({ run, step }) => (
         <div
           key={`${run.runId}:${step}`}
@@ -109,6 +172,42 @@ export function PermissionPrompts({
               data-testid="workflow-gate-continue"
             >
               Continue
+            </Button>
+          </div>
+        </div>
+      ))}
+      {shownClears.map((request) => (
+        <div
+          key={`clear:${request.agentId}`}
+          role="alertdialog"
+          aria-label={`${labelOf(request.agentId)} asks to clear its context`}
+          className="pixel-panel flex flex-col gap-6 p-8 border-status-permission"
+          data-testid="clear-request"
+        >
+          <div className="flex items-baseline gap-6 text-sm">
+            <button
+              onClick={() => onOpenAgent(request.agentId)}
+              className="bg-transparent border-0 p-0 text-text underline cursor-pointer text-sm"
+            >
+              {labelOf(request.agentId)}
+            </button>
+            <span className="text-text-muted">asks to clear its context</span>
+          </div>
+          {request.reason && <span className="text-sm">“{request.reason}”</span>}
+          <span className="text-2xs text-text-muted">
+            /clear after its turn ends. Nothing is carried over.
+          </span>
+          <div className="flex gap-6 justify-end">
+            <Button size="sm" onClick={() => onAnswerClear?.(request.agentId, false)}>
+              Not now
+            </Button>
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => onAnswerClear?.(request.agentId, true)}
+              data-testid="clear-request-allow"
+            >
+              Allow
             </Button>
           </div>
         </div>
@@ -154,7 +253,7 @@ export function PermissionPrompts({
               )}
             </div>
             {ask.detail && (
-              <pre className="m-0 px-6 py-4 bg-bg-dark border-2 border-bg-thumb text-2xs whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
+              <pre className="m-0 px-6 py-4 bg-bg-dark border-2 border-bg-thumb text-code-sm whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
                 {ask.detail}
               </pre>
             )}
@@ -183,9 +282,9 @@ export function PermissionPrompts({
           </div>
         );
       })}
-      {waiting > shown.length + shownQuestions.length + shownGates.length && (
+      {waiting > shown.length + shownOthers && (
         <div className="pixel-panel px-8 py-2 text-2xs text-text-muted text-center">
-          +{waiting - shown.length - shownQuestions.length - shownGates.length} more waiting
+          +{waiting - shown.length - shownOthers} more waiting
         </div>
       )}
     </div>

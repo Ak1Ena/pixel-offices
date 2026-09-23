@@ -33,6 +33,7 @@ import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constant
 import type { DocRef } from './docViewer.js';
 import { refText, withRefs } from './docViewer.js';
 import { canSendChatFiles } from './fileUpload.js';
+import { lastEditKeyFor, useDocEdits } from './hooks/useDocEdits.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
@@ -63,7 +64,7 @@ import {
   pinsForAgent,
 } from './officeChat.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
-import { needsYou } from './taskDesk.js';
+import { deskGates, needsYou } from './taskDesk.js';
 import { installTestHooks } from './testHooks.js';
 import { transport } from './transport/index.js';
 import { activeRun, openGates } from './workflows.js';
@@ -165,6 +166,8 @@ function App() {
   const permissionAsks = usePermissionAsks();
   const focus = useFocusRequests();
   const proposals = useProposals();
+  const docEdits = useDocEdits();
+  const [docEditsSeen, setDocEditsSeen] = useState<ReadonlySet<string>>(() => new Set());
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
   const [viewedFocusId, setViewedFocusId] = useState<string | null>(null);
@@ -784,6 +787,30 @@ function App() {
                   screen={chat.screens[id]}
                   onKeys={(keys) => chat.sendKeys(id, keys)}
                   onStop={() => chat.interruptAgent(id)}
+                  onClearContext={
+                    (chat.privileged || !isBrowserRuntime) && chat.sendable[id] === true
+                      ? (mode) => chat.clearAgent(id, mode)
+                      : undefined
+                  }
+                  clearPolicy={chat.prefs[id]?.clearPolicy}
+                  onSetClearPolicy={
+                    chat.privileged || !isBrowserRuntime
+                      ? (clearPolicy) => chat.setAgentPrefs(id, { clearPolicy })
+                      : undefined
+                  }
+                  clearRequest={chat.clearRequests.find((r) => r.agentId === id)}
+                  docEditMode={chat.prefs[id]?.docEditMode}
+                  docEditDefault={docEdits.defaultMode}
+                  onSetDocEditMode={
+                    chat.privileged || !isBrowserRuntime
+                      ? (docEditMode) => chat.setAgentPrefs(id, { docEditMode })
+                      : undefined
+                  }
+                  onAnswerClear={
+                    chat.privileged || !isBrowserRuntime
+                      ? (allow) => chat.answerClearRequest(id, allow)
+                      : undefined
+                  }
                   onRemove={() => {
                     handleCloseAgent(id);
                     closeChat();
@@ -838,6 +865,13 @@ function App() {
                 (p) => p.state === 'open' && !proposalsLater.has(p.proposalId),
               )}
               onReview={(p) => setReviewingId(p.proposalId)}
+              docEdits={docEdits.edits.filter(
+                (e) => e.agentId !== undefined && !e.undone && !docEditsSeen.has(e.editId),
+              )}
+              onUndoDocEdit={
+                chat.privileged || !isBrowserRuntime ? (e) => docEdits.undo(e.editId) : undefined
+              }
+              onDismissDocEdit={(e) => setDocEditsSeen((prev) => new Set(prev).add(e.editId))}
               onLaterSuggestion={(p) =>
                 setProposalsLater((prev) => new Set(prev).add(p.proposalId))
               }
@@ -856,6 +890,12 @@ function App() {
               }))}
               gates={openGates(workflows.runs)}
               onAnswerGate={chat.privileged || !isBrowserRuntime ? workflows.answerGate : undefined}
+              deskGates={deskGates(desk.tasks)}
+              onAnswerDeskGate={chat.privileged || !isBrowserRuntime ? desk.answerGate : undefined}
+              clearRequests={chat.clearRequests}
+              onAnswerClear={
+                chat.privileged || !isBrowserRuntime ? chat.answerClearRequest : undefined
+              }
               onChooseQuestion={
                 chat.privileged
                   ? (agentId, key, option, followUp) => {
@@ -1059,6 +1099,8 @@ function App() {
               labelOf={agentLabel}
               // Folders are browsed on the server's machine, which only the
               // standalone office can do; the VS Code panel offers its workspace.
+              workflows={chat.privileged || !isBrowserRuntime ? workflows.workflows : undefined}
+              onSaveWorkflow={chat.privileged || !isBrowserRuntime ? workflows.save : undefined}
               canBrowseFolders={isBrowserRuntime}
               recentFolders={chat.recentFolders}
               workspaceFolders={workspaceFolders}
@@ -1270,6 +1312,8 @@ function App() {
       />
 
       <SettingsModal
+        docEditDefault={chat.privileged || !isBrowserRuntime ? docEdits.defaultMode : undefined}
+        onDocEditDefault={docEdits.setDefaultMode}
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         isDebugMode={isDebugMode}
@@ -1366,6 +1410,7 @@ function App() {
             }
             onRemoveRef={(i) => setDocTray((prev) => prev.filter((_, j) => j !== i))}
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
+            lastEditKey={lastEditKeyFor(docEdits.edits, viewed.value)}
             onAskRefs={
               askTarget !== null
                 ? () => {

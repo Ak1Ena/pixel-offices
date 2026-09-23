@@ -417,6 +417,17 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
+/** localStorage key for the viewer's text settings: size + faces (textPrefs.ts). */
+export const TEXT_PREFS_KEY = 'pixel-office:text-prefs';
+/** localStorage key for Settings → Advanced overrides (tunables.ts); only non-defaults are stored. */
+export const TUNABLES_KEY = 'pixel-office:tunables';
+/** Settings → Text size: the multiplier on every text token in index.css. */
+export const TEXT_SIZE_SCALES = {
+  small: 0.875,
+  normal: 1,
+  large: 1.125,
+  xlarge: 1.25,
+} as const;
 /** Set once the welcome tour has shown itself; Settings can still replay it. */
 export const INTRO_SEEN_KEY = 'pixel-office:intro-seen';
 /** Docked Messenger: width the user dragged it to (per viewer), and its bounds. */
@@ -452,6 +463,11 @@ export const TASK_TITLE_MAX_CHARS = 120;
 export const TASK_BODY_MAX_CHARS = 4000;
 export const TASK_NOTE_MAX_CHARS = 2000;
 export const TASK_SUBTASK_MAX_CHARS = 200;
+/** A step's ref: a path plus place flags. */
+export const TASK_STEP_REF_MAX_CHARS = 300;
+/** Added under Word / PowerPoint / Excel refs in a message: how the agent reads those places. */
+export const DOC_READ_HINT =
+  '(Read these places with: pixel-office doc read <file> --para A-B | --slide N | --cell RANGE)';
 /** localStorage key: the command the desk last started an agent with (`claude`, or an alias of it). */
 export const TASK_DESK_COMMAND_KEY = 'pixel-agents.deskLaunchCommand';
 /** Models offered when the desk starts an agent. An empty flag leaves the choice to Claude Code. */
