@@ -27,6 +27,7 @@ import {
   sendWallTilesToWebview,
 } from '../../server/src/assetLoader.js';
 import { loadAllCharacters, loadAllFurniture, loadAllPets } from '../../server/src/assetReload.js';
+import { removePinAndCopy } from '../../server/src/boardFiles.js';
 import {
   getHooksConsent,
   getHooksEnabled,
@@ -531,7 +532,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       } else if (message.type === 'saveBoardPin') {
         this.runtime.board.savePin(message.pin);
       } else if (message.type === 'removeBoardPin') {
-        this.runtime.board.removePin(message.pinId);
+        removePinAndCopy(this.runtime.board, message.pinId, message.deleteFile === true);
       } else if (message.type === 'closeAgent') {
         const agent = this.store.get(message.id);
         if (agent) {

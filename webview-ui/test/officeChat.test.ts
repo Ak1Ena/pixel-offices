@@ -7,6 +7,7 @@ import {
   chatPreview,
   composeMessage,
   filterPins,
+  isStoredUploadPath,
   mergeChatEntries,
   newPinId,
   pinsForAgent,
@@ -107,4 +108,12 @@ test('filterPins: every word must match title, value, detail, type or agent', ()
   assert.deepEqual(ids('FILE'), ['b']);
   assert.deepEqual(ids('docs friday'), ['c']);
   assert.deepEqual(ids('api friday'), []);
+});
+
+test('only the office’s stored uploads are offered for deletion', () => {
+  assert.ok(isStoredUploadPath('/Users/me/.pixel-agents/files/pin_ab12-report.docx'));
+  assert.ok(isStoredUploadPath('~/.pixel-agents/files/pin_ab12-deck.pptx'));
+  assert.ok(!isStoredUploadPath('/Users/me/Documents/report.docx'));
+  assert.ok(!isStoredUploadPath('/Users/me/.pixel-agents/files/chat_ab12-a.png'));
+  assert.ok(!isStoredUploadPath('/Users/me/.pixel-agents/files/sub/pin_ab-x.docx'));
 });

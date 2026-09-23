@@ -137,9 +137,78 @@ function safeUploadName(rawName: string): string {
     .slice(-UPLOAD_NAME_MAX_CHARS);
 }
 
+/** Where uploads live: ~/.pixel-agents/files. */
+export function uploadDir(): string {
+  return path.join(os.homedir(), LAYOUT_FILE_DIR, BOARD_UPLOAD_DIR);
+}
+
+/** Stored board uploads are named `pin_<id>-<name>`. */
+const STORED_PIN_FILE_RE = /^pin_[A-Za-z0-9]+-/;
+
+/**
+ * A copy of `data` named `name` the office already stores (uploaded before),
+ * so uploading the same file again reuses it instead of piling up duplicates.
+ */
+function findStoredCopy(name: string, data: Buffer): string | null {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(uploadDir());
+  } catch {
+    return null;
+  }
+  const want = crypto.createHash('sha256').update(data).digest('hex');
+  for (const entry of entries) {
+    if (!STORED_PIN_FILE_RE.test(entry) || entry.replace(STORED_PIN_FILE_RE, '') !== name) continue;
+    const full = path.join(uploadDir(), entry);
+    try {
+      const stat = fs.statSync(full);
+      if (!stat.isFile() || stat.size !== data.length) continue;
+      if (crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex') === want)
+        return full;
+    } catch {
+      /* gone meanwhile */
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether `filePath` is a board upload the office stored itself — the only
+ * files the office ever deletes. The real path must sit directly in
+ * ~/.pixel-agents/files with the `pin_` prefix, so a pin pointing anywhere
+ * else (the user's own documents) can never be deleted from here.
+ */
+export function isStoredUpload(filePath: string): boolean {
+  let target = filePath.trim();
+  if (target === '~' || target.startsWith('~/')) target = path.join(os.homedir(), target.slice(1));
+  try {
+    const real = fs.realpathSync(target);
+    return (
+      path.dirname(real) === fs.realpathSync(uploadDir()) &&
+      STORED_PIN_FILE_RE.test(path.basename(real)) &&
+      fs.statSync(real).isFile()
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Delete a stored upload (see isStoredUpload). Returns whether a file was deleted. */
+export function deleteStoredUpload(filePath: string): boolean {
+  if (!isStoredUpload(filePath)) return false;
+  let target = filePath.trim();
+  if (target.startsWith('~/')) target = path.join(os.homedir(), target.slice(1));
+  try {
+    fs.unlinkSync(fs.realpathSync(target));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Write an upload under ~/.pixel-agents/files as `<id>-<name>` (0600, never overwriting). */
 function writeUpload(name: string, data: Buffer, id: string): string {
-  const dir = path.join(os.homedir(), LAYOUT_FILE_DIR, BOARD_UPLOAD_DIR);
+  const dir = uploadDir();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const filePath = path.join(dir, `${id}-${name}`);
   fs.writeFileSync(filePath, data, { mode: 0o600, flag: 'wx' });
@@ -149,14 +218,15 @@ function writeUpload(name: string, data: Buffer, id: string): string {
 /**
  * Store a file uploaded from a browser under ~/.pixel-agents/files and return
  * its path. The client's name is reduced to a safe basename; the stored name
- * is prefixed so uploads never overwrite each other.
+ * is prefixed so uploads never overwrite each other. The same file (name and
+ * content) uploaded again returns the copy already stored.
  */
 export function saveUploadedFile(rawName: string, data: Buffer, id: string): string | null {
   const base = safeUploadName(rawName);
   if (!base || !isViewableName(base) || data.length === 0 || data.length > BOARD_FILE_MAX_BYTES) {
     return null;
   }
-  return writeUpload(base, data, id);
+  return findStoredCopy(base, data) ?? writeUpload(base, data, id);
 }
 
 /**
@@ -209,4 +279,20 @@ export function resolveChatImage(name: string): PinFileResult {
     return { ok: false, status: 413, error: 'File is too large to show (limit 25 MB).' };
   }
   return { ok: true, filePath: target, contentType, size: stat.size };
+}
+
+/**
+ * Remove a pin and, when asked (and allowed), the office's own stored copy of
+ * its file — once no other pin points at it. Both surfaces call this.
+ */
+export function removePinAndCopy(
+  board: { getPins(): BoardPin[]; removePin(pinId: unknown): boolean },
+  pinId: unknown,
+  deleteFile: boolean,
+): { removed: boolean; deleted: boolean } {
+  const pin = board.getPins().find((p) => p.id === pinId);
+  const removed = board.removePin(pinId);
+  if (!removed || !deleteFile || pin?.kind !== 'file') return { removed, deleted: false };
+  const stillUsed = board.getPins().some((p) => p.kind === 'file' && p.value === pin.value);
+  return { removed, deleted: !stillUsed && deleteStoredUpload(pin.value) };
 }

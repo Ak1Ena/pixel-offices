@@ -678,14 +678,14 @@ describe('runDocCommand', () => {
   });
 });
 
-// ── Files made elsewhere (mammoth's Word fixtures) ──────────────────────────
+// ── Files made elsewhere (mammoth's Word fixtures, checked in under fixtures/word) ──────────────────────────
 
-const MAMMOTH = path.resolve(__dirname, '../../node_modules/mammoth/test/test-data');
+const MAMMOTH = path.resolve(__dirname, 'fixtures/word');
 const mammothFiles = fs.existsSync(MAMMOTH)
   ? fs.readdirSync(MAMMOTH).filter((f) => f.endsWith('.docx'))
   : [];
 
-describe.skipIf(mammothFiles.length === 0)('real Word files round-trip', () => {
+describe('real Word files round-trip', () => {
   it.each(mammothFiles)('%s', async (name) => {
     const buf = fs.readFileSync(path.join(MAMMOTH, name));
     let model: DocModel;

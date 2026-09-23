@@ -1036,6 +1036,7 @@ export interface SaveBoardPin {
 export interface RemoveBoardPin {
   type: 'removeBoardPin';
   pinId: string;
+  deleteFile?: boolean;
 }
 
 export interface AnswerFocus {

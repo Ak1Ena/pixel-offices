@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { DocEdit, DocModel, DocSheet, DocSlide } from '../../../core/src/docModel.js';
 import type { BoardPin, FocusRequest } from '../../../core/src/messages.js';
-import { BOARD_FILE_API, DOCX_FRAME_CSS } from '../constants.js';
+import { BOARD_FILE_API } from '../constants.js';
 import type { CellRange, DocRef, SheetView } from '../docViewer.js';
 import {
   cellEditText,
@@ -26,6 +26,7 @@ import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
 import { SlidesView, WordParagraphs } from './DocModelViews.js';
 import { Button } from './ui/Button.js';
+import { WordDocumentView } from './WordDocumentView.js';
 
 interface DocViewerProps {
   pin: BoardPin;
@@ -56,11 +57,13 @@ interface DocViewerProps {
   lastEditKey?: string;
   /** Open another document (the Open file dialog); absent when this viewer can't. */
   onOpenFile?: () => void;
+  /** Delete the office's stored copy of an uploaded file (and its pin); absent otherwise. */
+  onDeleteFile?: () => void;
 }
 
 type Loaded =
   | { kind: 'pdf' | 'image'; url: string }
-  | { kind: 'word'; html: string; paragraphs?: Extract<DocModel, { kind: 'docx' }>['paragraphs'] }
+  | { kind: 'word'; paragraphs?: Extract<DocModel, { kind: 'docx' }>['paragraphs'] }
   | { kind: 'slides'; slides: DocSlide[] }
   | { kind: 'table'; sheets: SheetView[]; model?: DocSheet[]; raw?: string }
   | { kind: 'text'; text: string };
@@ -134,17 +137,14 @@ async function loadDocument(pin: BoardPin, signal: AbortSignal): Promise<ViewSta
     return { status: 'ready', blob, doc: { kind, url: URL.createObjectURL(blob) } };
   }
   if (kind === 'word') {
-    const [mammoth, loaded] = await Promise.all([
-      import('mammoth/mammoth.browser'),
-      loadModel(pin, token, signal),
-    ]);
-    const { value } = await mammoth.convertToHtml({ arrayBuffer: await blob.arrayBuffer() });
+    // Drawn by WordDocumentView from the blob; the model gives the ¶ numbers.
+    const loaded = await loadModel(pin, token, signal);
     const paragraphs = loaded?.model.kind === 'docx' ? loaded.model.paragraphs : undefined;
     return {
       status: 'ready',
       blob,
       sha: loaded?.sha,
-      doc: { kind: 'word', html: value, ...(paragraphs ? { paragraphs } : {}) },
+      doc: { kind: 'word', ...(paragraphs ? { paragraphs } : {}) },
     };
   }
   if (kind === 'slides') {
@@ -432,7 +432,7 @@ function FocusBanner({
 
 /**
  * Opens a whiteboard file pin inside the office: PDF and images natively,
- * Word via mammoth (rendered in a sandboxed frame — document HTML never runs
+ * Word laid out like Word by docx-preview (in a frame that runs no scripts — nothing in the document runs
  * in the office page), Excel/CSV as a table, text as text. Libraries load
  * only when a document of that type is opened.
  */
@@ -454,7 +454,10 @@ export function DocViewer({
   askLabel,
   lastEditKey,
   onOpenFile,
+  onDeleteFile,
 }: DocViewerProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => setConfirmDelete(false), [pin]);
   const [pickedLines, setPickedLines] = useState<{ a: number; b: number } | null>(null);
   const [pickedCells, setPickedCells] = useState<{
     a: { r: number; c: number };
@@ -465,7 +468,7 @@ export function DocViewer({
   const [pickedParas, setPickedParas] = useState<{ a: number; b: number } | null>(null);
   const [slideIndex, setSlideIndex] = useState(0);
   const [pickedShape, setPickedShape] = useState<string | null>(null);
-  const [wordView, setWordView] = useState<'places' | 'formatted'>('places');
+  const [wordView, setWordView] = useState<'document' | 'places'>('document');
   // Editing: staged edits (Word / PowerPoint / Excel) or a text draft, saved in one go.
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState<DocEdit[]>([]);
@@ -542,10 +545,13 @@ export function DocViewer({
   const mark = focus?.cell ? parseCellRef(focus.cell) : null;
   const sheetName =
     doc?.kind === 'table' && doc.sheets.length > 1 ? doc.sheets[sheetIndex]?.name : undefined;
-  const paragraphs = doc?.kind === 'word' && wordView === 'places' ? doc.paragraphs : undefined;
+  const wordParagraphs = doc?.kind === 'word' ? doc.paragraphs : undefined;
+  // The Paragraphs list: always while editing, else when the user picks that tab.
+  const paragraphs =
+    wordParagraphs && (wordView === 'places' || editing) ? wordParagraphs : undefined;
   const slide = doc?.kind === 'slides' ? doc.slides[slideIndex] : undefined;
   const current: DocRef | null =
-    paragraphs && pickedParas
+    wordParagraphs && pickedParas
       ? {
           path: pin.value,
           paraStart: Math.min(pickedParas.a, pickedParas.b),
@@ -567,7 +573,7 @@ export function DocViewer({
                   doc.kind !== 'text' &&
                   doc.kind !== 'table' &&
                   doc.kind !== 'pdf' &&
-                  !paragraphs
+                  !wordParagraphs
                 ? { path: pin.value }
                 : null;
 
@@ -599,7 +605,6 @@ export function DocViewer({
     setSaved(null);
     setSaveError(null);
     setEditing(true);
-    if (doc?.kind === 'word') setWordView('places');
     if (textSource !== null && !modelSheets && doc?.kind !== 'word') setTextDraft(textSource);
   };
   const stopEditing = () => {
@@ -699,6 +704,32 @@ export function DocViewer({
           {pin.title}
         </span>
         <span className="flex-1" />
+        {onDeleteFile &&
+          (confirmDelete ? (
+            <>
+              <span className="text-xs text-danger">Delete the office&apos;s copy?</span>
+              <Button
+                size="md"
+                className="text-danger"
+                onClick={onDeleteFile}
+                data-testid="doc-delete-yes"
+              >
+                Delete
+              </Button>
+              <Button size="md" onClick={() => setConfirmDelete(false)}>
+                Keep
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="md"
+              onClick={() => setConfirmDelete(true)}
+              title="This is a copy the office stored when it was uploaded. Your original is not touched."
+              data-testid="doc-delete"
+            >
+              Delete file
+            </Button>
+          ))}
         {onOpenFile && (
           <Button size="md" onClick={onOpenFile} data-testid="doc-open-file">
             Open file…
@@ -854,7 +885,7 @@ export function DocViewer({
           )}
           {doc?.kind === 'word' && doc.paragraphs && !editing && (
             <div role="tablist" className="flex bg-bg-dark border-b-2 border-border text-sm">
-              {(['places', 'formatted'] as const).map((v) => (
+              {(['document', 'places'] as const).map((v) => (
                 <button
                   key={v}
                   role="tab"
@@ -866,7 +897,7 @@ export function DocViewer({
                       : 'bg-bg-dark text-text-muted border-transparent'
                   }`}
                 >
-                  {v === 'places' ? 'Paragraphs' : 'Formatted'}
+                  {v === 'places' ? 'Paragraphs' : 'Document'}
                 </button>
               ))}
             </div>
@@ -928,12 +959,20 @@ export function DocViewer({
               onEdit={stage}
             />
           )}
-          {doc?.kind === 'word' && !paragraphs && (
-            <iframe
+          {doc?.kind === 'word' && !paragraphs && state.status === 'ready' && (
+            <WordDocumentView
               title={pin.title}
-              sandbox=""
-              srcDoc={`<!doctype html><meta charset="utf-8"><style>${DOCX_FRAME_CSS}</style>${doc.html}`}
-              className="flex-1 w-full border-0 bg-board"
+              blob={state.blob}
+              paragraphs={doc.paragraphs}
+              mark={
+                focus?.lineStart
+                  ? { from: focus.lineStart, to: focus.lineEnd ?? focus.lineStart }
+                  : null
+              }
+              picked={pickedParas}
+              onPick={(n, extend) =>
+                setPickedParas((prev) => (extend && prev ? { a: prev.a, b: n } : { a: n, b: n }))
+              }
             />
           )}
           {textDraft !== null && (
@@ -1065,8 +1104,8 @@ export function DocViewer({
                   </>
                 ) : (
                   <span className="text-text-muted">
-                    {paragraphs
-                      ? 'Click a ¶ number to pick that paragraph; Shift-click another for a range.'
+                    {wordParagraphs
+                      ? 'Click a paragraph to pick it; Shift-click another for a range.'
                       : doc?.kind === 'text'
                         ? 'Click a line number to pick it; Shift-click another for a range.'
                         : doc?.kind === 'table'

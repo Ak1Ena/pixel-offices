@@ -298,3 +298,12 @@ export function mergeTimeline(
   }
   return merged;
 }
+
+/**
+ * Whether a file pin points at a copy the office stored (an upload in
+ * ~/.pixel-agents/files) — the only files the office offers to delete. The
+ * server checks again before deleting anything.
+ */
+export function isStoredUploadPath(value: string): boolean {
+  return /(^|[\\/])\.pixel-agents[\\/]files[\\/]pin_[A-Za-z0-9]+-[^\\/]+$/.test(value.trim());
+}

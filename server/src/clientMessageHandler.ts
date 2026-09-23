@@ -4,6 +4,7 @@ import { buildAgentDiagnostics } from './agentDiagnostics.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
+import { removePinAndCopy } from './boardFiles.js';
 import {
   getHooksConsent,
   getHooksEnabled,
@@ -380,7 +381,9 @@ export function handleClientMessage(
       break;
 
     case 'removeBoardPin':
-      runtime?.board.removePin(msg.pinId);
+      // Deleting a stored file needs the same proof as the other privileged actions.
+      if (runtime)
+        removePinAndCopy(runtime.board, msg.pinId, msg.deleteFile === true && !!ctx.privileged);
       break;
 
     case 'setShowAreas': {

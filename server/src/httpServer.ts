@@ -407,7 +407,7 @@ function registerDocRoutes(app: FastifyInstance, options: HttpServerOptions): vo
 
 /** Upload a document from the browser: stored locally and pinned to the whiteboard. Token required. */
 function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptions): void {
-  const { saveBoardPin } = options;
+  const { saveBoardPin, getBoardPins } = options;
   if (!saveBoardPin) return;
   app.post<{ Querystring: { name?: string }; Body: Buffer }>(
     BOARD_FILE_API_PREFIX,
@@ -434,6 +434,9 @@ function registerBoardUploadRoute(app: FastifyInstance, options: HttpServerOptio
       const id = `pin_${crypto.randomUUID().replace(/-/g, '')}`;
       const filePath = saveUploadedFile(name, request.body, id);
       if (!filePath) return reply.code(400).send({ error: 'Could not store that file.' });
+      // The same file uploaded again: its copy (and pin) are reused, not duplicated.
+      const existing = getBoardPins?.().find((p) => p.kind === 'file' && p.value === filePath);
+      if (existing) return { pin: existing };
       const pin: BoardPin = {
         id,
         kind: 'file',

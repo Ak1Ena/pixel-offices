@@ -62,7 +62,8 @@ export interface OfficeChatState {
   cancelMessage: (agentId: number, queueId: string) => void;
   markRead: (agentId: number) => void;
   savePin: (pin: BoardPin) => void;
-  removePin: (pinId: string) => void;
+  /** `deleteFile`: also delete the office's stored copy of an uploaded file. */
+  removePin: (pinId: string, deleteFile?: boolean) => void;
 }
 
 export interface AgentPrefsState {
@@ -219,8 +220,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'answerScreenQuestion', id: agentId, key, option });
   }, []);
 
-  const removePin = useCallback((pinId: string) => {
-    transport.send({ type: 'removeBoardPin', pinId });
+  const removePin = useCallback((pinId: string, deleteFile?: boolean) => {
+    transport.send({ type: 'removeBoardPin', pinId, ...(deleteFile ? { deleteFile: true } : {}) });
   }, []);
 
   return {

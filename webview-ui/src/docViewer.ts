@@ -383,3 +383,41 @@ export function lastEditKeyFor(edits: DocEditNotice[], path: string): string | u
   }
   return undefined;
 }
+
+/** Text compared for matching: whitespace (tabs, breaks, runs of spaces) removed. */
+function matchKey(text: string): string {
+  return text.replace(/\s+/g, '');
+}
+
+/**
+ * Line up the office's Word paragraphs (the ¶ numbering) with the paragraphs a
+ * renderer drew, by text, in order. A drawn paragraph may offer several texts
+ * (e.g. with and without footnote markers the renderer adds). Returns, for each
+ * drawn paragraph, the ¶ number it shows — or null for one the office doesn't
+ * number (text boxes, anything that didn't match). A drawn paragraph is only
+ * skipped when the next few don't match either, so one oddity can't shift the
+ * rest.
+ */
+export function matchParagraphs(
+  model: string[],
+  drawn: Array<string | string[]>,
+  lookAhead = 6,
+): Array<number | null> {
+  const out: Array<number | null> = drawn.map(() => null);
+  const keys = drawn.map((d) => (Array.isArray(d) ? d : [d]).map(matchKey));
+  let d = 0;
+  for (let m = 0; m < model.length && d < drawn.length; m++) {
+    const want = matchKey(model[m]);
+    let found = -1;
+    for (let k = d; k < Math.min(drawn.length, d + lookAhead); k++) {
+      if (keys[k].includes(want)) {
+        found = k;
+        break;
+      }
+    }
+    if (found === -1) continue; // not drawn (or drawn differently): leave it unmatched
+    out[found] = m + 1;
+    d = found + 1;
+  }
+  return out;
+}

@@ -386,10 +386,18 @@ export const CHAT_UPLOAD_DIR_SUFFIX = '.pixel-agents/files';
 export const CHAT_FILE_ID_PREFIX = 'chat_';
 /** Most files attached to one chat message. */
 export const CHAT_FILE_MAX_COUNT = 10;
-/** Page styling for Word documents, shown inside a sandboxed frame. */
+/** Around the rendered Word pages (docx-preview) inside the sandboxed frame, plus the
+ *  ¶ numbers in the margin and the picked / marked paragraph highlights. */
 export const DOCX_FRAME_CSS =
-  'body{margin:0;padding:40px 48px;font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#1f242b;background:#ffffff}' +
-  'img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #c9ccd1;padding:4px 8px}a{color:#1f5a94}';
+  'html,body{margin:0;background:#e8e9ec}' +
+  '.docx-wrapper{background:#e8e9ec!important;padding:24px 0!important}' +
+  '.docx-wrapper>section.docx{box-shadow:0 1px 4px rgba(0,0,0,.25);margin-bottom:24px!important}' +
+  '[data-para]{position:relative;cursor:pointer}' +
+  '[data-para]:hover{outline:1px dashed #9aa4b2;outline-offset:2px}' +
+  '[data-para]::before{content:"¶" attr(data-para);position:absolute;left:-46px;top:0;width:40px;' +
+  'text-align:right;font:10px/1.6 ui-monospace,Menlo,monospace;color:#9aa4b2;pointer-events:none}' +
+  '.pa-mark{background:rgba(255,213,79,.35)!important;box-shadow:-6px 0 0 #d9a400}' +
+  '.pa-pick{background:rgba(90,168,255,.28)!important;box-shadow:-6px 0 0 #2f7fd8}';
 
 // ── Team rooms ──────────────────────────────────────────────
 export const TEAM_ROOM_GLASS = '#3f7fa8';

@@ -27,5 +27,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "../core/src/assets/**/*.ts", "test/**/*.ts"]
+  "include": ["vite.config.ts", "../core/src/assets/**/*.ts", "test/**/*.ts"],
+  // jsdom tests (real DOM + server imports) are run by vitest but not type-checked here
+  "exclude": ["test/**/*.dom.test.ts"]
 }

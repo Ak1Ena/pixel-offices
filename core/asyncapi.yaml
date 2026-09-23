@@ -2350,7 +2350,11 @@ components:
           $ref: '#/components/schemas/BoardPin'
 
     RemoveBoardPin:
-      description: Remove a whiteboard pin.
+      description: |
+        Remove a whiteboard pin. With `deleteFile`, a file pin's file is deleted
+        too — only when it is a copy the office stored itself (an upload in
+        ~/.pixel-agents/files) and no other pin uses it; the user's own files
+        are never deleted. Deleting needs a privileged connection.
       type: object
       additionalProperties: false
       required: [type, pinId]
@@ -2359,6 +2363,8 @@ components:
           const: removeBoardPin
         pinId:
           type: string
+        deleteFile:
+          type: boolean
 
     SaveDeskTask:
       description: |

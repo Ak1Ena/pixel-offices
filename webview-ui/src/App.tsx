@@ -61,6 +61,7 @@ import {
   buildChannels,
   burnLevelFor,
   composeMessage,
+  isStoredUploadPath,
   newPinId,
   pinsForAgent,
 } from './officeChat.js';
@@ -1137,6 +1138,7 @@ function App() {
               }}
               onSave={chat.savePin}
               onRemove={chat.removePin}
+              canDeleteFiles={chat.privileged || !isBrowserRuntime}
               // The viewer fetches files over HTTP from the standalone server;
               // the VS Code panel has no such route to call.
               onView={isBrowserRuntime ? setViewedPinId : undefined}
@@ -1436,6 +1438,15 @@ function App() {
             askLabel={askTarget !== null ? agentLabel(askTarget) : undefined}
             lastEditKey={lastEditKeyFor(docEdits.edits, viewed.value)}
             onOpenFile={chat.privileged ? () => setIsOpenFileOpen(true) : undefined}
+            onDeleteFile={
+              chat.privileged && isStoredUploadPath(viewed.value)
+                ? () => {
+                    chat.removePin(viewed.id, true);
+                    setViewedPinId(null);
+                    setViewedFocusId(null);
+                  }
+                : undefined
+            }
             onAskRefs={
               askTarget !== null
                 ? () => {

@@ -5,7 +5,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { BoardPin } from '../../core/src/messages.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
-import { resolvePinFile } from '../src/boardFiles.js';
+import {
+  deleteStoredUpload,
+  isStoredUpload,
+  removePinAndCopy,
+  resolvePinFile,
+  saveUploadedFile,
+  uploadDir,
+} from '../src/boardFiles.js';
 import { createHttpServer } from '../src/httpServer.js';
 
 let dir: string;
@@ -101,5 +108,70 @@ describe('board file routes', () => {
       await app.close();
       process.env.HOME = prevHome;
     }
+  });
+});
+
+describe('stored uploads: no duplicates, and only the office’s own copies are ever deleted', () => {
+  let prevHome: string | undefined;
+  beforeEach(() => {
+    prevHome = process.env.HOME;
+    process.env.HOME = dir;
+  });
+  afterEach(() => {
+    process.env.HOME = prevHome;
+  });
+
+  function board(initial: BoardPin[]) {
+    let pins = [...initial];
+    return {
+      getPins: () => pins,
+      removePin: (id: unknown) => {
+        const before = pins.length;
+        pins = pins.filter((p) => p.id !== id);
+        return pins.length < before;
+      },
+    };
+  }
+
+  it('the same file uploaded twice is stored once; a different file with that name is kept apart', () => {
+    const a = saveUploadedFile('report.docx', Buffer.from('v1'), 'pin_a');
+    const again = saveUploadedFile('report.docx', Buffer.from('v1'), 'pin_b');
+    const changed = saveUploadedFile('report.docx', Buffer.from('v2'), 'pin_c');
+    expect(again).toBe(a);
+    expect(changed).not.toBe(a);
+    expect(fs.readdirSync(uploadDir()).sort()).toEqual(['pin_a-report.docx', 'pin_c-report.docx']);
+  });
+
+  it('deletes a stored copy with its pin, once nothing else uses it', () => {
+    const stored = saveUploadedFile('deck.pptx', Buffer.from('x'), 'pin_d')!;
+    const b = board([pin('one', stored), pin('two', stored)]);
+    expect(removePinAndCopy(b, 'one', true)).toEqual({ removed: true, deleted: false });
+    expect(fs.existsSync(stored)).toBe(true);
+    expect(removePinAndCopy(b, 'two', true)).toEqual({ removed: true, deleted: true });
+    expect(fs.existsSync(stored)).toBe(false);
+  });
+
+  it('never deletes the user’s own file, a file linked in from elsewhere, or anything without deleteFile', () => {
+    const own = path.join(dir, 'plan.pdf');
+    expect(removePinAndCopy(board([pin('p', own)]), 'p', true)).toEqual({
+      removed: true,
+      deleted: false,
+    });
+    expect(fs.existsSync(own)).toBe(true);
+
+    fs.mkdirSync(uploadDir(), { recursive: true });
+    const planted = path.join(uploadDir(), 'pin_x-plan.pdf');
+    fs.symlinkSync(own, planted);
+    expect(isStoredUpload(planted)).toBe(false);
+    expect(deleteStoredUpload(planted)).toBe(false);
+    expect(fs.existsSync(own)).toBe(true);
+
+    const stored = saveUploadedFile('notes.txt', Buffer.from('n'), 'pin_n')!;
+    expect(removePinAndCopy(board([pin('n', stored)]), 'n', false)).toEqual({
+      removed: true,
+      deleted: false,
+    });
+    expect(fs.existsSync(stored)).toBe(true);
+    expect(isStoredUpload('~/.pixel-agents/files/pin_n-notes.txt')).toBe(true);
   });
 });

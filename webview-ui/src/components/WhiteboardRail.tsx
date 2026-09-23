@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import type { BoardPin, BoardPinKind } from '../../../core/src/messages.js';
 import { BOARD_PIN_DETAIL_MAX_CHARS, PIN_DRAG_MIME } from '../constants.js';
 import { dragHasFiles, pastedFiles } from '../fileUpload.js';
-import { filterPins, newPinId } from '../officeChat.js';
+import { filterPins, isStoredUploadPath, newPinId } from '../officeChat.js';
 import { tunable } from '../tunableStore.js';
 import { PIN_KIND_LABEL, PIN_KIND_PAPER } from './pinKinds.js';
 
@@ -21,11 +21,14 @@ interface WhiteboardRailProps {
   chatAgentLabel: string | null;
   onAttach: (pinId: string) => void;
   onSave: (pin: BoardPin) => void;
-  onRemove: (pinId: string) => void;
+  /** `deleteFile`: also delete the office's stored copy of an uploaded file. */
+  onRemove: (pinId: string, deleteFile?: boolean) => void;
   /** Open a file pin in the document viewer; absent where the viewer isn't available. */
   onView?: (pinId: string) => void;
   /** Upload a file from this device and pin it; resolves with an error message or null. */
   onUpload?: (file: File) => Promise<string | null>;
+  /** This connection may delete the office's stored copies of uploads (privileged). */
+  canDeleteFiles?: boolean;
 }
 
 const KINDS: BoardPinKind[] = ['link', 'file', 'snippet', 'note'];
@@ -378,7 +381,9 @@ export function WhiteboardRail({
   onRemove,
   onView,
   onUpload,
+  canDeleteFiles = false,
 }: WhiteboardRailProps) {
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [railDrop, setRailDrop] = useState(false);
   const [railUploading, setRailUploading] = useState(false);
@@ -609,13 +614,43 @@ export function WhiteboardRail({
                 >
                   Edit
                 </button>
-                <button
-                  onClick={() => onRemove(pin.id)}
-                  className={`px-6 text-2xs ${boardButton}`}
-                  aria-label={`Remove pin ${pin.title}`}
-                >
-                  Remove
-                </button>
+                {confirmRemoveId === pin.id ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        setConfirmRemoveId(null);
+                        onRemove(pin.id, true);
+                      }}
+                      className={`px-6 text-2xs ${boardButton}`}
+                      title="Remove the pin and delete the office's copy of the file (your original is not touched)"
+                      data-testid="pin-delete-file"
+                    >
+                      Delete file
+                    </button>
+                    <button
+                      onClick={() => {
+                        setConfirmRemoveId(null);
+                        onRemove(pin.id);
+                      }}
+                      className={`px-6 text-2xs ${boardButton}`}
+                      title="Remove the pin; keep the stored copy"
+                    >
+                      Pin only
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() =>
+                      pin.kind === 'file' && canDeleteFiles && isStoredUploadPath(pin.value)
+                        ? setConfirmRemoveId(pin.id)
+                        : onRemove(pin.id)
+                    }
+                    className={`px-6 text-2xs ${boardButton}`}
+                    aria-label={`Remove pin ${pin.title}`}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
             </div>
           ),

@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "mammoth": "^1.12.3",
+    "docx-preview": "^0.4.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "read-excel-file": "^9.3.10"
@@ -32,6 +32,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "globals": "^17.8.0",
+    "jsdom": "^26.1.0",
     "pngjs": "^7.0.0",
     "tailwindcss": "^4.2.2",
     "tsx": "^4.19.3",
