@@ -71,13 +71,28 @@ jobs:
 
       # node-pty is a native addon; @electron/rebuild (inside
       # package:desktop) recompiles it against Electron's own ABI on
-      # whichever OS/arch this job runs on. Each hosted runner image already
-      # ships the toolchain node-gyp needs for that: windows-latest carries
-      # the MSVC Build Tools + Python, macos-* carries Xcode Command Line
-      # Tools, ubuntu-latest carries build-essential + Python -- no extra
-      # setup step needed on any of the four.
+      # whichever OS/arch this job runs on. macos-* carries Xcode Command
+      # Line Tools and ubuntu-latest carries build-essential + Python, so
+      # those need nothing extra. Windows does -- see below.
       - name: Install dependencies
         run: npm ci
+
+      # The node-gyp bundled with npm detects Visual Studio by parsing
+      # PowerShell output, and on windows-latest that output overruns its
+      # child-process buffer:
+      #   gyp ERR! find VS ... ERR_CHILD_PROCESS_STDIO_MAXBUFFER
+      #   Error: Could not find any Visual Studio installation to use
+      # The runner HAS Visual Studio; only the probe fails. A current
+      # node-gyp raises that buffer, so install one and point npm at it for
+      # the rebuild step.
+      - name: Windows native-build toolchain
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g node-gyp@latest
+          echo "npm_config_node_gyp=$(npm prefix -g)/node_modules/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
+          echo "GYP_MSVS_VERSION=2022" >> "$GITHUB_ENV"
 
       - name: Build + package
         run: npm run package:desktop -- ${{ matrix.build_args }}

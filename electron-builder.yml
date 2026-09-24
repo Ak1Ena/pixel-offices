@@ -74,6 +74,10 @@ win:
 
 linux:
   category: Development
+  # Without this, the executable name is derived from package.json's `name`
+  # (@ak1ena/pixel-office) and the AppImage build aborts: "executableName
+  # contains characters that cannot be safely used in file paths".
+  executableName: pixel-office
   target:
     - AppImage
     - deb
