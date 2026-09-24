@@ -1,8 +1,14 @@
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { AgentEvent, HookProvider } from '../../../../../core/src/provider.js';
+import type {
+  AgentEvent,
+  HookProvider,
+  ProviderLaunchPlan,
+} from '../../../../../core/src/provider.js';
 import { BASH_COMMAND_DISPLAY_MAX_LENGTH } from '../../../constants.js';
+import { flagValue, programBase } from '../../../shellWords.js';
 import { createAgyChatReader } from './agyTranscript.js';
 import {
   areHooksInstalled as installerAreHooksInstalled,
@@ -12,6 +18,52 @@ import {
 } from './antigravityHookInstaller.js';
 import { ANTIGRAVITY_CONSENT_DISCLOSURE, ANTIGRAVITY_CONSENT_HEADLINE } from './consentCopy.js';
 import { ANTIGRAVITY_TERMINAL_NAME_PREFIX } from './constants.js';
+
+// ── Launch planning: moved from server/src/launcher.ts ──
+
+export function isAgyProgram(program: string): boolean {
+  return programBase(program) === 'agy';
+}
+
+/**
+ * An interactive Antigravity CLI run the office can follow: `agy …` or a
+ * wrapper around it. agy takes no session id up front, so the office names
+ * the run itself (`key`) and links agy's conversation to it by process id —
+ * agy's hooks report their parent pid (see antigravity-hook.ts). Null for a
+ * command without agy, or a print-mode run (`-p`), which is not interactive.
+ */
+export function planAgyLaunch(
+  program: string,
+  args: string[],
+  newId: () => string = randomUUID,
+): { program: string; args: string[]; key: string } | null {
+  const at = isAgyProgram(program) ? -1 : args.findIndex(isAgyProgram);
+  if (at === -1 && !isAgyProgram(program)) return null;
+  const agyArgs = args.slice(at + 1);
+  if (flagValue(agyArgs, '-p', '--print', '--prompt') !== undefined) return null;
+  return { program, args, key: `agy-${newId()}` };
+}
+
+function agyClaims(program: string, args: string[]): boolean {
+  return isAgyProgram(program) || args.some(isAgyProgram);
+}
+
+function agyLaunchPlan(
+  program: string,
+  args: string[],
+  opts: { firstMessage?: string; resume?: string; newId?: () => string },
+): ProviderLaunchPlan | null {
+  const withMessage = opts.firstMessage ? [...args, '-i', opts.firstMessage] : args;
+  const result = planAgyLaunch(program, withMessage, opts.newId);
+  if (!result) return null;
+  return { program: result.program, args: result.args, sessionKey: result.key, interactive: true };
+}
+
+function agyRequiresHooks(): string | null {
+  return installerAreHooksInstalled()
+    ? null
+    : 'Turn on the Antigravity (agy) hooks first: the office sees agy only through them (Settings → Show Welcome Tour).';
+}
 
 /**
  * Antigravity CLI provider (`agy`). Hooks-only: agy's transcript is not
@@ -177,4 +229,12 @@ export const antigravityProvider: HookProvider = {
     'search_web',
   ]),
   terminalNamePrefix: ANTIGRAVITY_TERMINAL_NAME_PREFIX,
+
+  launch: {
+    claims: agyClaims,
+    plan: agyLaunchPlan,
+    canResume: false,
+    requiresHooks: agyRequiresHooks,
+    adoption: 'pid',
+  },
 };

@@ -32,10 +32,14 @@ import {
   SCREEN_QUESTION_PROMPT_LINES,
 } from './constants.js';
 import type { Pty } from './launcher.js';
-import { expandAlias, loadPty, planAgyLaunch, planLaunch, splitShellWords } from './launcher.js';
+import { expandAlias, loadPty, splitShellWords } from './launcher.js';
 import { ModelCatalog, parseModelOptions, sameModelLabel } from './modelOptions.js';
-import { areHooksInstalled as antigravityHooksInstalled } from './providers/hook/antigravity/antigravityHookInstaller.js';
-import { hookProviderById } from './providers/index.js';
+import {
+  hookProviderById,
+  hookProviders,
+  launchableProviders,
+  launcherFor,
+} from './providers/index.js';
 import { typePrompt } from './terminalTyping.js';
 import type { AgentState } from './types.js';
 
@@ -374,8 +378,19 @@ export class OfficeSessions {
     const words = splitShellWords((req.command ?? '').trim() || 'claude');
     const alias = expandAlias(words[0], words.slice(1));
     const command = alias ?? { program: words[0], args: words.slice(1) };
-    const isAgy = planAgyLaunch(command.program, command.args) !== null;
-    const providerId = isAgy ? 'antigravity' : 'claude';
+    const provider = launcherFor(hookProviders, command.program, command.args);
+    if (!provider) {
+      const names = launchableProviders(hookProviders)
+        .map((p) => p.displayName)
+        .join(' or ');
+      return {
+        ok: false,
+        error: `The start command must run ${names} as a new interactive session (for example: claude, agy, or an alias of either).`,
+      };
+    }
+    const { launch } = provider;
+    const providerId = provider.id;
+    const adoptsByPid = launch.adoption === 'pid';
     const model = req.model?.trim().slice(0, MODEL_LABEL_MAX_CHARS) || undefined;
     if (model && !hookProviderById(providerId)?.modelPicker) {
       return {
@@ -384,48 +399,39 @@ export class OfficeSessions {
           'The office cannot pick a model for this CLI. Put the model in the start command instead.',
       };
     }
+    const hooksError = launch.requiresHooks?.();
+    if (hooksError) return { ok: false, error: hooksError };
     const resume = req.resume?.trim();
     if (resume) {
-      if (isAgy || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(resume)) {
-        return { ok: false, error: 'Only a Claude session can be resumed here.' };
+      if (!launch.canResume) {
+        return { ok: false, error: `Only a ${provider.displayName} session can be resumed here.` };
       }
       if (this.sessions.has(resume) || this.agentFor(resume)) {
         return { ok: false, error: 'That session is already open in the office.' };
       }
-      command.args.push('--resume', resume);
     }
     if (req.skipPermissions) command.args.push('--dangerously-skip-permissions');
     // The first message rides the command line (`claude "<prompt>"`, `agy -i
     // "<prompt>"`), never the keyboard: typed input would land in — and its
     // Enter would answer — whatever the CLI asks first (trust this folder?).
     const firstMessage = req.firstMessage?.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
-    let plan: { program: string; args: string[]; sessionId: string };
-    if (isAgy) {
-      // The office follows agy through its hooks: without them it stays a blank character.
-      if (!antigravityHooksInstalled()) {
-        return {
-          ok: false,
-          error:
-            'Turn on the Antigravity (agy) hooks first: the office sees agy only through them (Settings → Show Welcome Tour).',
-        };
-      }
-      if (firstMessage) command.args.push('-i', firstMessage);
-      const agy = planAgyLaunch(command.program, command.args)!;
-      plan = { program: agy.program, args: agy.args, sessionId: agy.key };
-    } else {
-      // With a model to pick, the first message waits: it is typed once the
-      // picker is done, so the very first turn already runs on that model.
-      if (firstMessage && !model) command.args.push(firstMessage);
-      const claude = planLaunch(command.program, command.args);
-      if (!claude.tracksClaude || !claude.sessionId || !claude.interactive) {
-        return {
-          ok: false,
-          error:
-            'The start command must run Claude or agy as a new interactive session (for example: claude, agy, or an alias of either).',
-        };
-      }
-      plan = { program: claude.program, args: claude.args, sessionId: claude.sessionId };
+    // With a model to pick, the first message waits: it is typed once the
+    // picker is done, so the very first turn already runs on that model.
+    const launchPlan = launch.plan(command.program, command.args, {
+      firstMessage: firstMessage && !model ? firstMessage : undefined,
+      resume,
+    });
+    if (!launchPlan) {
+      return {
+        ok: false,
+        error: `The start command must run ${provider.displayName} as a new interactive session (for example: claude, agy, or an alias of either).`,
+      };
     }
+    const plan = {
+      program: launchPlan.program,
+      args: launchPlan.args,
+      sessionId: launchPlan.sessionKey,
+    };
 
     let pty: Pty;
     try {
@@ -465,10 +471,12 @@ export class OfficeSessions {
       picking: false,
       ...(model ? { startModel: { label: model, firstMessage } } : {}),
     };
-    if (isAgy) {
+    if (adoptsByPid) {
+      // No transcript of its own: the office links the run by process id
+      // instead of polling for one to appear (below).
       session.followedPid = pty.pid;
       this.host.followPid?.(pty.pid, sessionId, cwd);
-      this.host.adoptLaunchedHooksSession?.(sessionId, cwd, 'antigravity');
+      this.host.adoptLaunchedHooksSession?.(sessionId, cwd, providerId);
     }
     this.sessions.set(sessionId, session);
     this.recent.splice(0, this.recent.length, cwd, ...this.recent.filter((f) => f !== cwd));
@@ -484,14 +492,14 @@ export class OfficeSessions {
     let tries = 0;
     session.adoptTimer = setInterval(() => {
       const agent = this.agentFor(sessionId);
-      // agy's character is created at once (adoptLaunchedHooksSession): no cap needed.
-      if (agent || (!isAgy && ++tries > OFFICE_SESSION_ADOPT_TRIES)) {
+      // A pid-adopted character is created at once (adoptLaunchedHooksSession above): no cap needed.
+      if (agent || (!adoptsByPid && ++tries > OFFICE_SESSION_ADOPT_TRIES)) {
         if (session.adoptTimer) clearInterval(session.adoptTimer);
         session.adoptTimer = null;
         if (agent) this.adopted(session, agent);
         return;
       }
-      if (!isAgy) this.host.adoptLaunchedSession(sessionId, cwd);
+      if (!adoptsByPid) this.host.adoptLaunchedSession(sessionId, cwd);
     }, 1_000);
     return { ok: true, sessionId };
   }

@@ -1,14 +1,20 @@
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
 import type { ChatEdit } from '../../../../../core/src/messages.js';
 import { normalizeProjectPath } from '../../../../../core/src/normalizeProjectPath.js';
-import type { AgentEvent, HookProvider } from '../../../../../core/src/provider.js';
+import type {
+  AgentEvent,
+  HookProvider,
+  ProviderLaunchPlan,
+} from '../../../../../core/src/provider.js';
 import {
   BASH_COMMAND_DISPLAY_MAX_LENGTH,
   TASK_DESCRIPTION_DISPLAY_MAX_LENGTH,
 } from '../../../constants.js';
+import { flagValue, programBase } from '../../../shellWords.js';
 import {
   areHooksInstalled as installerAreHooksInstalled,
   installHooks as installerInstallHooks,
@@ -24,6 +30,91 @@ import {
   CLAUDE_SMALL_CONTEXT_WINDOW,
   CLAUDE_TERMINAL_NAME_PREFIX,
 } from './constants.js';
+
+// ── Launch planning: moved from server/src/launcher.ts ──
+
+const RESUME_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export interface LaunchPlan {
+  /** The program to run, as the user typed it. */
+  program: string;
+  /** Arguments to pass to it. */
+  args: string[];
+  /** The session the office can address, or null when it can't be known up front. */
+  sessionId: string | null;
+  /** False for print mode: nothing to type into. */
+  interactive: boolean;
+  /** True when the command runs Claude, directly or through a wrapper like `caffeinate -i claude`. */
+  tracksClaude: boolean;
+}
+
+/** Whether `program` is Claude Code (`claude`, `/usr/local/bin/claude`, `claude.cmd`). */
+export function isClaudeProgram(program: string): boolean {
+  return programBase(program) === 'claude';
+}
+
+/**
+ * Decide how to run `program` and which session id the office will know it
+ * by. Only Claude sessions are addressable (the office follows their
+ * transcripts). Claude may be the program itself or wrapped by another
+ * (`caffeinate -i claude`, `env FOO=1 claude`): the first word that names
+ * Claude is where Claude's own arguments begin. Any other command runs as-is
+ * with no session id.
+ *
+ * For Claude: a fresh session gets an id minted here and passed as
+ * `--session-id`; an explicit `--session-id` or `--resume <id>` is used as
+ * given. `--continue` and a bare `--resume` (the picker) pick a session only
+ * Claude knows, so those runs are not addressable.
+ */
+export function planLaunch(
+  program: string,
+  args: string[],
+  newId: () => string = randomUUID,
+): LaunchPlan {
+  const claudeAt = isClaudeProgram(program) ? -1 : args.findIndex(isClaudeProgram);
+  if (claudeAt === -1 && !isClaudeProgram(program)) {
+    return { program, args, sessionId: null, interactive: true, tracksClaude: false };
+  }
+  const before = args.slice(0, claudeAt + 1); // the wrapper and `claude` itself
+  const claudeArgs = args.slice(claudeAt + 1);
+  const plan = (a: string[], sessionId: string | null, interactive = true): LaunchPlan => ({
+    program,
+    args: [...before, ...a],
+    sessionId,
+    interactive,
+    tracksClaude: true,
+  });
+  if (flagValue(claudeArgs, '-p', '--print') !== undefined) return plan(claudeArgs, null, false);
+  const explicit = flagValue(claudeArgs, '--session-id');
+  if (explicit) return plan(claudeArgs, explicit);
+  const resumed = flagValue(claudeArgs, '-r', '--resume');
+  if (resumed !== undefined) return plan(claudeArgs, resumed || null);
+  if (flagValue(claudeArgs, '-c', '--continue') !== undefined) return plan(claudeArgs, null);
+  const sessionId = newId();
+  return plan(['--session-id', sessionId, ...claudeArgs], sessionId);
+}
+
+function claudeClaims(program: string, args: string[]): boolean {
+  return isClaudeProgram(program) || args.some(isClaudeProgram);
+}
+
+function claudeLaunchPlan(
+  program: string,
+  args: string[],
+  opts: { firstMessage?: string; resume?: string; newId?: () => string },
+): ProviderLaunchPlan | null {
+  if (opts.resume !== undefined && !RESUME_ID_PATTERN.test(opts.resume)) return null;
+  const withResume = opts.resume ? [...args, '--resume', opts.resume] : args;
+  const withMessage = opts.firstMessage ? [...withResume, opts.firstMessage] : withResume;
+  const result = planLaunch(program, withMessage, opts.newId);
+  if (!result.sessionId || !result.interactive) return null;
+  return {
+    program: result.program,
+    args: result.args,
+    sessionKey: result.sessionId,
+    interactive: result.interactive,
+  };
+}
 
 // ── formatToolStatus: moved from src/transcriptParser.ts ──
 
@@ -393,6 +484,13 @@ export const claudeProvider: HookProvider = {
   getAllSessionRoots,
   sessionFilePattern: '*.jsonl',
   buildLaunchCommand,
+
+  launch: {
+    claims: claudeClaims,
+    plan: claudeLaunchPlan,
+    canResume: true,
+    adoption: 'transcript',
+  },
 
   team: claudeTeamProvider,
 };

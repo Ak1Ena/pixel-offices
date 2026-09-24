@@ -1,5 +1,4 @@
 import { spawn as spawnChild, spawnSync } from 'child_process';
-import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
@@ -14,9 +13,18 @@ import {
   SERVER_JSON_DIR,
   SERVERS_DIR,
 } from './constants.js';
+import { isAgyProgram, planAgyLaunch } from './providers/hook/antigravity/antigravity.js';
+import type { LaunchPlan } from './providers/hook/claude/claude.js';
+import { isClaudeProgram, planLaunch } from './providers/hook/claude/claude.js';
+import { hookProviders, launchableProviders, launcherFor } from './providers/index.js';
 import type { ServerConfig } from './serverConfig.js';
 import { isServerConfig } from './serverConfig.js';
 import { typePrompt } from './terminalTyping.js';
+
+// Re-exported so existing callers (officeSessions.ts, tests) keep working —
+// the per-CLI planning now lives on each provider (see ProviderLaunch).
+export type { LaunchPlan };
+export { isAgyProgram, isClaudeProgram, planAgyLaunch, planLaunch };
 
 /**
  * `pixel-office <program> [args…]` — run a program (Claude or agy) so the
@@ -52,107 +60,6 @@ interface PtyModule {
       env: Record<string, string | undefined>;
     },
   ): Pty;
-}
-
-export interface LaunchPlan {
-  /** The program to run, as the user typed it. */
-  program: string;
-  /** Arguments to pass to it. */
-  args: string[];
-  /** The session the office can address, or null when it can't be known up front. */
-  sessionId: string | null;
-  /** False for print mode: nothing to type into. */
-  interactive: boolean;
-  /** True when the command runs Claude, directly or through a wrapper like `caffeinate -i claude`. */
-  tracksClaude: boolean;
-}
-
-function flagValue(args: string[], ...names: string[]): string | undefined {
-  for (let i = 0; i < args.length; i++) {
-    for (const name of names) {
-      if (args[i] === name) {
-        const next = args[i + 1];
-        return next !== undefined && !next.startsWith('-') ? next : '';
-      }
-      if (args[i].startsWith(`${name}=`)) return args[i].slice(name.length + 1);
-    }
-  }
-  return undefined;
-}
-
-/** A program's bare name: `/usr/local/bin/claude`, `claude.cmd` → `claude`. */
-function programBase(program: string): string {
-  // Either separator: a Windows path must name its program on any host.
-  return (program.split(/[\\/]/).pop() ?? '').toLowerCase().replace(/\.(cmd|exe|bat|ps1)$/, '');
-}
-
-/** Whether `program` is Claude Code (`claude`, `/usr/local/bin/claude`, `claude.cmd`). */
-export function isClaudeProgram(program: string): boolean {
-  return programBase(program) === 'claude';
-}
-
-export function isAgyProgram(program: string): boolean {
-  return programBase(program) === 'agy';
-}
-
-/**
- * An interactive Antigravity CLI run the office can follow: `agy …` or a
- * wrapper around it. agy takes no session id up front, so the office names
- * the run itself (`key`) and links agy's conversation to it by process id —
- * agy's hooks report their parent pid (see antigravity-hook.ts). Null for a
- * command without agy, or a print-mode run (`-p`), which is not interactive.
- */
-export function planAgyLaunch(
-  program: string,
-  args: string[],
-  newId: () => string = randomUUID,
-): { program: string; args: string[]; key: string } | null {
-  const at = isAgyProgram(program) ? -1 : args.findIndex(isAgyProgram);
-  if (at === -1 && !isAgyProgram(program)) return null;
-  const agyArgs = args.slice(at + 1);
-  if (flagValue(agyArgs, '-p', '--print', '--prompt') !== undefined) return null;
-  return { program, args, key: `agy-${newId()}` };
-}
-
-/**
- * Decide how to run `program` and which session id the office will know it
- * by. Only Claude sessions are addressable (the office follows their
- * transcripts). Claude may be the program itself or wrapped by another
- * (`caffeinate -i claude`, `env FOO=1 claude`): the first word that names
- * Claude is where Claude's own arguments begin. Any other command runs as-is
- * with no session id.
- *
- * For Claude: a fresh session gets an id minted here and passed as
- * `--session-id`; an explicit `--session-id` or `--resume <id>` is used as
- * given. `--continue` and a bare `--resume` (the picker) pick a session only
- * Claude knows, so those runs are not addressable.
- */
-export function planLaunch(
-  program: string,
-  args: string[],
-  newId: () => string = randomUUID,
-): LaunchPlan {
-  const claudeAt = isClaudeProgram(program) ? -1 : args.findIndex(isClaudeProgram);
-  if (claudeAt === -1 && !isClaudeProgram(program)) {
-    return { program, args, sessionId: null, interactive: true, tracksClaude: false };
-  }
-  const before = args.slice(0, claudeAt + 1); // the wrapper and `claude` itself
-  const claudeArgs = args.slice(claudeAt + 1);
-  const plan = (a: string[], sessionId: string | null, interactive = true): LaunchPlan => ({
-    program,
-    args: [...before, ...a],
-    sessionId,
-    interactive,
-    tracksClaude: true,
-  });
-  if (flagValue(claudeArgs, '-p', '--print') !== undefined) return plan(claudeArgs, null, false);
-  const explicit = flagValue(claudeArgs, '--session-id');
-  if (explicit) return plan(claudeArgs, explicit);
-  const resumed = flagValue(claudeArgs, '-r', '--resume');
-  if (resumed !== undefined) return plan(claudeArgs, resumed || null);
-  if (flagValue(claudeArgs, '-c', '--continue') !== undefined) return plan(claudeArgs, null);
-  const sessionId = newId();
-  return plan(['--session-id', sessionId, ...claudeArgs], sessionId);
 }
 
 /** Whether `program` can be started directly (a path that exists, or a name on PATH). */
@@ -380,20 +287,21 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
     );
   }
   const { program, args: argv } = alias ?? { program: typed, args: typedArgs };
-  const agy = planAgyLaunch(program, argv);
-  const plan = agy
-    ? { program, args: argv, sessionId: agy.key, interactive: true, tracksClaude: false }
-    : planLaunch(program, argv);
-  if (!plan.tracksClaude && !agy) {
+  const provider = launcherFor(hookProviders, program, argv);
+  const plan = provider?.launch.plan(program, argv, {});
+  if (!plan) {
+    const names = launchableProviders(hookProviders)
+      .map((p) => p.displayName)
+      .join(', ');
     console.error(
-      `[Pixel Agents] The office follows Claude sessions only for now, so ${program} runs normally and won't appear in it.`,
+      `[Pixel Agents] The office follows ${names} sessions only for now, so ${program} runs normally and won't appear in it.`,
     );
-    return runPlain(plan.program, plan.args);
+    return runPlain(program, argv);
   }
   const pty = plan.interactive && process.stdin.isTTY && process.stdout.isTTY ? loadPty() : null;
 
-  if (!pty || !plan.sessionId) {
-    if (plan.interactive && !plan.sessionId) {
+  if (!pty || !plan.sessionKey) {
+    if (plan.interactive && !plan.sessionKey) {
       console.error(
         '[Pixel Agents] --continue / bare --resume pick a session only Claude knows, so the office can show it but not send to it.',
       );
@@ -405,7 +313,11 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
     return runPlain(plan.program, plan.args);
   }
 
-  const sessionId = plan.sessionId;
+  // Some CLIs have no session id of their own: the office links their hooks
+  // to this run by process id (see ProviderLaunch.adoption), not by the
+  // session key.
+  const linksByPid = provider?.launch.adoption === 'pid';
+  const sessionId = plan.sessionKey;
   const cwd = process.cwd();
   const isWindows = process.platform === 'win32';
   const term = pty.spawn(
@@ -448,7 +360,12 @@ export async function runLauncher(typed: string, typedArgs: string[]): Promise<n
   const pollLoop = async (server: ServerConfig, key: string): Promise<void> => {
     while (!exiting) {
       try {
-        for (const text of await pollOnce(server, sessionId, cwd, agy ? term.pid : undefined)) {
+        for (const text of await pollOnce(
+          server,
+          sessionId,
+          cwd,
+          linksByPid ? term.pid : undefined,
+        )) {
           // Stop from the office: press Esc now, not behind a message being typed.
           if (text === LAUNCHER_INTERRUPT) term.write(LAUNCHER_INTERRUPT);
           else typeIn(text);

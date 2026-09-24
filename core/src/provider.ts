@@ -155,6 +155,12 @@ export interface HookProvider {
    *  the leading `/`. Absent = the office cannot list them. */
   listSlashCommands?(cwd: string): Promise<string[]>;
 
+  /** How to launch and address this CLI from `pixel-office <program>` and the
+   *  office's own +Agent (see ProviderLaunch). Absent = the office can only
+   *  adopt this CLI's sessions (hooks/heuristics), never start or track one
+   *  it launches itself. */
+  readonly launch?: ProviderLaunch;
+
   // ── Optional file fallback (heuristic mode) ──
 
   /** Session directories to scan. Undefined = no file fallback. */
@@ -195,4 +201,37 @@ export interface ModelPicker {
   command: string;
   /** Key that applies the highlighted option to this session only; absent = Enter. */
   sessionKey?: string;
+}
+
+/** A planned launch of a CLI: what to spawn, and the id the office will know
+ *  the session by (see HookProvider.launch). */
+export interface ProviderLaunchPlan {
+  program: string;
+  args: string[];
+  /** The id the office addresses this session by. */
+  sessionKey: string;
+  interactive: boolean;
+}
+
+/** How to launch and address a CLI from a `pixel-office <program>` command
+ *  line (see HookProvider.launch). */
+export interface ProviderLaunch {
+  /** Does this command run this CLI (as the program, or wrapped by another)? */
+  claims(program: string, args: string[]): boolean;
+  /** Plan the run, or null when the office cannot address it (bad flags, an
+   *  unresumable/unaddressable combination, an invalid resume id). */
+  plan(
+    program: string,
+    args: string[],
+    opts: { firstMessage?: string; resume?: string; newId?: () => string },
+  ): ProviderLaunchPlan | null;
+  /** Whether `plan`'s `resume` option is supported. */
+  canResume: boolean;
+  /** Non-null = refuse the start with this message (the CLI needs a
+   *  prerequisite, e.g. its hooks, before the office can address it). */
+  requiresHooks?(): string | null;
+  /** How a started session is adopted: 'transcript' = poll for the session's
+   *  own transcript to appear; 'pid' = link the run's process id to the
+   *  hooks it fires (CLIs with no transcript of their own). */
+  adoption: 'transcript' | 'pid';
 }

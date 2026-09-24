@@ -10,7 +10,7 @@
  * than reaching into each provider directory directly.
  */
 
-import type { HookProvider } from '../../../core/src/provider.js';
+import type { HookProvider, ProviderLaunch } from '../../../core/src/provider.js';
 import { antigravityProvider, isAntigravityPresent } from './hook/antigravity/antigravity.js';
 import { copyHookScript as copyAntigravityHookScript } from './hook/antigravity/antigravityHookInstaller.js';
 import { claudeProvider } from './hook/claude/claude.js';
@@ -90,6 +90,28 @@ const scriptCopiers: Record<string, (packageRoot: string) => boolean> = {
 export function copyProviderHookScript(provider: HookProvider, packageRoot: string): boolean {
   const copy = scriptCopiers[provider.id];
   return copy ? copy(packageRoot) : true;
+}
+
+/** A provider that can start and address a CLI session (see ProviderLaunch). */
+export type LaunchableProvider = HookProvider & { launch: ProviderLaunch };
+
+/** Every provider in `providers` that can launch a CLI, in registration order. */
+export function launchableProviders(
+  providers: readonly HookProvider[] = hookProviders,
+): LaunchableProvider[] {
+  return providers.filter((p): p is LaunchableProvider => p.launch !== undefined);
+}
+
+/** The first provider among `providers` whose `launch.claims(program, args)`
+ *  is true — the CLI a `pixel-office <program>` (or +Agent start) command
+ *  runs, or undefined when none of them track it. A new CLI is a provider
+ *  entry here, never an if-branch: this loop is the only caller of `claims`. */
+export function launcherFor(
+  providers: readonly HookProvider[],
+  program: string,
+  args: string[],
+): LaunchableProvider | undefined {
+  return launchableProviders(providers).find((p) => p.launch.claims(program, args));
 }
 
 /** Tool names every provider animates as "reading" — sent to the webview once
