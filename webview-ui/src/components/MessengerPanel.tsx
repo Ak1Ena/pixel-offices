@@ -5,6 +5,7 @@ import type {
   BoardPin,
   ChatEntry,
   FocusRequest,
+  WorkflowRun,
 } from '../../../core/src/messages.js';
 import {
   MESSENGER_DOCK_KEY_STEP_PX,
@@ -41,6 +42,7 @@ import {
 import { PinKindTag } from './PinKindTag.js';
 import { TextSettings } from './TextSettings.js';
 import { Button } from './ui/Button.js';
+import { WorkflowRunSteps } from './WorkflowRunSteps.js';
 
 export type MessengerStatus = 'working' | 'idle' | 'asking';
 
@@ -84,6 +86,9 @@ interface MessengerPanelProps {
   /** Places picked in the document viewer, waiting to go out with the next message. */
   docRefs: (agentId: number) => DocRef[];
   onRemoveDocRef: (agentId: number, index: number) => void;
+  /** The workflow each agent is working through, if any. */
+  runOf?: (agentId: number) => WorkflowRun | undefined;
+  onStopRun?: (runId: string) => void;
   docked: boolean;
   onToggleDock: () => void;
   onClose: () => void;
@@ -778,6 +783,17 @@ export function MessengerPanel(props: MessengerPanelProps) {
                   </div>
                 )}
                 <div className="max-w-680 mx-auto flex flex-col gap-6">
+                  {props.runOf?.(agent.id) && (
+                    <WorkflowRunSteps
+                      run={props.runOf(agent.id)!}
+                      onStop={
+                        props.onStopRun
+                          ? () => props.onStopRun!(props.runOf!(agent.id)!.runId)
+                          : undefined
+                      }
+                      className="pb-6 border-b-2 border-border"
+                    />
+                  )}
                   {readOnly ? (
                     <div className="text-xs text-text-muted">{readOnly}</div>
                   ) : (

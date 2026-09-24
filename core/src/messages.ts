@@ -36,6 +36,8 @@ export type ServerMessage =
   | StartAgentResult
   | AgentRelayState
   | AgentPrefs
+  | AgentModels
+  | ModelOptions
   | AgentClearRequests
   | DocEdits
   | DocEditDefault
@@ -131,6 +133,8 @@ export type ClientMessage =
   | ClearAgentContext
   | AnswerClearRequest
   | SetAgentPrefs
+  | LoadAgentModels
+  | SetAgentModel
   | SetDocEditDefault
   | UndoDocEdit
   | OpenOfficeFile
@@ -396,6 +400,29 @@ export interface AgentPrefs {
 export type AgentClearPolicy = 'ask' | 'allow' | 'never';
 
 export type DocEditMode = 'ask' | 'auto' | 'off';
+
+export interface AgentModels {
+  type: 'agentModels';
+  id: number;
+  options: ModelOption[];
+  state: AgentModelsState;
+  error?: string;
+}
+
+export interface ModelOption {
+  number: number;
+  label: string;
+  detail?: string;
+  current?: boolean;
+}
+
+export type AgentModelsState = 'idle' | 'loading' | 'switching';
+
+export interface ModelOptions {
+  type: 'modelOptions';
+  providerId: string;
+  options: ModelOption[];
+}
 
 export interface AgentClearRequests {
   type: 'agentClearRequests';
@@ -750,6 +777,10 @@ export interface DeskTask {
   result?: DeskResult;
   log: DeskLogEntry[];
   createdAt: string;
+  teamId?: string;
+  crewId?: string;
+  workflowId?: string;
+  attachments?: DeskAttachment[];
 }
 
 export type DeskTaskKind = 'task' | 'issue' | 'feature';
@@ -813,6 +844,11 @@ export interface DeskLogEntry {
 }
 
 export type DeskLogKind = 'agent' | 'verified' | 'rejected' | 'system';
+
+export interface DeskAttachment {
+  path: string;
+  name: string;
+}
 
 export interface DeskAgent {
   id: number;
@@ -1214,6 +1250,9 @@ export interface SaveDeskTask {
   priority: DeskTaskPriority;
   folder: string;
   draft?: boolean;
+  teamId?: string;
+  workflowId?: string;
+  attachments?: string[];
 }
 
 export interface RemoveDeskTask {
@@ -1271,6 +1310,7 @@ export interface StartAgent {
   command?: string;
   firstMessage?: string;
   skipPermissions?: boolean;
+  model?: string;
 }
 
 export interface SendAgentKeys {
@@ -1305,6 +1345,17 @@ export interface SetAgentPrefs {
   id: number;
   clearPolicy?: AgentClearPolicy;
   docEditMode?: DocEditMode;
+}
+
+export interface LoadAgentModels {
+  type: 'loadAgentModels';
+  id: number;
+}
+
+export interface SetAgentModel {
+  type: 'setAgentModel';
+  id: number;
+  label: string;
 }
 
 export interface SetDocEditDefault {

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 
+import type { ModelOption } from '../../../core/src/messages.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
+import { ModelSelect } from './ModelSelect.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -9,6 +11,8 @@ interface AddAgentModalProps {
   isOpen: boolean;
   onClose: () => void;
   recentFolders: string[];
+  /** Claude's model picker options, as last read (see ModelSelect). */
+  modelOptions: ModelOption[];
 }
 
 const fieldClass =
@@ -19,12 +23,18 @@ const fieldClass =
  * the office runs itself. It has no terminal window — its chat card (with a
  * screen view for on-screen questions) is how you talk to it.
  */
-export function AddAgentModal({ isOpen, onClose, recentFolders }: AddAgentModalProps) {
+export function AddAgentModal({
+  isOpen,
+  onClose,
+  recentFolders,
+  modelOptions,
+}: AddAgentModalProps) {
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [command, setCommand] = useState('claude');
   const [firstMessage, setFirstMessage] = useState('');
   const [skipPermissions, setSkipPermissions] = useState(false);
+  const [model, setModel] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +87,7 @@ export function AddAgentModal({ isOpen, onClose, recentFolders }: AddAgentModalP
             command: command.trim() || undefined,
             firstMessage: firstMessage.trim() || undefined,
             skipPermissions: skipPermissions || undefined,
+            model: model || undefined,
           });
         }}
       >
@@ -108,6 +119,15 @@ export function AddAgentModal({ isOpen, onClose, recentFolders }: AddAgentModalP
             claude, claude with flags, or one of your shell aliases that runs it
           </span>
         </label>
+        <div className="flex flex-col gap-2 text-sm">
+          Model
+          <ModelSelect
+            options={modelOptions}
+            value={model}
+            onChange={setModel}
+            className={fieldClass}
+          />
+        </div>
         <label className="flex flex-col gap-2 text-sm">
           First message (optional)
           <input

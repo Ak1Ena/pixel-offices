@@ -11,6 +11,7 @@ import {
   type DeskFilter,
   deskGates,
   deskSections,
+  dropAction,
   filterCards,
   isFiltering,
   lockedStepCount,
@@ -315,4 +316,19 @@ test('a card only read-only sessions may take says so and offers a way out', () 
     allowAnyone: false,
     startAgent: false,
   });
+});
+
+test('dropAction: a drop makes only the calls the card buttons make', () => {
+  assert.deepEqual(dropAction(task({ state: 'draft' }), 'inbox'), { action: 'publish' });
+  assert.equal(dropAction(task({ state: 'draft' }), 'working'), null);
+  assert.deepEqual(dropAction(task({ state: 'brief' }), 'ready'), { action: 'verified' });
+  assert.deepEqual(dropAction(task({ state: 'brief' }), 'working'), { action: 'do' });
+  assert.deepEqual(dropAction(task({ state: 'brief' }), 'inbox'), { needsNote: 'rejected' });
+  assert.deepEqual(dropAction(task({ state: 'ready' }), 'working'), { action: 'do' });
+  assert.equal(dropAction(task({ state: 'ready', queued: true }), 'working'), null);
+  assert.deepEqual(dropAction(task({ state: 'result' }), 'done'), { action: 'accept' });
+  assert.deepEqual(dropAction(task({ state: 'result' }), 'working'), { needsNote: 'sendBack' });
+  // Agents move cards through looking and working; the human can't drag them there.
+  assert.equal(dropAction(task({ state: 'inbox' }), 'looking'), null);
+  assert.equal(dropAction(task({ state: 'working' }), 'done'), null);
 });

@@ -4,6 +4,7 @@ import type {
   AgentClearPolicy,
   AgentClearRequest,
   AgentKey,
+  AgentModels,
   AgentTokenUsage,
   BoardPin,
   ChatEntry,
@@ -31,6 +32,7 @@ import { tunable } from '../tunableStore.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
 import { Button } from './ui/Button.js';
+import { WorkflowRunSteps } from './WorkflowRunSteps.js';
 
 interface ChatCardProps {
   agentId: number;
@@ -89,6 +91,73 @@ interface ChatCardProps {
   /** A question on this agent's screen, and how to bring its dialog back (it may be hidden). */
   question?: ScreenQuestion;
   onShowQuestion?: () => void;
+  /** The agent's model picker as last read; absent until read. */
+  models?: AgentModels;
+  /** Read / switch through the agent's own model picker. Absent when the office can't. */
+  onLoadModels?: () => void;
+  onSetModel?: (label: string) => void;
+}
+
+/**
+ * The agent's model, from its CLI's own picker: the office reads the options
+ * off the agent's screen (nothing hard-coded) and picks one for this session.
+ */
+function ModelRow({
+  agentId,
+  models,
+  onLoad,
+  onSet,
+}: {
+  agentId: number;
+  models?: AgentModels;
+  onLoad: () => void;
+  onSet: (label: string) => void;
+}) {
+  const busy = models?.state === 'loading' || models?.state === 'switching';
+  const options = models?.options ?? [];
+  const current = options.find((o) => o.current);
+  return (
+    <div className="flex flex-col gap-2" data-testid="chat-model-row">
+      <label className="flex items-center gap-8 flex-wrap" htmlFor={`model-${agentId}`}>
+        <span className="flex-1 min-w-0">Model (this session)</span>
+        {options.length > 0 && (
+          <select
+            id={`model-${agentId}`}
+            value={current?.label ?? ''}
+            disabled={busy}
+            onChange={(e) => e.target.value && onSet(e.target.value)}
+            className="bg-bg text-text border-2 border-border rounded-none px-2 max-w-[60%]"
+            data-testid="chat-model-select"
+          >
+            {!current && <option value="">Choose…</option>}
+            {options.map((o) => (
+              <option key={o.number} value={o.label} title={o.detail}>
+                {o.label}
+                {o.detail ? ` — ${o.detail}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <Button
+          size="sm"
+          variant={busy ? 'disabled' : 'default'}
+          disabled={busy}
+          onClick={onLoad}
+          title="Open the agent's own model picker and read its choices"
+          data-testid="chat-model-load"
+        >
+          {models?.state === 'loading'
+            ? 'Reading…'
+            : models?.state === 'switching'
+              ? 'Switching…'
+              : options.length > 0
+                ? '↻'
+                : 'Show models'}
+        </Button>
+      </label>
+      {models?.error && <span className="text-2xs text-danger">{models.error}</span>}
+    </div>
+  );
 }
 
 const DOC_EDIT_LABEL: Record<DocEditMode, string> = {
@@ -219,6 +288,9 @@ export function ChatCard({
   onSetDocEditMode,
   question,
   onShowQuestion,
+  models,
+  onLoadModels,
+  onSetModel,
 }: ChatCardProps) {
   const [showWorkflows, setShowWorkflows] = useState(false);
   const [showScreen, setShowScreen] = useState(false);
@@ -268,7 +340,7 @@ export function ChatCard({
     on?: boolean;
     danger?: boolean;
   }> = [
-    ...(onSetClearPolicy || onSetDocEditMode
+    ...(onSetClearPolicy || onSetDocEditMode || onSetModel
       ? [
           {
             id: 'chat-prefs',
@@ -672,13 +744,16 @@ export function ChatCard({
         </div>
       )}
 
-      {showPrefs && (onSetClearPolicy || onSetDocEditMode) && (
+      {showPrefs && (onSetClearPolicy || onSetDocEditMode || onSetModel) && (
         <div
           role="dialog"
           aria-label="Agent settings"
           className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b-2 border-border text-xs"
           data-testid="chat-prefs-panel"
         >
+          {onSetModel && onLoadModels && (
+            <ModelRow agentId={agentId} models={models} onLoad={onLoadModels} onSet={onSetModel} />
+          )}
           {onSetClearPolicy && (
             <label
               className="flex items-center gap-8 flex-wrap"
@@ -879,47 +954,11 @@ export function ChatCard({
       </div>
 
       {run && (
-        <div
-          className="flex flex-col gap-2 px-8 py-6 border-t-2 border-border bg-bg"
-          data-testid="chat-run"
-        >
-          <div className="flex items-center gap-6 text-xs">
-            <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-              Workflow: {run.title}
-            </span>
-            <span className="text-2xs text-text-muted">
-              {run.steps.filter((st) => st.state === 'done' || st.state === 'skipped').length}/
-              {run.steps.length}
-            </span>
-            {onStopRun && (
-              <Button size="sm" variant="ghost" onClick={onStopRun}>
-                Stop
-              </Button>
-            )}
-          </div>
-          {run.steps.map((st, i) => (
-            <div
-              key={i}
-              className={`flex gap-6 text-2xs ${
-                st.state === 'waiting'
-                  ? 'text-status-permission'
-                  : st.state === 'done'
-                    ? 'text-text-muted'
-                    : st.state === 'skipped'
-                      ? 'text-text-muted line-through'
-                      : 'text-text'
-              }`}
-            >
-              <span className="w-12">
-                {st.state === 'done' ? '✓' : st.state === 'waiting' ? '?' : i + 1}
-              </span>
-              <span className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-                {st.text}
-              </span>
-              <span className="opacity-70">{st.kind}</span>
-            </div>
-          ))}
-        </div>
+        <WorkflowRunSteps
+          run={run}
+          onStop={onStopRun}
+          className="px-8 py-6 border-t-2 border-border bg-bg"
+        />
       )}
 
       {canSend ? (

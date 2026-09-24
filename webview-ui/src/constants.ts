@@ -352,6 +352,8 @@ export const CHAT_CLIENT_HISTORY_LIMIT = 200;
 export const PIN_DRAG_MIME = 'application/x-pixel-agents-pin';
 /** A workflow card dragged from the Workflows rail onto a character. */
 export const WORKFLOW_DRAG_MIME = 'application/x-pixel-agents-workflow';
+/** A task desk card being dragged (onto a board column or a character). */
+export const DESK_CARD_DRAG_MIME = 'application/x-pixel-agents-desk-card';
 /** Steps a workflow card lists on the full Workflows page before "+N more". */
 export const WORKFLOW_PREVIEW_STEPS = 6;
 /** Longest character name the rename box accepts (the server caps it too). */
@@ -440,6 +442,8 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 /** "Show me" notices shown at once; more wait in the viewer's list. */
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
+/** Whether the viewer folded away workflow steps in the chat card and Messages (localStorage). */
+export const WORKFLOW_STEPS_HIDDEN_KEY = 'pixel-agents.workflowStepsHidden';
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
 /** Files opened with Open file, newest first (per viewer). */
 export const OPEN_FILE_RECENT_KEY = 'pixel-office:open-file-recent';
@@ -505,13 +509,6 @@ export const DOC_READ_HINT =
   '(Read these places with: pixel-office doc read <file> --para A-B | --slide N | --cell RANGE)';
 /** localStorage key: the command the desk last started an agent with (`claude`, or an alias of it). */
 export const TASK_DESK_COMMAND_KEY = 'pixel-agents.deskLaunchCommand';
-/** Models offered when the desk starts an agent. An empty flag leaves the choice to Claude Code. */
-export const TASK_DESK_MODELS = [
-  { label: "Claude Code's default", flag: '' },
-  { label: 'Sonnet 5', flag: 'claude-sonnet-5' },
-  { label: 'Opus 5', flag: 'claude-opus-5' },
-  { label: 'Haiku 4.5', flag: 'claude-haiku-4-5' },
-] as const;
 /** The first prompt of an agent the desk starts. It needs one: the office only
  *  sees a session once its transcript exists, and that starts with a prompt. */
 export const TASK_DESK_FIRST_MESSAGE =

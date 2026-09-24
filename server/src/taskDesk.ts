@@ -1,9 +1,13 @@
+import * as fs from 'fs';
+
 import type {
   DeskAgent,
   DeskBrief,
   DeskSubtask,
   DeskTask,
   TaskDeskLoaded,
+  TeamPreset,
+  Workflow,
 } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { ChatSender } from './chatSender.js';
@@ -18,6 +22,7 @@ import { type FolderRoot, resolveFolderRoot, sameRoot } from './gitRoot.js';
 import {
   briefFromInput,
   cleanText,
+  sanitizeAttachments,
   sanitizeResult,
   sanitizeSubtask,
   TaskStore,
@@ -73,6 +78,23 @@ export interface TaskDeskOptions {
   /** This process, as recorded on claims. */
   owner?: string;
   isOwnerAlive?: (owner: string) => boolean;
+  /** Saved workflows a card can follow. Absent = cards carry no workflow. */
+  workflows?: (id: string) => Workflow | undefined;
+  /** Team presets a card can be for, and starting them. Absent = no team cards. */
+  teams?: DeskTeams;
+}
+
+/** What the desk needs to give a card to a team (TeamStore + TeamRuns in the runtime). */
+export interface DeskTeams {
+  get(teamId: string): TeamPreset | undefined;
+  /** Start the team in `folder`; its lead's first message is `goal`. */
+  start(
+    team: TeamPreset,
+    folder: string,
+    goal: string,
+  ): { ok: true; crewId: string } | { ok: false; error: string };
+  /** The crew's lead: its agent id, undefined while it is starting, null when the crew is gone. */
+  leadOf(crewId: string): number | undefined | null;
 }
 
 interface Claim {
@@ -100,6 +122,10 @@ export class TaskDesk {
   private readonly resolveRoot: (folder: string) => Promise<FolderRoot | null>;
   private readonly owner: string;
   private readonly isOwnerAlive: (owner: string) => boolean;
+  private readonly workflowOf: (id: string) => Workflow | undefined;
+  private readonly teams: DeskTeams | undefined;
+  /** Team cards whose team could not start: not retried until the card is edited. */
+  private readonly teamFailed = new Set<string>();
   /** agent id → the card it is looking at or building. */
   private readonly claims = new Map<number, Claim>();
   /** agent id → where it works, as last resolved. */
@@ -122,6 +148,8 @@ export class TaskDesk {
     this.resolveRoot = opts.resolveRoot ?? resolveFolderRoot;
     this.owner = opts.owner ?? String(process.pid);
     this.isOwnerAlive = opts.isOwnerAlive ?? pidAlive;
+    this.workflowOf = opts.workflows ?? (() => undefined);
+    this.teams = opts.teams;
     this.cards = opts.taskStore ?? new TaskStore(() => this.publish());
     this.agents.on('broadcast', this.onBroadcast);
     this.agents.on('agentRemoved', this.onAgentRemoved);
@@ -174,6 +202,9 @@ export class TaskDesk {
     priority: unknown;
     folder: unknown;
     draft?: unknown;
+    teamId?: unknown;
+    workflowId?: unknown;
+    attachments?: unknown;
   }): Promise<DeskReply> {
     const existing = input.taskId === undefined ? undefined : this.cards.find(input.taskId);
     if (input.taskId !== undefined && !existing) return { ok: false, error: NO_CARD };
@@ -192,8 +223,50 @@ export class TaskDesk {
       folder = resolved;
     }
 
+    // Team and workflow shape how the card is looked at: fixed once an agent has looked.
+    const beforeLook = !existing || existing.state === 'inbox' || existing.state === 'draft';
+    let teamId = existing?.teamId;
+    let workflowId = existing?.workflowId;
+    if (beforeLook) {
+      const team = this.pickId(input.teamId, existing?.teamId);
+      if (team && !this.teams?.get(team)) {
+        return {
+          ok: false,
+          error: this.teams
+            ? 'That team no longer exists.'
+            : 'Only the standalone office (npx pixel-agents) can give a card to a team.',
+        };
+      }
+      const workflow = this.pickId(input.workflowId, existing?.workflowId);
+      if (workflow && !this.workflowOf(workflow)) {
+        return { ok: false, error: 'That workflow no longer exists.' };
+      }
+      teamId = team;
+      workflowId = workflow;
+    }
+    let attachments = existing?.attachments;
+    if (input.attachments !== undefined) {
+      const picked = sanitizeAttachments(input.attachments);
+      const missing = picked.filter((a) => !isFile(a.path));
+      if (missing.length > 0) {
+        return {
+          ok: false,
+          error: `Not a file on this computer: ${missing.map((a) => a.path).join(', ')}`,
+        };
+      }
+      attachments = picked;
+    }
+    if (existing) this.teamFailed.delete(existing.id);
+
     if (!existing) {
-      const created = this.cards.create({ ...input, folder: folder!, draft: input.draft === true });
+      const created = this.cards.create({
+        ...input,
+        folder: folder!,
+        draft: input.draft === true,
+        teamId,
+        workflowId,
+        attachments,
+      });
       if (!created)
         return {
           ok: false,
@@ -209,6 +282,11 @@ export class TaskDesk {
       body: input.body,
       priority: input.priority,
       folder: folder!,
+      teamId,
+      workflowId,
+      attachments,
+      // A different team is a different crew.
+      crewId: teamId === existing.teamId ? existing.crewId : undefined,
     };
     if (!this.cards.replace(next as DeskTask))
       return { ok: false, error: 'The card was rejected (a title is required).' };
@@ -218,6 +296,7 @@ export class TaskDesk {
   removeTask(taskId: unknown): boolean {
     const task = this.cards.find(taskId);
     if (!task) return false;
+    this.teamFailed.delete(task.id);
     this.dropClaimOn(task.id);
     this.releaseGates({ ...task, state: 'done' });
     return this.cards.remove(task.id);
@@ -290,6 +369,14 @@ export class TaskDesk {
     this.agents.persist();
     this.publish();
     void this.tick();
+  }
+
+  /** A card as plain text for `task show`, with its workflow's steps and its team. */
+  describe(task: DeskTask): string {
+    return describeTask(task, {
+      workflow: task.workflowId ? this.workflowOf(task.workflowId) : undefined,
+      team: task.teamId ? this.teams?.get(task.teamId) : undefined,
+    });
   }
 
   // ── Calls from agents (`pixel-office task …`, Bearer HTTP) ──
@@ -396,6 +483,7 @@ export class TaskDesk {
           this.rerun = false;
           await this.refreshRoots();
           this.releaseLostClaims();
+          this.startTeams();
           this.assign();
           this.publish();
         } while (this.rerun);
@@ -443,6 +531,42 @@ export class TaskDesk {
     }
   }
 
+  /**
+   * A team card waiting for an agent (in the inbox, or queued to build) needs
+   * its team running: start it once, with the card as the lead's first read.
+   * The card then goes to the lead through the usual hand-out.
+   */
+  private startTeams(): void {
+    if (!this.teams) return;
+    for (const task of this.cards.getTasks()) {
+      if (!task.teamId) continue;
+      if (task.state !== 'inbox' && !(task.state === 'ready' && task.queued)) continue;
+      if (task.crewId && this.teams.leadOf(task.crewId) !== null) continue;
+      if (this.teamFailed.has(task.id)) continue;
+      const team = this.teams.get(task.teamId);
+      const started = team
+        ? this.teams.start(team, task.folder.root, teamGoal(task))
+        : ({ ok: false, error: 'The team no longer exists.' } as const);
+      const entry = {
+        at: this.now(),
+        who: 'Office',
+        kind: 'system' as const,
+        text: started.ok
+          ? `Started the team "${team!.title}" for this card.`
+          : `Could not start the team: ${started.error}`,
+      };
+      if (!started.ok) this.teamFailed.add(task.id);
+      this.commit({
+        ok: true,
+        task: {
+          ...task,
+          ...(started.ok ? { crewId: started.crewId } : {}),
+          log: [...task.log, entry],
+        },
+      });
+    }
+  }
+
   private assign(): void {
     const byUrgency = (a: DeskTask, b: DeskTask) =>
       a.priority === b.priority ? a.num - b.num : a.priority === 'p1' ? -1 : 1;
@@ -478,7 +602,10 @@ export class TaskDesk {
       if (this.claims.has(id)) continue;
       if (!agent.isWaiting || agent.permissionSent) continue;
       if (!this.chat.canSend(id) || !this.chat.isIdle(id)) continue;
-      if (task.allow.length > 0 && !task.allow.includes(id)) continue;
+      if (task.teamId) {
+        // A team card goes to its team's lead, and only once the team runs.
+        if (!task.crewId || this.teams?.leadOf(task.crewId) !== id) continue;
+      } else if (task.allow.length > 0 && !task.allow.includes(id)) continue;
       if (!sameRoot(this.roots.get(id)?.root?.root, task.folder.root)) continue;
       free.push(agent);
     }
@@ -608,6 +735,29 @@ export class TaskDesk {
   private now(): string {
     return new Date().toISOString();
   }
+
+  /** A client-sent preset id: '' clears it, undefined keeps `current`. */
+  private pickId(raw: unknown, current: string | undefined): string | undefined {
+    if (raw === undefined) return current;
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined;
+  }
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The team lead's first message: read the card now, the desk hands it over when it is free. */
+export function teamGoal(task: DeskTask): string {
+  return [
+    `Task desk card #${task.num}: ${task.title}`,
+    `Read it now: ${TASK_CLI_COMMAND} show ${task.num}`,
+    'Change no file yet. Think about which teammates the card needs; the office will hand you the card to look at as soon as you are free, and then tell you what to do.',
+  ].join('\n');
 }
 
 /** What a looking agent is told. The card's text travels through the CLI, not the keyboard. */
@@ -622,8 +772,16 @@ export function lookPrompt(task: DeskTask): string {
     `Then hand in what you understood: ${TASK_CLI_COMMAND} brief ${task.num} --file <brief.json>`,
     'brief.json: {"understanding": "...", "subtasks": ["...", "[gate] ...", "[show] ..."], "files": ["..."], "questions": ["..."], "risk": "low|medium|high", "size": "..."}',
     'Subtasks are steps: plain = work, "[gate] …" = stop for the human\'s go-ahead, "[show] …" = show the human a file.',
+    task.workflowId
+      ? 'The card follows a workflow (its steps are in `show`): use those steps as your subtasks, in order, keeping their [gate]/[show] kinds; add or adjust only what the card needs.'
+      : '',
+    task.attachments?.length
+      ? `The human attached ${task.attachments.length} file${task.attachments.length === 1 ? '' : 's'} (paths in \`show\`): read the ones that matter.`
+      : '',
     'Write brief.json outside the project (a temp folder). Ask questions in the brief, not here.',
-  ].join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /** What a building agent is told. */
@@ -634,6 +792,9 @@ export function buildPrompt(task: DeskTask): string {
   return [
     `Task desk card #${task.num}: the brief is approved. Do the task.`,
     `Read the approved brief, my notes and answers: ${TASK_CLI_COMMAND} show ${task.num}`,
+    task.teamId
+      ? 'You lead a team on this card: call teammates in (a paragraph starting with @their-name) for parts of the work. You report the steps and `task done` yourself.'
+      : '',
     live.length > 0
       ? `Work through its ${live.length} steps in order; after each one run: ${TASK_CLI_COMMAND} step ${task.num} <step number>`
       : '',
@@ -650,7 +811,10 @@ export function buildPrompt(task: DeskTask): string {
 }
 
 /** A card as plain text, for `task show`. */
-export function describeTask(task: DeskTask): string {
+export function describeTask(
+  task: DeskTask,
+  extra: { workflow?: Workflow; team?: TeamPreset } = {},
+): string {
   const lines = [
     `# #${task.num} ${task.title}`,
     `kind: ${task.kind}  priority: ${task.priority}  state: ${task.state}  round: ${task.round}`,
@@ -658,6 +822,27 @@ export function describeTask(task: DeskTask): string {
   ];
   if (task.folder.subPath) lines.push(`the human pointed at: ${task.folder.subPath}`);
   if (task.body) lines.push('', '## What the human wrote', task.body);
+  if (task.attachments?.length) {
+    lines.push('', '## Files the human attached');
+    for (const a of task.attachments) lines.push(`- ${a.path}`);
+  }
+  if (extra.team) {
+    lines.push(
+      '',
+      `## Team: ${extra.team.title}`,
+      ...extra.team.members.map((m) => `- @${m.name}: ${m.role}${m.lead ? ' (lead)' : ''}`),
+    );
+  }
+  if (task.workflowId) {
+    const wf = extra.workflow;
+    lines.push('', `## Workflow: ${wf?.title ?? task.workflowId}${wf ? '' : ' (no longer saved)'}`);
+    if (wf?.path) lines.push(`file: ${wf.path}`);
+    wf?.steps.forEach((step, i) =>
+      lines.push(
+        `${i + 1}. ${step.kind !== 'do' ? `[${step.kind}] ` : ''}${step.text}${step.refs?.length ? ` — ref: ${step.refs.join(', ')}` : ''}${step.show ? ` — show: ${step.show}` : ''}`,
+      ),
+    );
+  }
   const brief = task.briefs[task.briefs.length - 1];
   if (brief) {
     lines.push(

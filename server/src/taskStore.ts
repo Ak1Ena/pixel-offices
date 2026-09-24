@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type {
+  DeskAttachment,
   DeskBrief,
   DeskFolder,
   DeskLogEntry,
@@ -25,6 +26,7 @@ import {
   TASK_DESK_FILE_NAME,
   TASK_DESK_INDEX_FILE_NAME,
   TASK_DESK_MAX_TASKS,
+  TASK_MAX_ATTACHMENTS,
   TASK_MAX_BRIEFS,
   TASK_MAX_FILES,
   TASK_MAX_LOG,
@@ -59,6 +61,9 @@ const STATES: ReadonlySet<string> = new Set<DeskTaskState>([
 ]);
 const LOG_KINDS: ReadonlySet<string> = new Set(['agent', 'verified', 'rejected', 'system']);
 const TASK_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** Team preset and workflow ids (teamFile / workflowFile slugs). */
+const PRESET_ID_RE = /^[a-z0-9-]{1,64}$/;
+const CREW_ID_RE = /^c[a-f0-9]{6}$/;
 const ALLOW_MAX = 64;
 const PATH_MAX_CHARS = 4096;
 const WHO_MAX_CHARS = 60;
@@ -99,6 +104,31 @@ function sanitizeFolder(raw: unknown): DeskFolder | null {
     ...(branch ? { branch } : {}),
     ...(subPath ? { subPath } : {}),
   };
+}
+
+/** One attached file: an absolute path; the name defaults to its basename. */
+export function sanitizeAttachment(raw: unknown): DeskAttachment | null {
+  const a = (typeof raw === 'string' ? { path: raw } : raw) as Record<string, unknown> | null;
+  if (!a || typeof a !== 'object') return null;
+  const filePath = cleanText(a.path, PATH_MAX_CHARS);
+  if (!filePath || !path.isAbsolute(filePath)) return null;
+  const name = cleanText(a.name, TASK_BRIEF_SHORT_MAX_CHARS) || path.basename(filePath) || filePath;
+  return { path: filePath, name };
+}
+
+/** Attachments without duplicates (by path), bounded. */
+export function sanitizeAttachments(raw: unknown): DeskAttachment[] {
+  const seen = new Set<string>();
+  return list(
+    raw,
+    (item) => {
+      const clean = sanitizeAttachment(item);
+      if (!clean || seen.has(clean.path)) return null;
+      seen.add(clean.path);
+      return clean;
+    },
+    TASK_MAX_ATTACHMENTS,
+  );
 }
 
 const STEP_KINDS: ReadonlySet<string> = new Set(['do', 'gate', 'show']);
@@ -256,6 +286,7 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
   const folder = sanitizeFolder(t.folder);
   if (!title || !folder) return null;
   const result = sanitizeResult(t.result);
+  const attachments = sanitizeAttachments(t.attachments);
   const allow = Array.isArray(t.allow)
     ? [...new Set(t.allow.filter((id): id is number => Number.isInteger(id)))].slice(0, ALLOW_MAX)
     : [];
@@ -280,6 +311,12 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
     ...(result ? { result } : {}),
     log: list(t.log, sanitizeLog, TASK_MAX_LOG),
     createdAt: stamp(t.createdAt),
+    ...(typeof t.teamId === 'string' && PRESET_ID_RE.test(t.teamId) ? { teamId: t.teamId } : {}),
+    ...(typeof t.crewId === 'string' && CREW_ID_RE.test(t.crewId) ? { crewId: t.crewId } : {}),
+    ...(typeof t.workflowId === 'string' && PRESET_ID_RE.test(t.workflowId)
+      ? { workflowId: t.workflowId }
+      : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 
@@ -291,6 +328,9 @@ export interface NewTaskInput {
   folder: DeskFolder;
   /** Keep it off the desk: no agent looks at a draft until the human sends it. */
   draft?: boolean;
+  teamId?: unknown;
+  workflowId?: unknown;
+  attachments?: unknown;
 }
 
 function parseFile(raw: string): { tasks: DeskTask[]; nextNum: number } {
@@ -355,6 +395,9 @@ export class TaskStore {
       briefs: [],
       log: [],
       createdAt: new Date().toISOString(),
+      teamId: input.teamId,
+      workflowId: input.workflowId,
+      attachments: input.attachments,
     });
     if (!task) return null;
     this.nextNum++;
@@ -438,6 +481,9 @@ export class TaskStore {
         `## #${task.num} ${task.title}`,
         `- kind: ${task.kind}, priority: ${task.priority}, state: ${task.state}`,
         `- folder: ${task.folder.root}${task.folder.branch ? ` (${task.folder.branch})` : ''}`,
+        ...(task.attachments?.length
+          ? [`- attached: ${task.attachments.map((a) => a.path).join(', ')}`]
+          : []),
         '',
       );
     }

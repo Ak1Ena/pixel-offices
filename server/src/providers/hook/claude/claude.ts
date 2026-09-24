@@ -383,6 +383,9 @@ export const claudeProvider: HookProvider = {
   readingTools: new Set(['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch']),
   terminalNamePrefix: CLAUDE_TERMINAL_NAME_PREFIX,
   contextWindowForModel,
+  // "Enter to set as default · s to use this session only": one agent's pick
+  // must not change the model every new session starts on.
+  modelPicker: { command: '/model', sessionKey: 's' },
 
   getSessionDirs,
   getAllSessionRoots,

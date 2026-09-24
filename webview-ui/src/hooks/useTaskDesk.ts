@@ -21,6 +21,12 @@ export interface NewCard {
   taskId?: string;
   /** New cards only: keep it off the desk until it is sent. */
   draft?: boolean;
+  /** Team preset id, '' = none. */
+  teamId?: string;
+  /** Workflow id, '' = none. */
+  workflowId?: string;
+  /** Absolute paths of attached files (the whole list). */
+  attachments?: string[];
 }
 
 export interface TaskDeskState {

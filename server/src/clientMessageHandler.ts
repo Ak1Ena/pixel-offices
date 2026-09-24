@@ -325,10 +325,20 @@ export function handleClientMessage(
         command: typeof msg.command === 'string' ? msg.command : undefined,
         firstMessage: typeof msg.firstMessage === 'string' ? msg.firstMessage : undefined,
         skipPermissions: msg.skipPermissions === true,
+        model: typeof msg.model === 'string' ? msg.model : undefined,
       });
       send({ type: 'startAgentResult', ...result });
       break;
     }
+
+    case 'loadAgentModels':
+      // Types into the agent's terminal: same proof as sending it a message.
+      if (ctx.privileged) void ctx.officeSessions?.loadModels(msg.id);
+      break;
+
+    case 'setAgentModel':
+      if (ctx.privileged) void ctx.officeSessions?.setModel(msg.id, msg.label);
+      break;
 
     case 'setAgentRelay':
       if (ctx.privileged && typeof msg.enabled === 'boolean')
@@ -657,4 +667,5 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   for (const { id, lines } of ctx.officeSessions?.screens() ?? []) {
     send({ type: 'agentScreen', id, lines });
   }
+  for (const message of ctx.officeSessions?.modelOptionMessages() ?? []) send(message);
 }

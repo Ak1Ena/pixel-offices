@@ -4,10 +4,21 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { AgentKey, ScreenQuestion } from '../../core/src/messages.js';
+import type {
+  AgentKey,
+  AgentModelsState,
+  ModelOption,
+  ScreenQuestion,
+} from '../../core/src/messages.js';
+import type { ModelPicker } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { TerminalWriter } from './chatSender.js';
 import {
+  MODEL_LABEL_MAX_CHARS,
+  MODEL_PICKER_KEY_GAP_MS,
+  MODEL_PICKER_POLL_MS,
+  MODEL_PICKER_SETTLE_POLLS,
+  MODEL_PICKER_WAIT_MS,
   OFFICE_RECENT_FOLDERS,
   OFFICE_SESSION_ADOPT_TRIES,
   OFFICE_SESSION_KEY_GAP_MS,
@@ -22,7 +33,9 @@ import {
 } from './constants.js';
 import type { Pty } from './launcher.js';
 import { expandAlias, loadPty, planAgyLaunch, planLaunch, splitShellWords } from './launcher.js';
+import { ModelCatalog, parseModelOptions, sameModelLabel } from './modelOptions.js';
 import { areHooksInstalled as antigravityHooksInstalled } from './providers/hook/antigravity/antigravityHookInstaller.js';
+import { hookProviderById } from './providers/index.js';
 import { typePrompt } from './terminalTyping.js';
 import type { AgentState } from './types.js';
 
@@ -42,6 +55,8 @@ export interface StartAgentRequest {
   command?: string;
   firstMessage?: string;
   skipPermissions?: boolean;
+  /** A label from the provider's model picker: chosen (this session only) before the first message. */
+  model?: string;
 }
 
 /** What OfficeSessions needs from the runtime. */
@@ -78,7 +93,23 @@ interface OwnedSession {
   /** Can take typed input: the screen has settled with no question on it.
    *  Starts false — Claude drops keys while it starts up. */
   inputReady: boolean;
+  /** Which provider's CLI runs here (its model picker is used). */
+  providerId: string;
+  /** The office is driving the model picker: nothing else may type, and the
+   *  picker is not shown to people as a question. */
+  picking: boolean;
+  /** Started with a model: pick it once the terminal is ready, then type the first message. */
+  startModel?: { label: string; firstMessage?: string };
 }
+
+/** Where an agent's model list stands (sent as `agentModels`). */
+interface ModelsView {
+  options: ModelOption[];
+  state: AgentModelsState;
+  error?: string;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const KEY_BYTES: Record<AgentKey, string> = {
   enter: '\r',
@@ -303,11 +334,20 @@ export class OfficeSessions {
   private readonly pty = loadPty();
   /** Folders agents were started in this run, newest first, plus where the office was started. */
   private readonly recent: string[] = [process.cwd()];
+  /** agent id → its model picker's options, as last read. */
+  private readonly models = new Map<number, ModelsView>();
 
   constructor(
     private readonly store: AgentStateStore,
     private readonly host: OfficeSessionHost,
-  ) {}
+    private readonly catalog: ModelCatalog = new ModelCatalog(),
+  ) {
+    store.on('agentRemoved', this.onAgentRemoved);
+  }
+
+  private readonly onAgentRemoved = (id: number): void => {
+    this.models.delete(id);
+  };
 
   /** Whether this server can run agents at all (needs node-pty). */
   get available(): boolean {
@@ -330,6 +370,15 @@ export class OfficeSessions {
     const alias = expandAlias(words[0], words.slice(1));
     const command = alias ?? { program: words[0], args: words.slice(1) };
     const isAgy = planAgyLaunch(command.program, command.args) !== null;
+    const providerId = isAgy ? 'antigravity' : 'claude';
+    const model = req.model?.trim().slice(0, MODEL_LABEL_MAX_CHARS) || undefined;
+    if (model && !hookProviderById(providerId)?.modelPicker) {
+      return {
+        ok: false,
+        error:
+          'The office cannot pick a model for this CLI. Put the model in the start command instead.',
+      };
+    }
     if (req.skipPermissions) command.args.push('--dangerously-skip-permissions');
     // The first message rides the command line (`claude "<prompt>"`, `agy -i
     // "<prompt>"`), never the keyboard: typed input would land in — and its
@@ -349,7 +398,9 @@ export class OfficeSessions {
       const agy = planAgyLaunch(command.program, command.args)!;
       plan = { program: agy.program, args: agy.args, sessionId: agy.key };
     } else {
-      if (firstMessage) command.args.push(firstMessage);
+      // With a model to pick, the first message waits: it is typed once the
+      // picker is done, so the very first turn already runs on that model.
+      if (firstMessage && !model) command.args.push(firstMessage);
       const claude = planLaunch(command.program, command.args);
       if (!claude.tracksClaude || !claude.sessionId || !claude.interactive) {
         return {
@@ -395,6 +446,9 @@ export class OfficeSessions {
       lastContent: '',
       settleTimer: null,
       inputReady: false,
+      providerId,
+      picking: false,
+      ...(model ? { startModel: { label: model, firstMessage } } : {}),
     };
     if (isAgy) {
       session.followedPid = pty.pid;
@@ -493,10 +547,238 @@ export class OfficeSessions {
     return true;
   }
 
+  // ── Models, through the CLI's own picker ──
+
+  /** `modelOptions` for every provider whose picker has been read, for a connecting client. */
+  modelOptionMessages(): Array<Record<string, unknown>> {
+    return this.catalog.messages();
+  }
+
+  /** Read an agent's model picker (opened and closed again) and broadcast its options. */
+  async loadModels(agentId: unknown): Promise<void> {
+    await this.withPicker(agentId, 'loading');
+  }
+
+  /** Switch an agent to the picker option labelled `label`, for this session only. */
+  async setModel(agentId: unknown, label: unknown): Promise<void> {
+    if (typeof label !== 'string' || !label.trim()) return;
+    await this.withPicker(agentId, 'switching', label.trim().slice(0, MODEL_LABEL_MAX_CHARS));
+  }
+
+  private async withPicker(
+    agentId: unknown,
+    state: AgentModelsState,
+    choose?: string,
+  ): Promise<void> {
+    if (typeof agentId !== 'number') return;
+    const session = this.sessionForAgent(agentId);
+    const agent = this.store.get(agentId);
+    const view = this.models.get(agentId) ?? { options: [], state: 'idle' as const };
+    const fail = (error: string) => this.publishModels(agentId, { ...view, state: 'idle', error });
+    if (!session || !agent) {
+      return fail(
+        'Only agents the office runs can switch models here (their terminal is read for the choices).',
+      );
+    }
+    const picker = hookProviderById(session.providerId)?.modelPicker;
+    if (!picker) return fail('The office does not know how to switch this CLI’s model.');
+    if (session.picking || view.state !== 'idle') return fail('The model picker is already open.');
+    if (!session.inputReady || agent.permissionSent || !agent.isWaiting) {
+      return fail('Wait until the agent has finished its turn, then try again.');
+    }
+    this.publishModels(agentId, { ...view, state, error: undefined });
+    const result = await this.pick(session, picker, choose);
+    this.publishModels(
+      agentId,
+      result.ok
+        ? { options: result.options, state: 'idle' }
+        : { ...view, state: 'idle', error: result.error },
+    );
+  }
+
+  private publishModels(agentId: number, view: ModelsView): void {
+    if (!this.store.get(agentId)) return;
+    this.models.set(agentId, view);
+    this.store.broadcast({
+      type: 'agentModels',
+      id: agentId,
+      options: view.options,
+      state: view.state,
+      ...(view.error ? { error: view.error } : {}),
+    });
+  }
+
+  /**
+   * Open the CLI's model picker, read its options, and either choose `choose`
+   * (with the session-only key when the CLI has one) or close it again (Esc).
+   * Every step reads a SETTLED screen: the picker draws over the slash-command
+   * list, and acting on a half-drawn frame moved the cursor from the wrong row.
+   * A switch is confirmed by opening the picker once more and reading its mark.
+   * The options on screen are remembered per provider for start forms.
+   */
+  private async pick(
+    session: OwnedSession,
+    picker: ModelPicker,
+    choose?: string,
+  ): Promise<{ ok: true; options: ModelOption[] } | { ok: false; error: string }> {
+    if (session.picking) return { ok: false, error: 'The model picker is already open.' };
+    session.picking = true;
+    try {
+      const first = await this.openPicker(session, picker);
+      if (!first) return { ok: false, error: `${picker.command} did not show a list of models.` };
+      const options = parseModelOptions(first);
+      this.rememberOptions(session.providerId, options);
+      if (choose === undefined) {
+        await this.closePicker(session, first.key);
+        return { ok: true, options };
+      }
+      const target = options.findIndex((o) => sameModelLabel(o.label, choose));
+      if (target < 0) {
+        await this.closePicker(session, first.key);
+        return { ok: false, error: `"${choose}" is not in the model picker any more.` };
+      }
+
+      // Move the cursor, checking where it landed after each move.
+      let at: ParsedScreenQuestion | null = first;
+      for (
+        let tries = 0;
+        at && at.key === first.key && at.selected !== target && tries < 5;
+        tries++
+      ) {
+        const steps = target - at.selected;
+        await this.pressKeys(
+          session,
+          Array<string>(Math.abs(steps)).fill(steps > 0 ? KEY_BYTES.down : KEY_BYTES.up),
+        );
+        at = await this.settledQuestion(session);
+      }
+      if (!at || at.key !== first.key || at.selected !== target) {
+        if (at?.key === first.key) await this.closePicker(session, first.key);
+        return { ok: false, error: `Could not move the picker to "${choose}".` };
+      }
+      await this.pressKeys(session, [picker.sessionKey ?? KEY_BYTES.enter]);
+      if (!(await this.waitClosed(session, first.key))) {
+        return { ok: false, error: 'The model picker did not close.' };
+      }
+
+      // Confirm: the picker marks the model this session now runs on.
+      const check = await this.openPicker(session, picker);
+      if (!check)
+        return { ok: false, error: 'Could not re-open the picker to confirm the switch.' };
+      await this.closePicker(session, check.key);
+      const after = parseModelOptions(check);
+      const now = after.find((o) => o.current);
+      if (!now || !sameModelLabel(now.label, options[target].label)) {
+        return {
+          ok: false,
+          error: `The switch to "${choose}" did not take${now ? `: still on ${now.label}` : ''}.`,
+        };
+      }
+      return { ok: true, options: after };
+    } finally {
+      session.picking = false;
+      const agent = this.agentFor(session.sessionId);
+      if (agent && session.inputReady) this.host.inputReady(agent.id);
+    }
+  }
+
+  /** Type the picker's command and wait for its settled dialog. */
+  private async openPicker(
+    session: OwnedSession,
+    picker: ModelPicker,
+  ): Promise<ParsedScreenQuestion | null> {
+    await typePrompt(
+      (data) => session.pty.write(data),
+      picker.command,
+      () => this.sessions.get(session.sessionId) !== session,
+    );
+    return this.settledQuestion(session);
+  }
+
+  /** Esc, then wait for the dialog to go. */
+  private async closePicker(session: OwnedSession, key: string): Promise<void> {
+    await this.pressKeys(session, [KEY_BYTES.escape]);
+    await this.waitClosed(session, key);
+  }
+
+  private waitClosed(session: OwnedSession, key: string): Promise<true | null> {
+    return this.waitFor(session, () =>
+      parseScreenQuestion(this.readScreen(session))?.key === key ? null : true,
+    );
+  }
+
+  /** The question on screen once the screen has stopped changing (a few polls in a row). */
+  private async settledQuestion(session: OwnedSession): Promise<ParsedScreenQuestion | null> {
+    let last = '';
+    let same = 0;
+    return this.waitFor(session, () => {
+      const lines = this.readScreen(session);
+      const text = lines.join('\n');
+      same = text === last ? same + 1 : 0;
+      last = text;
+      return same >= MODEL_PICKER_SETTLE_POLLS ? parseScreenQuestion(lines) : null;
+    });
+  }
+
+  private async pressKeys(session: OwnedSession, keys: string[]): Promise<void> {
+    for (const bytes of keys) {
+      if (this.sessions.get(session.sessionId) !== session) return;
+      session.pty.write(bytes);
+      await sleep(MODEL_PICKER_KEY_GAP_MS);
+    }
+  }
+
+  private rememberOptions(providerId: string, options: ModelOption[]): void {
+    if (!options.some((o) => o.label)) return;
+    const known = options.map(({ number, label, detail }) => ({
+      number,
+      label,
+      ...(detail ? { detail } : {}),
+    }));
+    if (this.catalog.set(providerId, known)) {
+      for (const message of this.catalog.messages()) this.store.broadcast(message);
+    }
+  }
+
+  /** Poll the screen until `check` returns something, or give up (null). */
+  private async waitFor<T>(session: OwnedSession, check: () => T | null): Promise<T | null> {
+    const until = Date.now() + MODEL_PICKER_WAIT_MS;
+    while (Date.now() < until && this.sessions.get(session.sessionId) === session) {
+      const found = check();
+      if (found) return found;
+      await sleep(MODEL_PICKER_POLL_MS);
+    }
+    return null;
+  }
+
+  /** A session started with a model: pick it, then type the first message it was held for. */
+  private async applyStartModel(session: OwnedSession): Promise<void> {
+    const start = session.startModel;
+    const picker = hookProviderById(session.providerId)?.modelPicker;
+    session.startModel = undefined;
+    if (!start || !picker) return;
+    const result = await this.pick(session, picker, start.label);
+    if (!result.ok) console.warn(`[Pixel Agents] Model not picked: ${result.error}`);
+    if (!start.firstMessage) return;
+    // Let the screen settle after the picker closes before typing.
+    const ready = await this.waitFor(session, () =>
+      session.inputReady && !session.picking ? true : null,
+    );
+    if (!ready) console.warn('[Pixel Agents] Typing the first message before the screen settled.');
+    await typePrompt(
+      (data) => session.pty.write(data),
+      start.firstMessage,
+      () => !this.sessions.has(session.sessionId),
+    );
+  }
+
   get writer(): TerminalWriter {
     return {
       canWrite: (agent) => this.sessionOf(agent) !== null,
-      ready: (agent) => this.sessionOf(agent)?.inputReady === true,
+      ready: (agent) => {
+        const session = this.sessionOf(agent);
+        return session?.inputReady === true && !session.picking;
+      },
       write: (agent, text) => {
         const session = this.sessionOf(agent);
         if (!session) throw new Error('session ended');
@@ -525,6 +807,7 @@ export class OfficeSessions {
   }
 
   dispose(): void {
+    this.store.off('agentRemoved', this.onAgentRemoved);
     for (const session of this.sessions.values()) {
       if (session.adoptTimer) clearInterval(session.adoptTimer);
       if (session.screenTimer) clearTimeout(session.screenTimer);
@@ -584,6 +867,10 @@ export class OfficeSessions {
   private setHold(session: OwnedSession, hold: boolean): void {
     if (session.inputReady === !hold) return;
     session.inputReady = !hold;
+    if (!hold && session.startModel && !session.picking) {
+      void this.applyStartModel(session);
+      return;
+    }
     const agent = this.agentFor(session.sessionId);
     if (agent && !hold) this.host.inputReady(agent.id);
   }
@@ -646,7 +933,8 @@ export class OfficeSessions {
     const joined = lines.join('\n');
     if (joined === session.lastScreen) return;
     session.lastScreen = joined;
-    const parsed = parseScreenQuestion(lines);
+    // The office's own trip through the model picker is not a question for people.
+    const parsed = session.picking ? null : parseScreenQuestion(lines);
     const question: ScreenQuestion | undefined = parsed
       ? { key: parsed.key, prompt: parsed.prompt, options: parsed.options }
       : undefined;
@@ -661,7 +949,7 @@ export class OfficeSessions {
     // (ChatSender never types while permissionSent — its Enter would answer the
     // question) and the character shows the "needs you" bubble. Only a flag WE
     // set is cleared here; hook-driven permission state is left alone.
-    const asking = looksLikeQuestion(lines);
+    const asking = !session.picking && looksLikeQuestion(lines);
     if (asking && !agent.permissionSent) {
       agent.permissionSent = true;
       session.askingByScreen = true;

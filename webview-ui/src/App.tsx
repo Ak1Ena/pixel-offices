@@ -677,6 +677,17 @@ function App() {
             ? (agentId, workflowId) => workflows.attach(agentId, workflowId)
             : undefined
         }
+        onCardDrop={
+          chat.privileged || !isBrowserRuntime
+            ? (agentId, taskId) => {
+                // Only this agent may take the card; a draft goes onto the desk with it.
+                desk.setAllow(taskId, [agentId]);
+                if (desk.tasks.find((t) => t.id === taskId)?.state === 'draft') {
+                  desk.call(taskId, 'publish');
+                }
+              }
+            : undefined
+        }
       />
 
       {!isDebugMode ? (
@@ -869,6 +880,15 @@ function App() {
                       ? () => hideQuestion(id, chat.questions[id].key, false)
                       : undefined
                   }
+                  models={chat.models[id]}
+                  onLoadModels={
+                    chat.privileged && chat.screens[id] ? () => chat.loadModels(id) : undefined
+                  }
+                  onSetModel={
+                    chat.privileged && chat.screens[id]
+                      ? (label) => chat.setModel(id, label)
+                      : undefined
+                  }
                   docEditMode={chat.prefs[id]?.docEditMode}
                   docEditDefault={docEdits.defaultMode}
                   onSetDocEditMode={
@@ -1043,6 +1063,8 @@ function App() {
               onOpenRequest={
                 isBrowserRuntime ? (r) => openPinInViewer(r.pinId, r.requestId) : undefined
               }
+              runOf={(id) => activeRun(workflows.runs, id)}
+              onStopRun={chat.privileged || !isBrowserRuntime ? workflows.stopRun : undefined}
               onOpenRoom={(roomId) => {
                 setIsMessengerOpen(false);
                 setGroupChannelId(roomId);
@@ -1194,6 +1216,8 @@ function App() {
               recentFolders={chat.recentFolders}
               workspaceFolders={workspaceFolders}
               canStartAgents={chat.canStartAgents}
+              teams={chat.canStartAgents ? teams.teams : undefined}
+              modelOptions={chat.modelOptions.claude ?? []}
             />
           )}
 
@@ -1381,6 +1405,7 @@ function App() {
         isOpen={isAddAgentOpen}
         onClose={() => setIsAddAgentOpen(false)}
         recentFolders={chat.recentFolders}
+        modelOptions={chat.modelOptions.claude ?? []}
       />
 
       <Modal

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import {
   CAMERA_FOLLOW_SNAP_THRESHOLD,
+  DESK_CARD_DRAG_MIME,
   PAN_MARGIN_FRACTION,
   PIN_DRAG_MIME,
   TOUCH_TAP_SLOP_PX,
@@ -52,6 +53,8 @@ interface OfficeCanvasProps {
   onPinDrop?: (agentId: number, pinId: string) => void;
   /** A workflow card dropped on a character. */
   onWorkflowDrop?: (agentId: number, workflowId: string) => void;
+  /** A task desk card dropped on a character: give the card to that agent. */
+  onCardDrop?: (agentId: number, taskId: string) => void;
 }
 
 export function OfficeCanvas({
@@ -73,6 +76,7 @@ export function OfficeCanvas({
   activeAreaLabel,
   onPinDrop,
   onWorkflowDrop,
+  onCardDrop,
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -804,13 +808,14 @@ export function OfficeCanvas({
   // Whiteboard pins (and workflow cards) dragged over the office: the
   // character under the pointer lights up and takes the drop.
   const dragKind = useCallback(
-    (e: React.DragEvent): 'pin' | 'workflow' | null => {
+    (e: React.DragEvent): 'pin' | 'workflow' | 'card' | null => {
       if (isEditMode) return null;
       if (onPinDrop && e.dataTransfer.types.includes(PIN_DRAG_MIME)) return 'pin';
       if (onWorkflowDrop && e.dataTransfer.types.includes(WORKFLOW_DRAG_MIME)) return 'workflow';
+      if (onCardDrop && e.dataTransfer.types.includes(DESK_CARD_DRAG_MIME)) return 'card';
       return null;
     },
-    [isEditMode, onPinDrop, onWorkflowDrop],
+    [isEditMode, onPinDrop, onWorkflowDrop, onCardDrop],
   );
 
   const pinTargetAt = useCallback(
@@ -832,7 +837,8 @@ export function OfficeCanvas({
       e.preventDefault();
       const target = pinTargetAt(e);
       officeState.hoveredAgentId = target;
-      e.dataTransfer.dropEffect = target === null ? 'none' : 'copy';
+      e.dataTransfer.dropEffect =
+        target === null ? 'none' : dragKind(e) === 'card' ? 'move' : 'copy';
     },
     [dragKind, pinTargetAt, officeState],
   );
@@ -843,13 +849,16 @@ export function OfficeCanvas({
       const target = pinTargetAt(e);
       officeState.hoveredAgentId = null;
       if (target === null || !kind) return;
-      const id = e.dataTransfer.getData(kind === 'pin' ? PIN_DRAG_MIME : WORKFLOW_DRAG_MIME);
+      const mime =
+        kind === 'pin' ? PIN_DRAG_MIME : kind === 'card' ? DESK_CARD_DRAG_MIME : WORKFLOW_DRAG_MIME;
+      const id = e.dataTransfer.getData(mime);
       if (!id) return;
       e.preventDefault();
       if (kind === 'pin') onPinDrop?.(target, id);
+      else if (kind === 'card') onCardDrop?.(target, id);
       else onWorkflowDrop?.(target, id);
     },
-    [dragKind, pinTargetAt, officeState, onPinDrop, onWorkflowDrop],
+    [dragKind, pinTargetAt, officeState, onPinDrop, onWorkflowDrop, onCardDrop],
   );
 
   const handleDragLeave = useCallback(() => {

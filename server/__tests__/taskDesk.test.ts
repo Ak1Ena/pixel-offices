@@ -561,3 +561,170 @@ describe('pixel-office task (agent CLI over HTTP)', () => {
     await o.close();
   });
 });
+
+describe('cards with a team, a workflow and files', () => {
+  const WORKFLOW = {
+    id: 'release',
+    title: 'Release',
+    path: '/wf/release.md',
+    steps: [
+      { kind: 'do' as const, text: 'Bump the version' },
+      { kind: 'gate' as const, text: 'Check the notes' },
+    ],
+  };
+  const TEAM = {
+    id: 'crew',
+    title: 'Crew',
+    members: [
+      { name: 'lead', role: 'Lead', lead: true, instructions: '', command: '' },
+      { name: 'dev', role: 'Dev', instructions: '', command: '' },
+    ],
+  };
+
+  function setupExtras(startOk = true) {
+    const store = new AgentStateStore();
+    const sent: Array<[number, string]> = [];
+    const started: Array<{ folder: string; goal: string }> = [];
+    let lead: number | undefined | null = undefined;
+    const desk = new TaskDesk({
+      store,
+      chatSender: {
+        canSend: () => true,
+        isIdle: () => true,
+        send: (id, text) => void sent.push([id, String(text)]),
+      },
+      taskStore: new TaskStore(() => {}, path.join(dir, 'tasks.json')),
+      resolveRoot: async (folder) => ({ root: folder, name: 'repo', isGit: true }),
+      owner: '111',
+      isOwnerAlive: () => true,
+      workflows: (id) => (id === WORKFLOW.id ? WORKFLOW : undefined),
+      teams: {
+        get: (id) => (id === TEAM.id ? TEAM : undefined),
+        start: (_team, folder, goal) => {
+          started.push({ folder, goal });
+          return startOk ? { ok: true, crewId: 'cabc123' } : { ok: false, error: 'no pty' };
+        },
+        leadOf: () => lead,
+      },
+    });
+    const addAgent = (id: number) =>
+      store.set(id, {
+        id,
+        cwd: REPO,
+        pickup: true,
+        isWaiting: true,
+        permissionSent: false,
+      } as unknown as AgentState);
+    return {
+      desk,
+      sent,
+      started,
+      addAgent,
+      setLead: (id: number | undefined | null) => (lead = id),
+    };
+  }
+
+  const save = async (desk: TaskDesk, extra: Record<string, unknown>) =>
+    desk.saveTask({
+      kind: 'task',
+      title: 'Ship it',
+      body: '',
+      priority: 'p2',
+      folder: REPO,
+      ...extra,
+    });
+
+  it('starts the team once and hands the card only to its lead', async () => {
+    const t = setupExtras();
+    t.addAgent(1); // in the folder, but not the team's lead
+    const reply = await save(t.desk, { teamId: 'crew' });
+    expect(reply.ok).toBe(true);
+    const task = (reply as { value: DeskTask }).value;
+    await t.desk.tick();
+    expect(t.started).toHaveLength(1);
+    expect(t.started[0].folder).toBe(REPO);
+    expect(t.started[0].goal).toContain(`task show ${task.num}`);
+    expect((t.desk.show(task.id) as { value: DeskTask }).value).toMatchObject({
+      state: 'inbox',
+      crewId: 'cabc123',
+    });
+    expect(t.sent).toHaveLength(0);
+
+    // The lead shows up: the card goes to it, and the team is not started again.
+    t.addAgent(5);
+    t.setLead(5);
+    await t.desk.tick();
+    expect(t.started).toHaveLength(1);
+    expect((t.desk.show(task.id) as { value: DeskTask }).value).toMatchObject({
+      state: 'looking',
+      claimedBy: 5,
+    });
+    t.desk.dispose();
+  });
+
+  it('says once why a team could not start, and does not retry until the card changes', async () => {
+    const t = setupExtras(false);
+    const task = ((await save(t.desk, { teamId: 'crew' })) as { value: DeskTask }).value;
+    await t.desk.tick();
+    await t.desk.tick();
+    expect(t.started).toHaveLength(1);
+    const log = (t.desk.show(task.id) as { value: DeskTask }).value.log;
+    expect(log.filter((l) => l.text.includes('no pty'))).toHaveLength(1);
+    t.desk.dispose();
+  });
+
+  it('refuses a team or workflow that does not exist', async () => {
+    const t = setupExtras();
+    expect((await save(t.desk, { teamId: 'nope' })).ok).toBe(false);
+    expect((await save(t.desk, { workflowId: 'nope' })).ok).toBe(false);
+    t.desk.dispose();
+  });
+
+  it('tells the looking agent to follow the workflow, and `show` lists its steps', async () => {
+    const t = setupExtras();
+    t.addAgent(1);
+    const task = ((await save(t.desk, { workflowId: 'release' })) as { value: DeskTask }).value;
+    await t.desk.tick();
+    expect(t.sent[0][1]).toMatch(/follows a workflow/);
+    const text = t.desk.describe((t.desk.show(task.id) as { value: DeskTask }).value);
+    expect(text).toContain('## Workflow: Release');
+    expect(text).toContain('2. [gate] Check the notes');
+    t.desk.dispose();
+  });
+
+  it('keeps attached files by path, and refuses one that is not a file', async () => {
+    const t = setupExtras();
+    const file = path.join(dir, 'spec.md');
+    fs.writeFileSync(file, '# spec');
+    const missing = await save(t.desk, { attachments: [path.join(dir, 'gone.md')] });
+    expect(missing.ok).toBe(false);
+    const task = (
+      (await save(t.desk, { attachments: [file, file, 'relative.md'] })) as {
+        value: DeskTask;
+      }
+    ).value;
+    expect(task.attachments).toEqual([{ path: file, name: 'spec.md' }]);
+    expect(t.desk.describe(task)).toContain(`- ${file}`);
+    // Editing without `attachments` keeps them; an empty list removes them.
+    const kept = await t.desk.saveTask({
+      taskId: task.id,
+      kind: 'task',
+      title: 'x',
+      body: '',
+      priority: 'p2',
+      folder: REPO,
+    });
+    expect((kept as { value: DeskTask }).value.attachments).toHaveLength(1);
+    const cleared = await t.desk.saveTask({
+      taskId: task.id,
+      kind: 'task',
+      title: 'x',
+      body: '',
+      priority: 'p2',
+      folder: REPO,
+      attachments: [],
+    });
+    expect((cleared as { value: DeskTask }).value.attachments).toBeUndefined();
+    t.desk.dispose();
+  });
+});

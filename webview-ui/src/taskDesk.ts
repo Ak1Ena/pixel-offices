@@ -1,5 +1,6 @@
 import type {
   DeskAgent,
+  DeskHumanAction,
   DeskSubtask,
   DeskTask,
   DeskTaskState,
@@ -262,6 +263,36 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       tasks: pick(['done']).reverse(),
     },
   ];
+}
+
+// ── Drag and drop on the full board ──
+
+/** What dropping a card on a column does: a human call, a call that needs a note first, or nothing. */
+export type DeskDrop = { action: DeskHumanAction } | { needsNote: 'rejected' | 'sendBack' } | null;
+
+/**
+ * The move a drop onto `column` stands for. Only the human's own calls can be
+ * made this way (the same ones the card's buttons make); columns that agents
+ * fill (looking, working) accept a card only as "do the task".
+ */
+export function dropAction(task: DeskTask, column: DeskColumn['key']): DeskDrop {
+  switch (task.state) {
+    case 'draft':
+      return column === 'inbox' ? { action: 'publish' } : null;
+    case 'brief':
+      if (column === 'ready') return { action: 'verified' };
+      if (column === 'working') return { action: 'do' };
+      if (column === 'inbox') return { needsNote: 'rejected' };
+      return null;
+    case 'ready':
+      return column === 'working' && !task.queued ? { action: 'do' } : null;
+    case 'result':
+      if (column === 'done') return { action: 'accept' };
+      if (column === 'working') return { needsNote: 'sendBack' };
+      return null;
+    default:
+      return null;
+  }
 }
 
 // ── Card steps ──

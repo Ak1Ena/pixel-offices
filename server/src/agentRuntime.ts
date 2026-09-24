@@ -1025,6 +1025,15 @@ export class AgentRuntime {
       store: this.store,
       chatSender: this.chatSender,
       defaultPickup: (agentId) => this.deskDefaultPickup(agentId),
+      workflows: (id) => this.workflows.get(id),
+      teams: {
+        get: (teamId) => this.teams.get(teamId),
+        start: (team, folder, goal) => {
+          const result = this.crews.start(team, folder, goal);
+          return result.ok ? { ok: true, crewId: result.run.crewId } : result;
+        },
+        leadOf: (crewId) => this.crews.leadOf(crewId),
+      },
     });
     return this.taskDesk;
   }

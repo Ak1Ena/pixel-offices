@@ -55,6 +55,9 @@ export function handleTaskDeskMessage(
           priority: msg.priority,
           folder: msg.folder,
           draft: msg.draft,
+          teamId: msg.teamId,
+          workflowId: msg.workflowId,
+          attachments: msg.attachments,
         })
         .then(report);
       break;

@@ -97,6 +97,17 @@ export const TOKEN_BURN_TICK_MS = 5_000;
 export const AGENT_NAME_MAX_CHARS = 32;
 
 // ── Agents the office runs itself (officeSessions.ts) ──────
+/** How long a CLI's model picker may take to open (or close) after its command. */
+export const MODEL_PICKER_WAIT_MS = 8_000;
+export const MODEL_PICKER_POLL_MS = 150;
+/** Polls in a row with an unchanged screen before the picker counts as drawn. */
+export const MODEL_PICKER_SETTLE_POLLS = 3;
+/** Gap between keys pressed into the picker; a burst of arrows can be dropped. */
+export const MODEL_PICKER_KEY_GAP_MS = 120;
+/** The last options each provider's picker showed, for start forms. */
+export const MODEL_OPTIONS_FILE_NAME = 'model-options.json';
+export const MODEL_LABEL_MAX_CHARS = 80;
+export const MODEL_DETAIL_MAX_CHARS = 160;
 /** Most agents the office will run at once. */
 export const OFFICE_SESSION_LIMIT = 8;
 /** Terminal size given to an office-run agent (its screen is shown as text). */
@@ -370,6 +381,8 @@ export const TASK_MAX_SUBTASKS = 20;
 export const TASK_MAX_FILES = 40;
 export const TASK_MAX_QUESTIONS = 10;
 export const TASK_MAX_LOG = 60;
+/** Files the human can attach to one card. */
+export const TASK_MAX_ATTACHMENTS = 20;
 /** Looks that may end without a brief before the card goes to the human anyway. */
 export const TASK_MAX_LOOK_ATTEMPTS = 2;
 /** How often the desk re-checks who is free (store events cover the fast path). */

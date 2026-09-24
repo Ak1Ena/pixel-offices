@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   DeskAgent,
@@ -7,24 +7,29 @@ import type {
   DeskTask,
   DeskTaskKind,
   DeskTaskPriority,
+  ModelOption,
+  TeamPreset,
   Workflow,
 } from '../../../core/src/messages.js';
 import {
+  DESK_CARD_DRAG_MIME,
   TASK_BODY_MAX_CHARS,
   TASK_DESK_COMMAND_KEY,
   TASK_DESK_FIRST_MESSAGE,
-  TASK_DESK_MODELS,
   TASK_NOTE_MAX_CHARS,
   TASK_TITLE_MAX_CHARS,
 } from '../constants.js';
+import { canSendChatFiles, uploadChatFiles } from '../fileUpload.js';
 import type { TaskDeskState } from '../hooks/useTaskDesk.js';
 import {
   agentsInFolder,
   branchMismatch,
   cardFolders,
+  type DeskColumn,
   deskColumns,
   type DeskFilter,
   deskSections,
+  dropAction,
   filterCards,
   isFiltering,
   lockedStepCount,
@@ -42,6 +47,7 @@ import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
 import { DeskSteps } from './DeskSteps.js';
 import { FolderPicker } from './FolderPicker.js';
+import { ModelSelect } from './ModelSelect.js';
 import { Button } from './ui/Button.js';
 
 /** Saved workflows, for a card's "Load workflow" / "Save as workflow". Absent = not offered. */
@@ -49,6 +55,15 @@ const DeskWorkflowsContext = createContext<{
   list: Workflow[];
   save: (workflow: Workflow) => void;
 } | null>(null);
+
+/**
+ * Team presets a card can be given to (standalone office only: it starts
+ * agents), and the model list for "Start an agent here".
+ */
+const DeskExtrasContext = createContext<{
+  teams: TeamPreset[] | null;
+  modelOptions: ModelOption[];
+}>({ teams: null, modelOptions: [] });
 
 interface FolderChoice {
   name: string;
@@ -73,6 +88,10 @@ interface TaskDeskProps {
   /** Saved workflows a card's steps can be loaded from or saved as. */
   workflows?: Workflow[];
   onSaveWorkflow?: (workflow: Workflow) => void;
+  /** Team presets a card can be for; absent where the office cannot start teams. */
+  teams?: TeamPreset[];
+  /** Claude's model picker options, as last read (see ModelSelect). */
+  modelOptions?: ModelOption[];
 }
 
 const KINDS: DeskTaskKind[] = ['task', 'issue', 'feature'];
@@ -104,6 +123,11 @@ function CardForm({
   const [folder, setFolder] = useState(
     editing?.folder.root ?? workspaceFolders[0]?.path ?? recentFolders[0] ?? '',
   );
+  const [teamId, setTeamId] = useState(editing?.teamId ?? '');
+  const [workflowId, setWorkflowId] = useState(editing?.workflowId ?? '');
+  const [files, setFiles] = useState<string[]>(editing?.attachments?.map((a) => a.path) ?? []);
+  const extras = useContext(DeskExtrasContext);
+  const deskWorkflows = useContext(DeskWorkflowsContext);
   const canAdd = title.trim().length > 0 && folder.trim().length > 0;
   const save = (draft: boolean) => {
     if (!canAdd) return;
@@ -113,6 +137,9 @@ function CardForm({
       body: body.trim(),
       priority,
       folder,
+      teamId,
+      workflowId,
+      attachments: files,
       ...(editing ? { taskId: editing.id } : { draft }),
     });
     onDone();
@@ -189,6 +216,51 @@ function CardForm({
           </select>
         )}
       </div>
+      {extras.teams && extras.teams.length > 0 && (
+        <label className="flex flex-col gap-2 text-sm">
+          Team
+          <select
+            className={fieldClass}
+            value={teamId}
+            aria-label="Team"
+            onChange={(e) => setTeamId(e.target.value)}
+            data-testid="desk-card-team"
+          >
+            <option value="">No team: one agent in the folder takes it</option>
+            {extras.teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} ({t.members.length})
+              </option>
+            ))}
+          </select>
+          {teamId && (
+            <span className="text-2xs text-text-muted">
+              The desk starts this team in the folder and hands the card to its lead, who calls
+              teammates in.
+            </span>
+          )}
+        </label>
+      )}
+      {deskWorkflows && deskWorkflows.list.length > 0 && (
+        <label className="flex flex-col gap-2 text-sm">
+          Workflow
+          <select
+            className={fieldClass}
+            value={workflowId}
+            aria-label="Workflow"
+            onChange={(e) => setWorkflowId(e.target.value)}
+            data-testid="desk-card-workflow"
+          >
+            <option value="">No workflow: the agent plans the steps</option>
+            {deskWorkflows.list.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.title} ({w.steps.length} steps)
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <CardFiles files={files} onChange={setFiles} />
       <div className="flex gap-6 justify-end">
         <Button type="button" size="sm" onClick={onDone}>
           Cancel
@@ -217,6 +289,108 @@ function CardForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** A card's attached files: paths on the server's machine, typed in or uploaded. */
+function CardFiles({ files, onChange }: { files: string[]; onChange: (files: string[]) => void }) {
+  const [pathDraft, setPathDraft] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const add = (paths: string[]) =>
+    onChange([...files, ...paths.filter((p) => p && !files.includes(p))]);
+  const canUpload = canSendChatFiles();
+  return (
+    <div className="flex flex-col gap-4 text-sm" data-testid="desk-card-files">
+      Files for the agent
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-4">
+          {files.map((p) => (
+            <span
+              key={p}
+              className="flex items-center gap-4 px-4 border border-border bg-bg text-2xs max-w-full"
+              title={p}
+            >
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap">
+                {p.split(/[\\/]/).pop()}
+              </span>
+              <button
+                type="button"
+                className="bg-transparent border-0 p-0 text-text-muted cursor-pointer"
+                aria-label={`Remove ${p}`}
+                onClick={() => onChange(files.filter((f) => f !== p))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-4">
+        <input
+          className={fieldClass}
+          value={pathDraft}
+          spellCheck={false}
+          placeholder="/full/path/to/file"
+          aria-label="File path"
+          onChange={(e) => setPathDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            add([pathDraft.trim()]);
+            setPathDraft('');
+          }}
+          data-testid="desk-card-file-path"
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant={pathDraft.trim() ? 'default' : 'disabled'}
+          disabled={!pathDraft.trim()}
+          onClick={() => {
+            add([pathDraft.trim()]);
+            setPathDraft('');
+          }}
+        >
+          Add
+        </Button>
+        {canUpload && (
+          <>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const picked = e.target.files ? Array.from(e.target.files) : [];
+                e.target.value = '';
+                if (picked.length === 0) return;
+                setUploading(true);
+                setError(null);
+                void uploadChatFiles(picked).then((result) => {
+                  setUploading(false);
+                  if (result.ok) add(result.paths);
+                  else setError(result.error);
+                });
+              }}
+              data-testid="desk-card-file-input"
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant={uploading ? 'disabled' : 'default'}
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+              title="Upload files; the agent gets their paths"
+            >
+              {uploading ? 'Uploading…' : 'Upload'}
+            </Button>
+          </>
+        )}
+      </div>
+      {error && <span className="text-2xs text-danger">{error}</span>}
+    </div>
   );
 }
 
@@ -251,7 +425,8 @@ function StartAgentHere({ folder }: { folder: string }) {
       return 'claude';
     }
   });
-  const [model, setModel] = useState<string>(TASK_DESK_MODELS[0].flag);
+  const [model, setModel] = useState('');
+  const { modelOptions } = useContext(DeskExtrasContext);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -264,7 +439,7 @@ function StartAgentHere({ folder }: { folder: string }) {
     });
   }, [pending]);
 
-  const full = `${command.trim() || 'claude'}${model ? ` --model ${model}` : ''}`;
+  const full = command.trim() || 'claude';
   return (
     <div
       className="flex flex-col gap-6 p-8 border-2 border-warning bg-bg-dark"
@@ -281,19 +456,13 @@ function StartAgentHere({ folder }: { folder: string }) {
           onChange={(e) => setCommand(e.target.value)}
           data-testid="desk-start-command"
         />
-        <select
-          className={fieldClass}
-          value={model}
-          aria-label="Model"
-          onChange={(e) => setModel(e.target.value)}
-        >
-          {TASK_DESK_MODELS.map((m) => (
-            <option key={m.label} value={m.flag}>
-              {m.label}
-            </option>
-          ))}
-        </select>
       </div>
+      <ModelSelect
+        options={modelOptions}
+        value={model}
+        onChange={setModel}
+        className={fieldClass}
+      />
       <span className="text-2xs text-text-muted break-all">
         Runs: {full} — an alias works as long as it runs Claude.
       </span>
@@ -315,6 +484,7 @@ function StartAgentHere({ folder }: { folder: string }) {
             cwd: folder,
             command: full,
             firstMessage: TASK_DESK_FIRST_MESSAGE,
+            ...(model ? { model } : {}),
           });
         }}
         data-testid="desk-start-agent"
@@ -399,6 +569,44 @@ function WhoMayLook({
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** The card's team, workflow and attached files, as the agent will see them. */
+function CardLinks({ task }: { task: DeskTask }) {
+  const { teams } = useContext(DeskExtrasContext);
+  const deskWorkflows = useContext(DeskWorkflowsContext);
+  if (!task.teamId && !task.workflowId && !task.attachments?.length) return null;
+  const team = task.teamId ? teams?.find((t) => t.id === task.teamId) : undefined;
+  const workflow = task.workflowId
+    ? deskWorkflows?.list.find((w) => w.id === task.workflowId)
+    : undefined;
+  return (
+    <div className="flex flex-col gap-4 text-2xs" data-testid="desk-card-links">
+      {task.teamId && (
+        <span>
+          <span className="text-text-muted">Team: </span>
+          {team?.title ?? task.teamId}
+          {task.crewId ? ' · running' : ''}
+        </span>
+      )}
+      {task.workflowId && (
+        <span>
+          <span className="text-text-muted">Workflow: </span>
+          {workflow ? `${workflow.title} (${workflow.steps.length} steps)` : task.workflowId}
+        </span>
+      )}
+      {task.attachments && task.attachments.length > 0 && (
+        <span className="flex flex-col gap-2">
+          <span className="text-text-muted">Files:</span>
+          {task.attachments.map((a) => (
+            <span key={a.path} className="break-all" title={a.path}>
+              {a.path}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
@@ -507,6 +715,7 @@ function CardDetail({
       {task.body && (
         <p className="m-0 text-sm text-text-muted whitespace-pre-wrap break-words">{task.body}</p>
       )}
+      <CardLinks task={task} />
 
       <div className="flex flex-col gap-4">
         <span className={sectionTitle}>Folder · who may look</span>
@@ -758,6 +967,7 @@ function Card({
   canStartAgents,
   folders,
   inline = true,
+  onDragChange,
 }: {
   task: DeskTask;
   isOpen: boolean;
@@ -768,6 +978,8 @@ function Card({
   folders: FolderSources;
   /** Rail: the detail unfolds under the card. Full board: it opens beside the columns instead. */
   inline?: boolean;
+  /** A drag of this card started (true) or ended (false). */
+  onDragChange?: (dragging: boolean) => void;
 }) {
   const yours = needsYou(task);
   const progress = subtaskProgress(task);
@@ -787,6 +999,16 @@ function Card({
         className="flex flex-col gap-4 p-8 text-left bg-transparent border-0 text-text cursor-pointer"
         onClick={onOpen}
         aria-expanded={isOpen}
+        // Only the header drags, so text in the open card stays selectable.
+        // Drop on a board column to move the card, or on a character to give it to that agent.
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData(DESK_CARD_DRAG_MIME, task.id);
+          e.dataTransfer.effectAllowed = 'copyMove';
+          onDragChange?.(true);
+        }}
+        onDragEnd={() => onDragChange?.(false)}
+        title="Drag onto a column to move it, or onto a character to give it to that agent"
       >
         <span className="text-sm leading-tight break-words">
           <span className="text-text-muted">
@@ -808,6 +1030,11 @@ function Card({
             <span className={`${chip} border-status-permission text-status-permission`}>
               round {task.round}
             </span>
+          )}
+          {task.teamId && <span className={`${chip} border-border`}>team</span>}
+          {task.workflowId && <span className={`${chip} border-border`}>workflow</span>}
+          {task.attachments && task.attachments.length > 0 && (
+            <span className={`${chip} border-border`}>📎{task.attachments.length}</span>
           )}
           {progress && task.state !== 'inbox' && <span>{progress} steps</span>}
           {who && <span>{who}</span>}
@@ -936,14 +1163,20 @@ function FilterBar({
  * beside them. Both views share one search + filter.
  */
 export function TaskDesk(props: TaskDeskProps) {
-  const { workflows, onSaveWorkflow } = props;
+  const { workflows, onSaveWorkflow, teams, modelOptions } = props;
   const value = useMemo(
     () => (workflows && onSaveWorkflow ? { list: workflows, save: onSaveWorkflow } : null),
     [workflows, onSaveWorkflow],
   );
+  const extras = useMemo(
+    () => ({ teams: teams ?? null, modelOptions: modelOptions ?? [] }),
+    [teams, modelOptions],
+  );
   return (
     <DeskWorkflowsContext.Provider value={value}>
-      <DeskPanel {...props} />
+      <DeskExtrasContext.Provider value={extras}>
+        <DeskPanel {...props} />
+      </DeskExtrasContext.Provider>
     </DeskWorkflowsContext.Provider>
   );
 }
@@ -963,6 +1196,10 @@ function DeskPanel({
   const [isFull, setIsFull] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [filter, setFilter] = useState<DeskFilter>(NO_FILTER);
+  /** The card being dragged, and the board column under it. */
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overColumn, setOverColumn] = useState<string | null>(null);
+  const [dropHint, setDropHint] = useState<string | null>(null);
   // The tab counts EVERY card waiting on you; a filter must not hide work from the closed desk.
   const waiting = deskSections(desk.tasks).needsYou.length;
   const cards = filterCards(desk.tasks, filter);
@@ -999,8 +1236,29 @@ function DeskPanel({
       canStartAgents={canStartAgents}
       folders={folders}
       inline={inline}
+      onDragChange={(dragging) => {
+        setDragId(dragging ? task.id : null);
+        if (!dragging) setOverColumn(null);
+        setDropHint(null);
+      }}
     />
   );
+  const dragged = dragId ? desk.tasks.find((t) => t.id === dragId) : undefined;
+  const dropOn = (task: DeskTask, column: DeskColumn['key']) => {
+    const drop = dropAction(task, column);
+    if (!drop) return;
+    if ('action' in drop) {
+      desk.call(task.id, drop.action);
+      return;
+    }
+    // Rejecting a brief or sending a result back needs a reason: open the card for it.
+    setOpenId(task.id);
+    setDropHint(
+      drop.needsNote === 'rejected'
+        ? `Card #${task.num}: say why the brief is wrong, then press Reject.`
+        : `Card #${task.num}: say what to change, then press Send back.`,
+    );
+  };
 
   const header = (
     <div className="flex items-start gap-8 p-10 border-b-2 border-border">
@@ -1087,6 +1345,14 @@ function DeskPanel({
       >
         {header}
         {notice}
+        {dropHint && (
+          <span
+            className="px-10 py-4 text-2xs text-status-permission border-b-2 border-border"
+            role="status"
+          >
+            {dropHint}
+          </span>
+        )}
         {filterBar}
         <div className="flex-1 min-h-0 flex">
           {isAdding && (
@@ -1104,36 +1370,64 @@ function DeskPanel({
                 gridTemplateColumns: `repeat(${columns.length}, minmax(${tunable('taskDeskColumnMinPx')}px, 1fr))`,
               }}
             >
-              {columns.map((column) => (
-                <div
-                  key={column.key}
-                  className={`flex flex-col border-2 bg-bg-dark max-h-full ${
-                    column.yours ? 'border-status-permission' : 'border-border'
-                  }`}
-                  data-testid={`desk-column-${column.key}`}
-                >
+              {columns.map((column) => {
+                const canDrop = !!dragged && dropAction(dragged, column.key) !== null;
+                return (
                   <div
-                    className={`flex flex-col gap-2 px-8 py-6 border-b-2 ${
-                      column.yours
-                        ? 'border-status-permission bg-chat-permission text-status-permission'
-                        : 'border-border bg-bg-thumb'
-                    }`}
+                    key={column.key}
+                    className={`flex flex-col border-2 bg-bg-dark max-h-full ${
+                      canDrop
+                        ? overColumn === column.key
+                          ? 'border-accent bg-active-bg'
+                          : 'border-dashed border-accent'
+                        : column.yours
+                          ? 'border-status-permission'
+                          : 'border-border'
+                    } ${dragged && !canDrop ? 'opacity-60' : ''}`}
+                    data-testid={`desk-column-${column.key}`}
+                    onDragOver={(e) => {
+                      if (!canDrop || !e.dataTransfer.types.includes(DESK_CARD_DRAG_MIME)) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      setOverColumn(column.key);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+                        setOverColumn((c) => (c === column.key ? null : c));
+                    }}
+                    onDrop={(e) => {
+                      const id = e.dataTransfer.getData(DESK_CARD_DRAG_MIME);
+                      const task = desk.tasks.find((t) => t.id === id);
+                      setDragId(null);
+                      setOverColumn(null);
+                      if (!task) return;
+                      e.preventDefault();
+                      dropOn(task, column.key);
+                    }}
                   >
-                    <span className="text-sm leading-none">
-                      {column.title} · {column.tasks.length}
-                    </span>
-                    <span className="text-2xs text-text-muted">{column.hint}</span>
-                  </div>
-                  <div className="flex flex-col gap-6 p-8 overflow-y-auto">
-                    {column.tasks.length === 0 && (
-                      <span className="text-2xs text-text-muted">
-                        {filtering ? 'Nothing matches.' : 'Nothing here.'}
+                    <div
+                      className={`flex flex-col gap-2 px-8 py-6 border-b-2 ${
+                        column.yours
+                          ? 'border-status-permission bg-chat-permission text-status-permission'
+                          : 'border-border bg-bg-thumb'
+                      }`}
+                    >
+                      <span className="text-sm leading-none">
+                        {column.title} · {column.tasks.length}
                       </span>
-                    )}
-                    {column.tasks.map((task) => card(task, false))}
+                      <span className="text-2xs text-text-muted">{column.hint}</span>
+                    </div>
+                    <div className="flex flex-col gap-6 p-8 overflow-y-auto">
+                      {column.tasks.length === 0 && (
+                        <span className="text-2xs text-text-muted">
+                          {filtering ? 'Nothing matches.' : 'Nothing here.'}
+                        </span>
+                      )}
+                      {column.tasks.map((task) => card(task, false))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           {open && (

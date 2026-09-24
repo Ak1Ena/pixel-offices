@@ -4,11 +4,13 @@ import type {
   AgentClearPolicy,
   AgentClearRequest,
   AgentKey,
+  AgentModels,
   AgentTokenUsage,
   BoardPin,
   ChatEntry,
   ClearMode,
   DocEditMode,
+  ModelOption,
   QueuedChatMessage,
   ScreenQuestion,
 } from '../../../core/src/messages.js';
@@ -52,6 +54,14 @@ export interface OfficeChatState {
   /** Per-agent settings the human picks (server state: agentPrefs). */
   prefs: Record<number, AgentPrefsState>;
   setAgentPrefs: (agentId: number, patch: Partial<AgentPrefsState>) => void;
+  /** Each office-run agent's model picker, as last read (server state: agentModels). */
+  models: Record<number, AgentModels>;
+  /** The last picker options per provider id, for start forms (server state: modelOptions). */
+  modelOptions: Record<string, ModelOption[]>;
+  /** Read the agent's model picker. */
+  loadModels: (agentId: number) => void;
+  /** Switch the agent to the picker option with this label (this session only). */
+  setModel: (agentId: number, label: string) => void;
   /** Agents that asked to have their own context cleared, waiting for an answer. */
   clearRequests: AgentClearRequest[];
   clearAgent: (agentId: number, mode: ClearMode) => void;
@@ -94,6 +104,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [pins, setPins] = useState<BoardPin[]>([]);
   const [prefs, setPrefs] = useState<Record<number, AgentPrefsState>>({});
   const [clearRequests, setClearRequests] = useState<AgentClearRequest[]>([]);
+  const [models, setModels] = useState<Record<number, AgentModels>>({});
+  const [modelOptions, setModelOptions] = useState<Record<string, ModelOption[]>>({});
 
   useEffect(() => {
     return transport.onMessage((msg) => {
@@ -129,6 +141,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
           ...prev,
           [msg.id]: { clearPolicy: msg.clearPolicy, docEditMode: msg.docEditMode },
         }));
+      } else if (msg.type === 'agentModels') {
+        setModels((prev) => ({ ...prev, [msg.id]: msg }));
+      } else if (msg.type === 'modelOptions') {
+        setModelOptions((prev) => ({ ...prev, [msg.providerId]: msg.options }));
       } else if (msg.type === 'agentClearRequests') {
         setClearRequests(msg.requests);
       } else if (msg.type === 'agentRelayState') {
@@ -208,6 +224,14 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'setAgentPrefs', id: agentId, ...patch });
   }, []);
 
+  const loadModels = useCallback((agentId: number) => {
+    transport.send({ type: 'loadAgentModels', id: agentId });
+  }, []);
+
+  const setModel = useCallback((agentId: number, label: string) => {
+    transport.send({ type: 'setAgentModel', id: agentId, label });
+  }, []);
+
   const clearAgent = useCallback((agentId: number, mode: ClearMode) => {
     transport.send({ type: 'clearAgentContext', id: agentId, mode });
   }, []);
@@ -244,6 +268,10 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     interruptAgent,
     prefs,
     setAgentPrefs,
+    models,
+    modelOptions,
+    loadModels,
+    setModel,
     clearRequests,
     clearAgent,
     answerClearRequest,

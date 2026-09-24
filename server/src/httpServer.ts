@@ -61,7 +61,7 @@ import type { LauncherHub } from './launcherHub.js';
 import { officeRoster } from './officeRoster.js';
 import type { OfficeSessions } from './officeSessions.js';
 import { isPermissionRequestId } from './permissionBroker.js';
-import { describeTask, type DeskReply, type TaskDesk } from './taskDesk.js';
+import { type DeskReply, type TaskDesk } from './taskDesk.js';
 import type { AgentState } from './types.js';
 
 /** Options for creating the HTTP + WebSocket server. */
@@ -576,7 +576,7 @@ function registerTaskRoutes(app: FastifyInstance, options: HttpServerOptions): v
       const changed = taskDesk().takePlanChange(result.value.id);
       return {
         task: result.value,
-        text: describeTask(result.value),
+        text: taskDesk().describe(result.value),
         ...(changed ? { planChanged: true } : {}),
       };
     }

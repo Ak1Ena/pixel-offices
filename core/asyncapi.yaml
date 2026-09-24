@@ -114,6 +114,8 @@ components:
         - $ref: '#/components/schemas/StartAgentResult'
         - $ref: '#/components/schemas/AgentRelayState'
         - $ref: '#/components/schemas/AgentPrefs'
+        - $ref: '#/components/schemas/AgentModels'
+        - $ref: '#/components/schemas/ModelOptions'
         - $ref: '#/components/schemas/AgentClearRequests'
         - $ref: '#/components/schemas/DocEdits'
         - $ref: '#/components/schemas/DocEditDefault'
@@ -218,6 +220,8 @@ components:
         - $ref: '#/components/schemas/ClearAgentContext'
         - $ref: '#/components/schemas/AnswerClearRequest'
         - $ref: '#/components/schemas/SetAgentPrefs'
+        - $ref: '#/components/schemas/LoadAgentModels'
+        - $ref: '#/components/schemas/SetAgentModel'
         - $ref: '#/components/schemas/SetDocEditDefault'
         - $ref: '#/components/schemas/UndoDocEdit'
         - $ref: '#/components/schemas/OpenOfficeFile'
@@ -763,6 +767,72 @@ components:
     AgentClearPolicy:
       type: string
       enum: [ask, allow, never]
+
+    AgentModels:
+      description: |
+        The models an agent can switch to, as its own CLI lists them: the
+        server opens the provider's model picker (Claude: `/model`) on the
+        agent's screen, reads the options, and closes it again. Never a
+        hard-coded list. Only agents the office runs have a screen to read.
+        `state` is `loading` while the picker is being read and `switching`
+        while a choice is being made; `error` says why the last try failed.
+      type: object
+      additionalProperties: false
+      required: [type, id, options, state]
+      properties:
+        type:
+          const: agentModels
+        id:
+          type: integer
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelOption'
+        state:
+          $ref: '#/components/schemas/AgentModelsState'
+        error:
+          type: string
+
+    AgentModelsState:
+      type: string
+      enum: [idle, loading, switching]
+
+    ModelOptions:
+      description: |
+        The last model list a provider's picker showed, for start forms (+ Agent,
+        the task desk): what a NEW agent of that provider can be started on.
+        Sent in the handshake and whenever a picker is read.
+      type: object
+      additionalProperties: false
+      required: [type, providerId, options]
+      properties:
+        type:
+          const: modelOptions
+        providerId:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelOption'
+
+    ModelOption:
+      description: One entry of a provider's model picker, as it was shown.
+      type: object
+      additionalProperties: false
+      required: [number, label]
+      properties:
+        number:
+          type: integer
+          description: Its position in the picker (1-based).
+        label:
+          type: string
+          description: The option's name column, e.g. "Sonnet". Choices are made by label.
+        detail:
+          type: string
+          description: The rest of the line, e.g. "Sonnet 5 · Efficient for routine tasks".
+        current:
+          type: boolean
+          description: The picker marks it as the one in use.
 
     DocEditMode:
       type: string
@@ -2515,6 +2585,17 @@ components:
           description: |
             New cards only: keep it as a draft. No agent looks at a draft until
             the human sends it to the desk (`deskTaskAction: publish`).
+        teamId:
+          type: string
+          description: Team preset for the card ('' = none). Editable until an agent looks.
+        workflowId:
+          type: string
+          description: Workflow whose steps the brief follows ('' = none). Editable until an agent looks.
+        attachments:
+          type: array
+          description: Absolute file paths to attach (replaces the list). Editable until the build starts.
+          items:
+            type: string
 
     RemoveDeskTask:
       description: Remove a card from the task desk. Privileged.
@@ -2663,6 +2744,12 @@ components:
           type: string
         skipPermissions:
           type: boolean
+        model:
+          type: string
+          description: |
+            A model label from `modelOptions`. The agent starts, the office
+            picks the model in its picker (this session only), and only then
+            types `firstMessage`.
 
     SetAgentRelay:
       description: Turn agent-to-agent @mention passing on or off. Privileged.
@@ -2739,6 +2826,32 @@ components:
           $ref: '#/components/schemas/AgentClearPolicy'
         docEditMode:
           $ref: '#/components/schemas/DocEditMode'
+
+    LoadAgentModels:
+      description: Read the agent's model picker (see agentModels). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: loadAgentModels
+        id:
+          type: integer
+
+    SetAgentModel:
+      description: |
+        Switch the agent to the option with this label in its model picker, for
+        this session only. Waits for the agent's turn to end. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id, label]
+      properties:
+        type:
+          const: setAgentModel
+        id:
+          type: integer
+        label:
+          type: string
 
     SetDocEditDefault:
       description: The office-wide default for agents' document edits (see docEditDefault). Privileged; persisted.
@@ -3108,6 +3221,34 @@ components:
           items:
             $ref: '#/components/schemas/DeskLogEntry'
         createdAt:
+          type: string
+        teamId:
+          type: string
+          description: |
+            A team preset the card is for. The desk starts the team in the
+            card's folder and hands the card to its lead only; the lead calls
+            teammates in. Standalone office only.
+        crewId:
+          type: string
+          description: The started team (teamRuns) working the card, while this office runs it.
+        workflowId:
+          type: string
+          description: A saved workflow whose steps the looking agent uses as the brief's steps.
+        attachments:
+          type: array
+          description: Files the human attached. Agents get their paths, never their content.
+          items:
+            $ref: '#/components/schemas/DeskAttachment'
+
+    DeskAttachment:
+      type: object
+      additionalProperties: false
+      required: [path, name]
+      properties:
+        path:
+          type: string
+          description: Absolute path on the server's machine.
+        name:
           type: string
 
     DeskFolder:

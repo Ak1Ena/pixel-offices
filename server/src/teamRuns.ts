@@ -182,6 +182,19 @@ export class TeamRuns {
     return { ok: true };
   }
 
+  /**
+   * The crew's lead: its agent id once adopted, undefined while it starts,
+   * null when this office has no such running crew (never started here,
+   * stopped, or its lead is gone).
+   */
+  leadOf(crewId: string): number | undefined | null {
+    const run = this.runs.find((r) => r.crewId === crewId);
+    if (!run || run.state !== 'running') return null;
+    const lead = run.members[0];
+    if (!lead || lead.error) return null;
+    return lead.agentId;
+  }
+
   private forget(crewId: string): void {
     this.presets.delete(crewId);
     this.sessions.delete(crewId);

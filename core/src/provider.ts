@@ -142,6 +142,14 @@ export interface HookProvider {
    *  previous estimate and widens it if a context ever exceeds it. */
   contextWindowForModel?(model: string | undefined): number | undefined;
 
+  /** The CLI's own model picker, typed into an agent's terminal (Claude:
+   *  `/model`). The office never keeps a model list of its own: it opens this
+   *  picker, reads the options off the screen and chooses one. `sessionKey`
+   *  is the key that applies the highlighted option to this session only
+   *  (Claude: `s`); without it Enter is pressed. Absent = the office cannot
+   *  switch this CLI's model. */
+  readonly modelPicker?: ModelPicker;
+
   // ── Optional file fallback (heuristic mode) ──
 
   /** Session directories to scan. Undefined = no file fallback. */
@@ -175,3 +183,11 @@ export interface HookProvider {
 
 // TODO(provider type taxonomy): FileProvider (polling-only CLIs) and StreamProvider
 // (push-based external services) will be added alongside the first real second provider
+
+/** How to drive a CLI's interactive model picker (see HookProvider.modelPicker). */
+export interface ModelPicker {
+  /** What to type to open it, e.g. `/model`. */
+  command: string;
+  /** Key that applies the highlighted option to this session only; absent = Enter. */
+  sessionKey?: string;
+}
