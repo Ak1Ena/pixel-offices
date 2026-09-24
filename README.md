@@ -98,12 +98,26 @@ To use Claude with `--dangerously-skip-permissions`, hover over **+ Agent** to f
 
 Pixel Agents also detects Claude sessions started outside the extension. Turn on **Settings → Watch All Sessions** to include sessions from other workspaces.
 
+### Desktop app (macOS)
+
+One command installs or updates the Pixel Office desktop app — it picks the right build for your Mac (Apple Silicon or Intel) from the newest release, checks its SHA-256 before touching anything, quits a running copy, installs into `/Applications` and relaunches:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ak1Ena/pixel-offices/main/scripts/install-macos.sh | bash
+```
+
+Re-running it is a no-op when you already have the newest version. Add a version to pin one: `… | bash -s -- v2.4.3`.
+
+Because the app is unsigned (no paid Apple Developer certificate), installing this way matters: a `curl` download carries no quarantine attribute, so macOS won't show the "unidentified developer" warning. Downloading the `.dmg` from the releases page in a browser will — right-click the app and choose **Open** the first time to get past it.
+
+Windows and Linux installers (`.exe`, `.AppImage`, `.deb`) are attached to each [release](https://github.com/Ak1Ena/pixel-offices/releases).
+
 ### Standalone CLI (Pixel Office)
 
 Pixel Office is not on npm. Install a release tarball (see [releases](https://github.com/Ak1Ena/pixel-offices/releases) for the newest):
 
 ```bash
-npm install -g https://github.com/Ak1Ena/pixel-offices/releases/download/v2.4.1/ak1ena-pixel-office-2.4.1.tgz
+npm install -g https://github.com/Ak1Ena/pixel-offices/releases/download/v2.4.3/ak1ena-pixel-office-2.4.3.tgz
 ```
 
 Or run it from source (`npm link` puts your checkout's `pixel-office` on your PATH; run `npm run compile` again after pulling):
