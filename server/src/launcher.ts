@@ -187,19 +187,29 @@ export function loadPty(): PtyModule | null {
   try {
     const pty = require('node-pty') as PtyModule;
     // node-pty's prebuilt spawn-helper ships without its execute bit on some
-    // installs, which fails every spawn with "posix_spawnp failed".
+    // installs, which fails every spawn with "posix_spawnp failed". The repair
+    // is best-effort: inside a packaged Electron app the resolved path is in
+    // the read-only app.asar, where chmod throws ENOTDIR -- that must not
+    // throw away a module that loaded fine (node-pty itself runs the helper
+    // from app.asar.unpacked).
     if (process.platform !== 'win32') {
-      const root = path.dirname(require.resolve('node-pty/package.json'));
-      const helper = path.join(
-        root,
-        'prebuilds',
-        `${process.platform}-${process.arch}`,
-        'spawn-helper',
-      );
       try {
-        fs.accessSync(helper, fs.constants.X_OK);
-      } catch {
-        if (fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
+        const root = path
+          .dirname(require.resolve('node-pty/package.json'))
+          .replace(/app\.asar(?=[\\/]|$)/, 'app.asar.unpacked');
+        const helper = path.join(
+          root,
+          'prebuilds',
+          `${process.platform}-${process.arch}`,
+          'spawn-helper',
+        );
+        try {
+          fs.accessSync(helper, fs.constants.X_OK);
+        } catch {
+          if (fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
+        }
+      } catch (err) {
+        console.warn('[Pixel Agents] Could not check node-pty spawn-helper:', err);
       }
     }
     return pty;
