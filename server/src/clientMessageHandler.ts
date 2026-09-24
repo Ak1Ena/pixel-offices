@@ -301,7 +301,7 @@ export function handleClientMessage(
         console.warn('[Pixel Agents] Ignoring sendChatMessage from an untokened client.');
         break;
       }
-      if (typeof msg.id === 'number') runtime?.chatSender.send(msg.id, msg.text);
+      if (typeof msg.id === 'number') runtime?.chatSender.send(msg.id, msg.text, { midTurn: true });
       break;
     }
 

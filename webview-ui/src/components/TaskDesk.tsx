@@ -98,7 +98,7 @@ const KINDS: DeskTaskKind[] = ['task', 'issue', 'feature'];
 const KIND_TAG: Record<DeskTaskKind, string> = { task: 'T', issue: '!', feature: '+' };
 
 const fieldClass =
-  'w-full px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent';
+  'w-full px-8 py-4 bg-bg-dark text-text text-base border-2 border-border rounded-none outline-none focus:border-accent';
 const sectionTitle = 'text-xs text-text-muted uppercase tracking-wider';
 const chip = 'px-4 text-2xs border-2 leading-tight';
 
@@ -188,8 +188,8 @@ function CardForm({
         autoFocus
       />
       <textarea
-        className={`${fieldClass} resize-none`}
-        rows={3}
+        className={`${fieldClass} resize-y`}
+        rows={6}
         value={body}
         maxLength={TASK_BODY_MAX_CHARS}
         placeholder="What you know so far (optional)"
@@ -713,7 +713,7 @@ function CardDetail({
         </Button>
       )}
       {task.body && (
-        <p className="m-0 text-sm text-text-muted whitespace-pre-wrap break-words">{task.body}</p>
+        <p className="m-0 text-base text-text-muted whitespace-pre-wrap break-words">{task.body}</p>
       )}
       <CardLinks task={task} />
 

@@ -200,6 +200,31 @@ describe('ChatSender', () => {
     expect(written).toEqual(['first', 'second']);
   });
 
+  it("types the human's own message mid-turn but still holds the office's own", () => {
+    store.set(1, createTestAgent());
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'active' });
+    sender.send(1, 'card prompt');
+    sender.send(1, 'read this too', { midTurn: true });
+    expect(written).toEqual([]); // the card prompt is first in line and waits
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'waiting' });
+    // The card prompt goes first, then the human's message rides along.
+    expect(written).toEqual(['card prompt', 'read this too']);
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'active' });
+    sender.send(1, 'and this', { midTurn: true });
+    sender.send(1, 'and one more', { midTurn: true });
+    expect(written).toEqual(['card prompt', 'read this too', 'and this', 'and one more']);
+  });
+
+  it('still holds a mid-turn message on a permission prompt', () => {
+    store.set(1, createTestAgent());
+    store.get(1)!.permissionSent = true;
+    sender.send(1, 'answer later', { midTurn: true });
+    expect(written).toEqual([]);
+    store.get(1)!.permissionSent = false;
+    store.broadcast({ type: 'agentToolPermissionClear', id: 1 });
+    expect(written).toEqual(['answer later']);
+  });
+
   it('holds while the terminal is not ready, then delivers on retry', () => {
     let ready = false;
     sender.addWriter({

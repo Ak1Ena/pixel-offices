@@ -1,7 +1,5 @@
 import type { TeamMember, TeamPreset } from '../../core/src/messages.js';
 import {
-  AGENTS_CLI_COMMAND,
-  CLEAR_CLI_COMMAND,
   TEAM_COMMAND_MAX_CHARS,
   TEAM_MAX_MEMBERS,
   TEAM_NAME_MAX_CHARS,
@@ -81,14 +79,13 @@ export function fillGoal(template: string | undefined, goal: string): string {
 }
 
 /**
- * The first message each member starts with (it rides the command line). Only
- * the lead starts with the team: it gets the goal and the roster, and calls
- * in the teammates the task needs by writing `@name` and what to do. A called
- * member starts with its role, the roster and the lead's words.
+ * The first message each member starts with (it rides the command line). Kept
+ * SHORT on purpose: every line here is paid for in the member's context and in
+ * every turn it takes. Only the lead gets the goal and who it may call in; a
+ * called member gets its role and the lead's own words, nothing else. Office
+ * commands (`pixel-office agents`, `clear`, …) are documented, not repeated
+ * into every teammate's prompt.
  */
-/** Agents learn they may ask for a fresh context (the human decides whether it happens). */
-const CLEAR_NOTE = `If your context gets long, you can ask for a fresh one: ${CLEAR_CLI_COMMAND} --reason "…" (nothing carries over — note what you need first).`;
-
 export function firstMessage(
   team: TeamPreset,
   member: TeamMember,
@@ -96,7 +93,6 @@ export function firstMessage(
   calledWith?: string,
 ): string {
   const lead = leadOf(team);
-  const roster = team.members.map((m) => `@${m.name} (${m.role})`).join(', ');
   const role = member.instructions
     ? `Your role: ${member.instructions}`
     : `Your role: ${member.role}.`;
@@ -106,32 +102,27 @@ export function firstMessage(
       .map((m) => `@${m.name} (${m.role})`)
       .join(', ');
     const talk = team.relay
-      ? 'Once a teammate is running, a paragraph of your reply that starts with @their-name reaches them (only that paragraph), and they answer you the same way. Talk to one teammate at a time.'
+      ? 'A paragraph of your reply that STARTS with @their-name reaches that teammate (only that paragraph); they answer the same way. One teammate at a time.'
       : 'Once running, teammates cannot hear you directly; the user passes messages on.';
     return [
       fillGoal(team.goalTemplate, goal),
       '',
-      `You lead the team "${team.title}" in the Pixel Office.`,
-      role,
-      `To see every agent in the office (any CLI) and which one is you: ${AGENTS_CLI_COMMAND}.`,
-      CLEAR_NOTE,
+      `You lead the team "${team.title}" in the Pixel Office. ${role}`,
       ...(others
         ? [
-            `Teammates you can call in: ${others}. They are not running yet.`,
-            'Decide who this task needs and call only them: start a paragraph with @name and what they should do; the office starts that teammate with that paragraph. Mentioning a name mid-sentence does nothing. Do small tasks yourself.',
+            `Teammates, not running yet: ${others}. Call in only the ones this needs, and do small work yourself.`,
             talk,
           ]
         : []),
     ].join('\n');
   }
   const talk = team.relay
-    ? 'To message a teammate, start a paragraph of your reply with @their-name; the Pixel Office passes that paragraph on.'
+    ? `To answer @${lead.name}, start a paragraph of your reply with @${lead.name}.`
     : 'Teammates cannot hear you directly; the user passes messages on.';
   return [
-    `You are @${member.name}, the ${member.role} in the team "${team.title}", led by @${lead.name}.`,
-    member.instructions ? role : '',
-    `Team: ${roster}. See everyone in the office: ${AGENTS_CLI_COMMAND}.`,
-    CLEAR_NOTE,
+    `You are @${member.name}, the ${member.role} in the team "${team.title}", led by @${lead.name}.${
+      member.instructions ? ` ${role}` : ''
+    }`,
     calledWith
       ? `@${lead.name} called you in: ${calledWith}`
       : `Wait for instructions from @${lead.name} before you start.`,

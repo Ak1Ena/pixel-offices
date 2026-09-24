@@ -4,6 +4,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/Ak1Ena/pixel-offices/main/scripts/install-macos.sh | bash
 #   curl -fsSL .../install-macos.sh | bash -s -- v2.4.0   # a specific version
 #
+# Two environment variables exist for the desktop app's own Install button
+# (adapters/electron/updater.ts), and change nothing for a terminal run:
+#   PIXEL_OFFICE_PROGRESS=1      the DMG download prints curl's percentage
+#                                (stderr) so a progress bar can follow it.
+#   PIXEL_OFFICE_KEEP_RUNNING=1  do not quit or relaunch a running app: it
+#                                stays usable while the bundle is replaced and
+#                                the app asks the user to reopen instead.
+#
 # This replaces an app on the user's disk, so every failure aborts BEFORE
 # anything under /Applications is touched: the download is verified against
 # its published SHA256SUMS before the DMG is even mounted, and a failed copy
@@ -21,6 +29,8 @@ APP_PROCESS_PATH="${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
 # script's failure/no-op paths can be tested without touching the real one.
 INSTALL_DIR="${PIXEL_OFFICE_INSTALL_DIR:-/Applications}"
 QUIT_WAIT_SECONDS=15
+PROGRESS="${PIXEL_OFFICE_PROGRESS:-0}"
+KEEP_RUNNING="${PIXEL_OFFICE_KEEP_RUNNING:-0}"
 
 log() { printf '==> %s\n' "$1"; }
 die() {
@@ -127,7 +137,14 @@ for url in "$DMG_URL" "$SUMS_URL"; do
 done
 
 log "Downloading ${DMG_NAME}..."
-curl -fsSL --proto '=https' -o "${WORKDIR}/${DMG_NAME}" "$DMG_URL" \
+# --progress-bar writes a percentage to stderr; the app parses it. A terminal
+# run keeps the silent -s so piping this script stays quiet.
+if [ "$PROGRESS" = "1" ]; then
+  DMG_CURL_OPTS=(-fL --progress-bar)
+else
+  DMG_CURL_OPTS=(-fsSL)
+fi
+curl "${DMG_CURL_OPTS[@]}" --proto '=https' -o "${WORKDIR}/${DMG_NAME}" "$DMG_URL" \
   || die "download failed. Is version ${VERSION} published for macOS ${ARCH}?"
 
 log "Downloading ${SUMS_NAME}..."
@@ -170,7 +187,12 @@ SOURCE_APP="$(find "$MOUNT_POINT" -maxdepth 1 -name "*.app" -print -quit)"
 
 # ── Quit a running instance ─────────────────────────────────────
 
-if pgrep -f "$APP_PROCESS_PATH" >/dev/null 2>&1; then
+if [ "$KEEP_RUNNING" = "1" ]; then
+  # The app installs its own update: quitting it here would kill the update.
+  # It keeps running from the bundle about to be replaced (macOS holds the
+  # open files) and asks the user to reopen once this finishes.
+  log "Leaving the running ${APP_NAME} alone (it asked for this update)."
+elif pgrep -f "$APP_PROCESS_PATH" >/dev/null 2>&1; then
   log "Quitting the running ${APP_NAME}..."
   osascript -e "quit app \"${APP_NAME}\"" >/dev/null 2>&1 || true
   waited=0
@@ -214,7 +236,11 @@ log "Unmounting disk image..."
 hdiutil detach "$MOUNT_POINT" -quiet || hdiutil detach "$MOUNT_POINT" -quiet -force || true
 MOUNTED=0
 
-log "Launching ${APP_NAME}..."
-open -a "$CURRENT_APP"
+if [ "$KEEP_RUNNING" = "1" ]; then
+  log "Installed. Reopen ${APP_NAME} to use ${VERSION}."
+else
+  log "Launching ${APP_NAME}..."
+  open -a "$CURRENT_APP"
+fi
 
 log "Done: ${APP_NAME} ${VERSION} installed."

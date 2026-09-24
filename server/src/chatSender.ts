@@ -26,16 +26,27 @@ const QUEUE_TICK_MS = 2_000;
 const CONTROL_CHARS_RE = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 const PENDING_OFFICE_TEXTS_LIMIT = 20;
 
+/** A queued message plus how it may be delivered. `midTurn` messages are the
+ *  human's own words from the office chat: they go in while the agent is still
+ *  working, because Claude takes typed input as queued input and reads it at
+ *  the next prompt -- waiting for the turn to end is what made the office feel
+ *  stuck. Everything the OFFICE writes (card prompts, `/clear`, a workflow's
+ *  intro, a relayed mention) keeps the idle-only rule, so a card prompt can
+ *  never land in the same turn as the human's text. A permission prompt holds
+ *  both: the Enter would answer the prompt. */
+type PendingMessage = QueuedChatMessage & { midTurn?: boolean };
+
 /**
- * Messages sent from the office chat. Delivered straight away when the agent
- * is idle; otherwise held until its turn ends. A permission prompt ALWAYS
+ * Messages sent from the office chat. The human's own messages (`midTurn`) are
+ * typed as soon as the terminal can take them, even mid-turn; messages the
+ * office itself writes wait for the turn to end. A permission prompt ALWAYS
  * holds the queue: the Enter that submits a message would answer the prompt.
  */
 export class ChatSender {
   private readonly writers: TerminalWriter[] = [];
   /** Last sendable state broadcast per agent (agentChatSendable). */
   private readonly sendable = new Map<number, boolean>();
-  private readonly queues = new Map<number, QueuedChatMessage[]>();
+  private readonly queues = new Map<number, PendingMessage[]>();
   /** Agents seen mid-turn (last activity broadcast said so). */
   private readonly busy = new Set<number>();
   private readonly tick: ReturnType<typeof setInterval>;
@@ -91,7 +102,7 @@ export class ChatSender {
     return [...this.store.keys()].filter((id) => this.canSend(id));
   }
 
-  send(agentId: number, rawText: unknown): void {
+  send(agentId: number, rawText: unknown, opts?: { midTurn?: boolean }): void {
     const agent = this.store.get(agentId);
     const text = typeof rawText === 'string' ? rawText.replace(CONTROL_CHARS_RE, '').trim() : '';
     if (!agent) return;
@@ -112,7 +123,7 @@ export class ChatSender {
       this.report(agentId, 'Too many queued messages. Wait for the agent to finish.');
       return;
     }
-    queue.push({ queueId: randomUUID(), text });
+    queue.push({ queueId: randomUUID(), text, ...(opts?.midTurn ? { midTurn: true } : {}) });
     this.queues.set(agentId, queue);
     if (!this.flush(agentId)) this.report(agentId);
   }
@@ -158,7 +169,10 @@ export class ChatSender {
 
   /** Current queues, for a connecting client. */
   snapshot(): Array<{ id: number; queued: QueuedChatMessage[] }> {
-    return [...this.queues].map(([id, queued]) => ({ id, queued: queued.map((m) => ({ ...m })) }));
+    return [...this.queues].map(([id, queued]) => ({
+      id,
+      queued: queued.map((m) => ({ queueId: m.queueId, text: m.text })),
+    }));
   }
 
   dispose(): void {
@@ -175,31 +189,38 @@ export class ChatSender {
 
   /** Type queued messages in while the agent can take them. Returns true if anything was sent. */
   private flush(agentId: number): boolean {
-    const queue = this.queues.get(agentId);
-    const agent = this.store.get(agentId);
-    if (!queue || queue.length === 0 || !agent) return false;
-    if (agent.permissionSent || this.busy.has(agentId)) return false;
-    const writer = this.writerFor(agent);
-    if (!writer) return false;
-    if (writer.ready && !writer.ready(agent)) return false;
-    // One at a time: the message starts a turn, the next waits for it to end.
-    const message = queue.shift()!;
-    this.setQueue(agentId, queue);
-    const pending = (agent.pendingOfficeTexts ??= []);
-    pending.push(message.text);
-    if (pending.length > PENDING_OFFICE_TEXTS_LIMIT) pending.shift();
-    try {
-      writer.write(agent, message.text);
-      this.busy.add(agentId);
-      this.report(agentId);
-    } catch (err) {
-      console.error(`[Pixel Agents] Chat: typing into agent ${agentId}'s terminal failed:`, err);
-      this.report(agentId, 'Could not type into the terminal.');
+    let sent = false;
+    for (;;) {
+      const queue = this.queues.get(agentId);
+      const agent = this.store.get(agentId);
+      if (!queue || queue.length === 0 || !agent) break;
+      if (agent.permissionSent) break;
+      // The human's own words go in mid-turn, one after another; an office
+      // message starts a turn of its own and the next one waits for its end.
+      if ((sent || this.busy.has(agentId)) && !queue[0].midTurn) break;
+      const writer = this.writerFor(agent);
+      if (!writer) break;
+      if (writer.ready && !writer.ready(agent)) break;
+      const message = queue.shift()!;
+      this.setQueue(agentId, queue);
+      const pending = (agent.pendingOfficeTexts ??= []);
+      pending.push(message.text);
+      if (pending.length > PENDING_OFFICE_TEXTS_LIMIT) pending.shift();
+      try {
+        writer.write(agent, message.text);
+        this.busy.add(agentId);
+        this.report(agentId);
+      } catch (err) {
+        console.error(`[Pixel Agents] Chat: typing into agent ${agentId}'s terminal failed:`, err);
+        this.report(agentId, 'Could not type into the terminal.');
+        return sent;
+      }
+      sent = true;
     }
-    return true;
+    return sent;
   }
 
-  private setQueue(agentId: number, queue: QueuedChatMessage[]): void {
+  private setQueue(agentId: number, queue: PendingMessage[]): void {
     if (queue.length === 0) this.queues.delete(agentId);
     else this.queues.set(agentId, queue);
   }
@@ -208,7 +229,8 @@ export class ChatSender {
     this.store.broadcast({
       type: 'agentChatQueue',
       id: agentId,
-      queued: (this.queues.get(agentId) ?? []).map((m) => ({ ...m })),
+      // `midTurn` is ours, not part of the protocol: send the declared fields only.
+      queued: (this.queues.get(agentId) ?? []).map((m) => ({ queueId: m.queueId, text: m.text })),
       ...(error ? { error } : {}),
     });
   }
