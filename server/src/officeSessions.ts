@@ -57,6 +57,8 @@ export interface StartAgentRequest {
   skipPermissions?: boolean;
   /** A label from the provider's model picker: chosen (this session only) before the first message. */
   model?: string;
+  /** An earlier session to continue (`claude --resume <id>`). */
+  resume?: string;
 }
 
 /** What OfficeSessions needs from the runtime. */
@@ -110,6 +112,9 @@ interface ModelsView {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Ctrl+U: clears the CLI's input line (never Esc — at an idle prompt Esc opens Claude's rewind menu). */
+const KEY_CLEAR_LINE = '\x15';
 
 const KEY_BYTES: Record<AgentKey, string> = {
   enter: '\r',
@@ -379,6 +384,16 @@ export class OfficeSessions {
           'The office cannot pick a model for this CLI. Put the model in the start command instead.',
       };
     }
+    const resume = req.resume?.trim();
+    if (resume) {
+      if (isAgy || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(resume)) {
+        return { ok: false, error: 'Only a Claude session can be resumed here.' };
+      }
+      if (this.sessions.has(resume) || this.agentFor(resume)) {
+        return { ok: false, error: 'That session is already open in the office.' };
+      }
+      command.args.push('--resume', resume);
+    }
     if (req.skipPermissions) command.args.push('--dangerously-skip-permissions');
     // The first message rides the command line (`claude "<prompt>"`, `agy -i
     // "<prompt>"`), never the keyboard: typed input would land in — and its
@@ -479,6 +494,13 @@ export class OfficeSessions {
       if (!isAgy) this.host.adoptLaunchedSession(sessionId, cwd);
     }, 1_000);
     return { ok: true, sessionId };
+  }
+
+  /** The session ids agents in this office are known by (open sessions can't be resumed twice). */
+  openSessionIds(): Set<string> {
+    const ids = new Set<string>(this.sessions.keys());
+    for (const agent of this.store.values()) for (const key of sessionKeys(agent)) ids.add(key);
+    return ids;
   }
 
   recentFolders(): string[] {
@@ -682,29 +704,38 @@ export class OfficeSessions {
     }
   }
 
-  /** Type the picker's command and wait for its settled dialog. */
+  /**
+   * Type the picker's command and wait for its settled dialog. The CLI drops
+   * keys while it redraws (right after a model switch it repaints the prompt),
+   * so this waits for a still screen first, and retries once — clearing the
+   * input line (Ctrl+U) — when the dialog never shows.
+   */
   private async openPicker(
     session: OwnedSession,
     picker: ModelPicker,
   ): Promise<ParsedScreenQuestion | null> {
-    await typePrompt(
-      (data) => session.pty.write(data),
-      picker.command,
-      () => this.sessions.get(session.sessionId) !== session,
-    );
-    return this.settledQuestion(session);
+    const gone = () => this.sessions.get(session.sessionId) !== session;
+    for (let attempt = 0; attempt < 2 && !gone(); attempt++) {
+      await this.settledScreen(session);
+      if (attempt > 0) await this.pressKeys(session, [KEY_CLEAR_LINE]);
+      await typePrompt((data) => session.pty.write(data), picker.command, gone);
+      const question = await this.settledQuestion(session);
+      if (question) return question;
+    }
+    return null;
   }
 
-  /** Esc, then wait for the dialog to go. */
-  private async closePicker(session: OwnedSession, key: string): Promise<void> {
-    await this.pressKeys(session, [KEY_BYTES.escape]);
-    await this.waitClosed(session, key);
-  }
-
-  private waitClosed(session: OwnedSession, key: string): Promise<true | null> {
-    return this.waitFor(session, () =>
-      parseScreenQuestion(this.readScreen(session))?.key === key ? null : true,
-    );
+  /** Wait until the screen stops changing and shows no dialog. */
+  private async settledScreen(session: OwnedSession): Promise<void> {
+    let last = '';
+    let same = 0;
+    await this.waitFor(session, () => {
+      const lines = this.readScreen(session);
+      const text = lines.join('\n');
+      same = text === last ? same + 1 : 0;
+      last = text;
+      return same >= MODEL_PICKER_SETTLE_POLLS && !parseScreenQuestion(lines) ? true : null;
+    });
   }
 
   /** The question on screen once the screen has stopped changing (a few polls in a row). */
@@ -718,6 +749,18 @@ export class OfficeSessions {
       last = text;
       return same >= MODEL_PICKER_SETTLE_POLLS ? parseScreenQuestion(lines) : null;
     });
+  }
+
+  /** Esc, then wait for the dialog to go. */
+  private async closePicker(session: OwnedSession, key: string): Promise<void> {
+    await this.pressKeys(session, [KEY_BYTES.escape]);
+    await this.waitClosed(session, key);
+  }
+
+  private waitClosed(session: OwnedSession, key: string): Promise<true | null> {
+    return this.waitFor(session, () =>
+      parseScreenQuestion(this.readScreen(session))?.key === key ? null : true,
+    );
   }
 
   private async pressKeys(session: OwnedSession, keys: string[]): Promise<void> {

@@ -18,6 +18,8 @@ import { listFolder } from './folderBrowser.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { handleOfficeFileMessage } from './officeFileMessages.js';
 import type { OfficeSessions } from './officeSessions.js';
+import { resolveProjectFolder } from './officeSessions.js';
+import { listPastSessions } from './pastSessions.js';
 import { handleProposalMessage } from './proposalMessages.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
@@ -326,8 +328,53 @@ export function handleClientMessage(
         firstMessage: typeof msg.firstMessage === 'string' ? msg.firstMessage : undefined,
         skipPermissions: msg.skipPermissions === true,
         model: typeof msg.model === 'string' ? msg.model : undefined,
+        resume: typeof msg.resume === 'string' ? msg.resume : undefined,
       });
       send({ type: 'startAgentResult', ...result });
+      break;
+    }
+
+    case 'listPastSessions': {
+      // Reveals what was said in this folder's sessions (titles): same proof as starting an agent.
+      const cwd = typeof msg.cwd === 'string' ? msg.cwd : '';
+      if (!ctx.privileged || !ctx.officeSessions) {
+        send({ type: 'pastSessions', cwd, sessions: [], error: 'Not available here.' });
+        break;
+      }
+      const folder = resolveProjectFolder(cwd);
+      if (!folder) {
+        send({ type: 'pastSessions', cwd, sessions: [], error: 'That folder does not exist.' });
+        break;
+      }
+      send({
+        type: 'pastSessions',
+        cwd,
+        sessions: listPastSessions(
+          claudeProvider.getSessionDirs?.(folder) ?? [],
+          ctx.officeSessions.openSessionIds(),
+        ),
+      });
+      break;
+    }
+
+    case 'listSlashCommands': {
+      // Starts the agent's CLI on this machine to ask it: privileged, answered to the asker only.
+      const id = msg.id;
+      if (typeof id !== 'number') break;
+      if (!ctx.privileged || !runtime) {
+        send({ type: 'slashCommands', id, commands: [], error: 'Not available here.' });
+        break;
+      }
+      runtime.listSlashCommands(id).then(
+        (commands) => send({ type: 'slashCommands', id, commands }),
+        (err: unknown) =>
+          send({
+            type: 'slashCommands',
+            id,
+            commands: [],
+            error: err instanceof Error ? err.message : String(err),
+          }),
+      );
       break;
     }
 

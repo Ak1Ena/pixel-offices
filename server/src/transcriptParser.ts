@@ -416,14 +416,14 @@ export function processTranscriptLine(
           if (agent.activeToolIds.size === 0) {
             agent.hadToolsInTurn = false;
           }
-        } else {
+        } else if (!isLocalCommandRecord(content)) {
           // New user text prompt — new turn starting
           cancelWaitingTimer(agentId, waitingTimers);
           clearAgentActivity(agent, agentId, agents, permissionTimers);
           agent.hadToolsInTurn = false;
           if (isInterruptRecord(content)) endInterruptedTurn(agentId, agent, agents);
         }
-      } else if (typeof content === 'string' && content.trim()) {
+      } else if (typeof content === 'string' && content.trim() && !isLocalCommandRecord(content)) {
         // New user text prompt — new turn starting
         cancelWaitingTimer(agentId, waitingTimers);
         clearAgentActivity(agent, agentId, agents, permissionTimers);
@@ -767,6 +767,29 @@ function isAsyncAgentResult(block: Record<string, unknown>): boolean {
 const INTERRUPT_MARKER = '[Request interrupted by user';
 
 /** A user record that is Claude's interrupt note rather than a new prompt. */
+/**
+ * A slash command's own records (`/model`, `/effort`, …): the command line,
+ * its output and the caveat Claude writes before them. A local command runs
+ * no model turn — it writes no turn_duration and fires no Stop hook — so
+ * treating these as a prompt left the agent "active" for good. A command that
+ * does start a turn (a skill or custom command) is followed by its expanded
+ * prompt and the model's reply, which mark the agent busy as usual.
+ */
+export function isLocalCommandRecord(content: unknown): boolean {
+  const text =
+    typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content
+            .map((b: { type?: unknown; text?: unknown }) =>
+              b?.type === 'text' && typeof b.text === 'string' ? b.text : '',
+            )
+            .join('')
+        : '';
+  const head = text.trimStart();
+  return head.startsWith('<command-name>') || head.startsWith('<local-command-');
+}
+
 export function isInterruptRecord(content: unknown): boolean {
   if (typeof content === 'string') return content.trimStart().startsWith(INTERRUPT_MARKER);
   if (!Array.isArray(content)) return false;

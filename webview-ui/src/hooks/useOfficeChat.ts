@@ -14,6 +14,7 @@ import type {
   QueuedChatMessage,
   ScreenQuestion,
 } from '../../../core/src/messages.js';
+import type { SlashCommandList } from '../components/SlashMenu.js';
 import { mergeChatEntries } from '../officeChat.js';
 import { transport } from '../transport/index.js';
 
@@ -62,6 +63,9 @@ export interface OfficeChatState {
   loadModels: (agentId: number) => void;
   /** Switch the agent to the picker option with this label (this session only). */
   setModel: (agentId: number, label: string) => void;
+  /** Each agent's slash commands as its CLI reports them (for the chat's `/` menu). */
+  slashCommands: Record<number, SlashCommandList>;
+  loadSlashCommands: (agentId: number) => void;
   /** Agents that asked to have their own context cleared, waiting for an answer. */
   clearRequests: AgentClearRequest[];
   clearAgent: (agentId: number, mode: ClearMode) => void;
@@ -105,6 +109,7 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
   const [prefs, setPrefs] = useState<Record<number, AgentPrefsState>>({});
   const [clearRequests, setClearRequests] = useState<AgentClearRequest[]>([]);
   const [models, setModels] = useState<Record<number, AgentModels>>({});
+  const [slashCommands, setSlashCommands] = useState<Record<number, SlashCommandList>>({});
   const [modelOptions, setModelOptions] = useState<Record<string, ModelOption[]>>({});
 
   useEffect(() => {
@@ -143,6 +148,11 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
         }));
       } else if (msg.type === 'agentModels') {
         setModels((prev) => ({ ...prev, [msg.id]: msg }));
+      } else if (msg.type === 'slashCommands') {
+        setSlashCommands((prev) => ({
+          ...prev,
+          [msg.id]: { commands: msg.commands, loading: false, error: msg.error },
+        }));
       } else if (msg.type === 'modelOptions') {
         setModelOptions((prev) => ({ ...prev, [msg.providerId]: msg.options }));
       } else if (msg.type === 'agentClearRequests') {
@@ -224,6 +234,11 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     transport.send({ type: 'setAgentPrefs', id: agentId, ...patch });
   }, []);
 
+  const loadSlashCommands = useCallback((agentId: number) => {
+    setSlashCommands((prev) => ({ ...prev, [agentId]: { commands: [], loading: true } }));
+    transport.send({ type: 'listSlashCommands', id: agentId });
+  }, []);
+
   const loadModels = useCallback((agentId: number) => {
     transport.send({ type: 'loadAgentModels', id: agentId });
   }, []);
@@ -270,6 +285,8 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     setAgentPrefs,
     models,
     modelOptions,
+    slashCommands,
+    loadSlashCommands,
     loadModels,
     setModel,
     clearRequests,

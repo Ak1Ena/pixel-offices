@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import type { ModelOption } from '../../../core/src/messages.js';
+import type { ModelOption, PastSession } from '../../../core/src/messages.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
 import { ModelSelect } from './ModelSelect.js';
@@ -35,6 +35,26 @@ export function AddAgentModal({
   const [firstMessage, setFirstMessage] = useState('');
   const [skipPermissions, setSkipPermissions] = useState(false);
   const [model, setModel] = useState('');
+  /** Start fresh, or continue one of the folder's earlier sessions. */
+  const [mode, setMode] = useState<'new' | 'resume'>('new');
+  const [resumeId, setResumeId] = useState('');
+  const [past, setPast] = useState<{ cwd: string; sessions: PastSession[]; error?: string } | null>(
+    null,
+  );
+
+  // The folder's earlier sessions, asked for whenever Resume is on and the folder changes.
+  useEffect(() => {
+    if (!isOpen || mode !== 'resume' || !cwd.trim()) return;
+    const folder = cwd.trim();
+    setPast(null);
+    setResumeId('');
+    const off = transport.onMessage((msg) => {
+      if (msg.type !== 'pastSessions' || msg.cwd !== folder) return;
+      setPast({ cwd: folder, sessions: msg.sessions, error: msg.error });
+    });
+    transport.send({ type: 'listPastSessions', cwd: folder });
+    return off;
+  }, [isOpen, mode, cwd]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,7 +82,7 @@ export function AddAgentModal({
     });
   }, [pending, onClose]);
 
-  const canStart = cwd.trim().length > 0 && !pending;
+  const canStart = cwd.trim().length > 0 && !pending && (mode === 'new' || resumeId !== '');
 
   return (
     <Modal
@@ -88,6 +108,7 @@ export function AddAgentModal({
             firstMessage: firstMessage.trim() || undefined,
             skipPermissions: skipPermissions || undefined,
             model: model || undefined,
+            resume: mode === 'resume' ? resumeId : undefined,
           });
         }}
       >
@@ -105,6 +126,35 @@ export function AddAgentModal({
         <div className="flex flex-col gap-2 text-sm">
           Project folder
           <FolderPicker value={cwd} onChange={setCwd} recentFolders={recentFolders} />
+        </div>
+        <div className="flex flex-col gap-4 text-sm">
+          <div className="flex gap-4">
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === 'new' ? 'active' : 'default'}
+              onClick={() => setMode('new')}
+            >
+              New session
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={mode === 'resume' ? 'active' : 'default'}
+              onClick={() => setMode('resume')}
+              data-testid="agent-mode-resume"
+            >
+              Resume a session
+            </Button>
+          </div>
+          {mode === 'resume' && (
+            <PastSessionList
+              past={past}
+              folderChosen={cwd.trim().length > 0}
+              value={resumeId}
+              onChange={setResumeId}
+            />
+          )}
         </div>
         <label className="flex flex-col gap-2 text-sm">
           Start with
@@ -129,7 +179,7 @@ export function AddAgentModal({
           />
         </div>
         <label className="flex flex-col gap-2 text-sm">
-          First message (optional)
+          {mode === 'resume' ? 'Message after resuming (optional)' : 'First message (optional)'}
           <input
             className={fieldClass}
             value={firstMessage}
@@ -171,5 +221,69 @@ export function AddAgentModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function ago(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
+/** The folder's earlier sessions, newest first; one is picked to resume. */
+function PastSessionList({
+  past,
+  folderChosen,
+  value,
+  onChange,
+}: {
+  past: { sessions: PastSession[]; error?: string } | null;
+  folderChosen: boolean;
+  value: string;
+  onChange: (sessionId: string) => void;
+}) {
+  if (!folderChosen) return <span className="text-2xs text-text-muted">Pick a folder first.</span>;
+  if (!past) return <span className="text-2xs text-text-muted">Looking for sessions…</span>;
+  if (past.error) return <span className="text-2xs text-danger">{past.error}</span>;
+  if (past.sessions.length === 0) {
+    return <span className="text-2xs text-text-muted">No earlier sessions in this folder.</span>;
+  }
+  return (
+    <div
+      className="flex flex-col max-h-240 overflow-y-auto border-2 border-border"
+      role="listbox"
+      aria-label="Earlier sessions"
+      data-testid="agent-past-sessions"
+    >
+      {past.sessions.map((s) => (
+        <button
+          key={s.sessionId}
+          type="button"
+          role="option"
+          aria-selected={value === s.sessionId}
+          disabled={s.open}
+          onClick={() => onChange(s.sessionId)}
+          title={s.firstPrompt ?? s.title}
+          className={`flex flex-col gap-1 text-left px-8 py-4 border-0 border-b border-border ${
+            s.open
+              ? 'bg-transparent text-text-muted cursor-default'
+              : value === s.sessionId
+                ? 'bg-active-bg text-text cursor-pointer'
+                : 'bg-transparent text-text cursor-pointer'
+          }`}
+        >
+          <span className="text-sm truncate">{s.title}</span>
+          <span className="text-2xs text-text-muted">
+            {ago(s.updatedAt)}
+            {s.open ? ' · open in the office' : ''}
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }

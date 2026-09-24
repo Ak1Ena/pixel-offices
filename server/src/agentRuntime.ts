@@ -57,6 +57,7 @@ import { PermissionBroker } from './permissionBroker.js';
 import { suggestionsFilePath } from './proposals.js';
 import { Proposals } from './proposals.js';
 import { SessionRouter } from './sessionRouter.js';
+import { SlashCommands } from './slashCommands.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { TaskDesk } from './taskDesk.js';
 import type { AgentStarter } from './teamRuns.js';
@@ -858,6 +859,20 @@ export class AgentRuntime {
       },
     );
     this.chatSender.refreshSendable();
+  }
+
+  // ── Slash commands (the chat's `/` menu) ──
+
+  private readonly slashCommands = new SlashCommands();
+
+  /** The slash commands this agent's CLI accepts in its folder, as the CLI reports them. */
+  listSlashCommands(agentId: number): Promise<string[]> {
+    const agent = this.store.get(agentId);
+    if (!agent) return Promise.reject(new Error('No such agent.'));
+    return this.slashCommands.list(
+      this.providersById.get(agent.providerId ?? this.provider.id),
+      agent.cwd,
+    );
   }
 
   // ── Whiteboard ──

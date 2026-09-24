@@ -14,6 +14,7 @@ import * as path from 'path';
 
 import {
   HOOK_API_PREFIX,
+  HOOK_PROBE_ENV,
   PERMISSION_POLL_MS,
   PERMISSION_POLL_SEGMENT,
   PERMISSION_WAIT_MS,
@@ -367,6 +368,9 @@ async function main(options: HookScriptOptions): Promise<void> {
  * the CLI that runs it.
  */
 export function runHookScript(options: HookScriptOptions): void {
+  // A run the office started only to ask the CLI something (its slash-command
+  // list): not an agent, so it must not reach the office as a session.
+  if (process.env[HOOK_PROBE_ENV] === '1') process.exit(0);
   main(options)
     .catch(() => {})
     .finally(() => process.exit(0));

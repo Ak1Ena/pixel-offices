@@ -150,6 +150,11 @@ export interface HookProvider {
    *  switch this CLI's model. */
   readonly modelPicker?: ModelPicker;
 
+  /** The slash commands the CLI accepts in `cwd` (built-ins, skills, plugin
+   *  and project commands), as the CLI itself reports them — names without
+   *  the leading `/`. Absent = the office cannot list them. */
+  listSlashCommands?(cwd: string): Promise<string[]>;
+
   // ── Optional file fallback (heuristic mode) ──
 
   /** Session directories to scan. Undefined = no file fallback. */

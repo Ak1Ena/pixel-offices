@@ -108,6 +108,18 @@ export const MODEL_PICKER_KEY_GAP_MS = 120;
 export const MODEL_OPTIONS_FILE_NAME = 'model-options.json';
 export const MODEL_LABEL_MAX_CHARS = 80;
 export const MODEL_DETAIL_MAX_CHARS = 160;
+/** How long the CLI may take to report its slash commands (it runs its SessionStart hooks first). */
+export const SLASH_COMMANDS_TIMEOUT_MS = 30_000;
+/** A folder's slash-command list is asked for again after this long. */
+export const SLASH_COMMANDS_CACHE_MS = 10 * 60_000;
+export const SLASH_COMMANDS_MAX = 400;
+/** Earlier sessions offered by + Agent → Resume, per folder. */
+export const PAST_SESSIONS_MAX = 40;
+/** How much of each transcript's head and tail is read for its title. */
+export const PAST_SESSIONS_READ_BYTES = 64 * 1024;
+export const PAST_SESSION_TITLE_MAX_CHARS = 160;
+/** Set on CLI runs the office starts only to ask the CLI something: hook scripts stay silent for them. */
+export const HOOK_PROBE_ENV = 'PIXEL_AGENTS_PROBE';
 /** Most agents the office will run at once. */
 export const OFFICE_SESSION_LIMIT = 8;
 /** Terminal size given to an office-run agent (its screen is shown as text). */

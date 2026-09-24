@@ -31,6 +31,7 @@ import { burnLevelFor, formatTokens } from '../officeChat.js';
 import { tunable } from '../tunableStore.js';
 import { AttachFileButton, FileChips, MessageText } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
+import { type SlashCommandList, useSlashMenu } from './SlashMenu.js';
 import { Button } from './ui/Button.js';
 import { WorkflowRunSteps } from './WorkflowRunSteps.js';
 
@@ -96,6 +97,9 @@ interface ChatCardProps {
   /** Read / switch through the agent's own model picker. Absent when the office can't. */
   onLoadModels?: () => void;
   onSetModel?: (label: string) => void;
+  /** The agent's slash commands for the `/` menu; absent = no menu. */
+  slashCommands?: SlashCommandList;
+  onLoadSlashCommands?: () => void;
 }
 
 /**
@@ -291,6 +295,8 @@ export function ChatCard({
   models,
   onLoadModels,
   onSetModel,
+  slashCommands,
+  onLoadSlashCommands,
 }: ChatCardProps) {
   const [showWorkflows, setShowWorkflows] = useState(false);
   const [showScreen, setShowScreen] = useState(false);
@@ -304,6 +310,12 @@ export function ChatCard({
   const [isDropTarget, setIsDropTarget] = useState(false);
   const [isFileDropTarget, setIsFileDropTarget] = useState(false);
   const attachments = useFileAttachments();
+  const slash = useSlashMenu({
+    draft,
+    setDraft,
+    list: slashCommands,
+    onNeedList: onLoadSlashCommands,
+  });
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1027,7 +1039,8 @@ export function ChatCard({
           <label htmlFor={`chat-input-${agentId}`} className="sr-only">
             Message {title}
           </label>
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-6 relative">
+            {slash.menu}
             <textarea
               onPaste={(e) => {
                 if (!filesEnabled) return;
@@ -1042,12 +1055,13 @@ export function ChatCard({
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
+                if (slash.onKeyDown(e)) return;
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   void submit();
                 }
               }}
-              placeholder={`Message ${title} — Enter sends, Shift+Enter new line`}
+              placeholder={`Message ${title} — Enter sends, Shift+Enter new line${onLoadSlashCommands ? ', / for commands' : ''}`}
               title={`Drop a pin${filesEnabled ? ' or files' : ''} here to attach`}
               className={`w-full min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 rounded-none outline-none ${
                 isDropTarget ? 'border-dashed border-pin-note' : 'border-border focus:border-accent'

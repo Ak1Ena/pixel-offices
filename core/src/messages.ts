@@ -38,6 +38,8 @@ export type ServerMessage =
   | AgentPrefs
   | AgentModels
   | ModelOptions
+  | SlashCommands
+  | PastSessions
   | AgentClearRequests
   | DocEdits
   | DocEditDefault
@@ -135,6 +137,8 @@ export type ClientMessage =
   | SetAgentPrefs
   | LoadAgentModels
   | SetAgentModel
+  | ListSlashCommands
+  | ListPastSessions
   | SetDocEditDefault
   | UndoDocEdit
   | OpenOfficeFile
@@ -422,6 +426,28 @@ export interface ModelOptions {
   type: 'modelOptions';
   providerId: string;
   options: ModelOption[];
+}
+
+export interface SlashCommands {
+  type: 'slashCommands';
+  id: number;
+  commands: string[];
+  error?: string;
+}
+
+export interface PastSessions {
+  type: 'pastSessions';
+  cwd: string;
+  sessions: PastSession[];
+  error?: string;
+}
+
+export interface PastSession {
+  sessionId: string;
+  title: string;
+  firstPrompt?: string;
+  updatedAt: string;
+  open?: boolean;
 }
 
 export interface AgentClearRequests {
@@ -1310,6 +1336,7 @@ export interface StartAgent {
   command?: string;
   firstMessage?: string;
   skipPermissions?: boolean;
+  resume?: string;
   model?: string;
 }
 
@@ -1356,6 +1383,16 @@ export interface SetAgentModel {
   type: 'setAgentModel';
   id: number;
   label: string;
+}
+
+export interface ListSlashCommands {
+  type: 'listSlashCommands';
+  id: number;
+}
+
+export interface ListPastSessions {
+  type: 'listPastSessions';
+  cwd: string;
 }
 
 export interface SetDocEditDefault {

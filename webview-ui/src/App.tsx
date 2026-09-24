@@ -880,6 +880,12 @@ function App() {
                       ? () => hideQuestion(id, chat.questions[id].key, false)
                       : undefined
                   }
+                  slashCommands={chat.slashCommands[id]}
+                  onLoadSlashCommands={
+                    chat.privileged && chat.sendable[id] === true
+                      ? () => chat.loadSlashCommands(id)
+                      : undefined
+                  }
                   models={chat.models[id]}
                   onLoadModels={
                     chat.privileged && chat.screens[id] ? () => chat.loadModels(id) : undefined
@@ -1064,6 +1070,9 @@ function App() {
                 isBrowserRuntime ? (r) => openPinInViewer(r.pinId, r.requestId) : undefined
               }
               runOf={(id) => activeRun(workflows.runs, id)}
+              slashCommandsOf={(id) => chat.slashCommands[id]}
+              onLoadSlashCommands={chat.loadSlashCommands}
+              slashEnabled={(id) => chat.privileged && chat.sendable[id] === true}
               onStopRun={chat.privileged || !isBrowserRuntime ? workflows.stopRun : undefined}
               onOpenRoom={(roomId) => {
                 setIsMessengerOpen(false);

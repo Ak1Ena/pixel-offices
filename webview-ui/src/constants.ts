@@ -443,6 +443,8 @@ export const DOC_NUMBERED_MAX_LINES = 20_000;
 export const FOCUS_NOTICES_MAX_SHOWN = 3;
 /** localStorage key for the Messenger's reading settings (per viewer). */
 /** Whether the viewer folded away workflow steps in the chat card and Messages (localStorage). */
+/** Commands the chat's `/` menu shows at once (it scrolls). */
+export const SLASH_MENU_MAX_ITEMS = 60;
 export const WORKFLOW_STEPS_HIDDEN_KEY = 'pixel-agents.workflowStepsHidden';
 export const MESSENGER_PREFS_KEY = 'pixel-office:messenger-prefs';
 /** Files opened with Open file, newest first (per viewer). */

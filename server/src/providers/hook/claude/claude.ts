@@ -14,6 +14,7 @@ import {
   installHooks as installerInstallHooks,
   uninstallHooks as installerUninstallHooks,
 } from './claudeHookInstaller.js';
+import { listClaudeSlashCommands } from './claudeSlashCommands.js';
 import { claudeTeamProvider } from './claudeTeamProvider.js';
 import { CONSENT_DISCLOSURE, CONSENT_INSTALL_HEADLINE } from './consentCopy.js';
 import {
@@ -386,6 +387,7 @@ export const claudeProvider: HookProvider = {
   // "Enter to set as default · s to use this session only": one agent's pick
   // must not change the model every new session starts on.
   modelPicker: { command: '/model', sessionKey: 's' },
+  listSlashCommands: listClaudeSlashCommands,
 
   getSessionDirs,
   getAllSessionRoots,

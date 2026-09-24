@@ -116,6 +116,8 @@ components:
         - $ref: '#/components/schemas/AgentPrefs'
         - $ref: '#/components/schemas/AgentModels'
         - $ref: '#/components/schemas/ModelOptions'
+        - $ref: '#/components/schemas/SlashCommands'
+        - $ref: '#/components/schemas/PastSessions'
         - $ref: '#/components/schemas/AgentClearRequests'
         - $ref: '#/components/schemas/DocEdits'
         - $ref: '#/components/schemas/DocEditDefault'
@@ -222,6 +224,8 @@ components:
         - $ref: '#/components/schemas/SetAgentPrefs'
         - $ref: '#/components/schemas/LoadAgentModels'
         - $ref: '#/components/schemas/SetAgentModel'
+        - $ref: '#/components/schemas/ListSlashCommands'
+        - $ref: '#/components/schemas/ListPastSessions'
         - $ref: '#/components/schemas/SetDocEditDefault'
         - $ref: '#/components/schemas/UndoDocEdit'
         - $ref: '#/components/schemas/OpenOfficeFile'
@@ -814,6 +818,63 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelOption'
+
+    SlashCommands:
+      description: |
+        The slash commands an agent's CLI accepts in its folder, as the CLI
+        reports them (Claude: a headless run's init message). Names without
+        the leading `/`. Sent only to the client that asked (listSlashCommands).
+      type: object
+      additionalProperties: false
+      required: [type, id, commands]
+      properties:
+        type:
+          const: slashCommands
+        id:
+          type: integer
+        commands:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+
+    PastSessions:
+      description: |
+        A folder's earlier Claude sessions, newest first, for + Agent → Resume.
+        Sent only to the client that asked (listPastSessions).
+      type: object
+      additionalProperties: false
+      required: [type, cwd, sessions]
+      properties:
+        type:
+          const: pastSessions
+        cwd:
+          type: string
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PastSession'
+        error:
+          type: string
+
+    PastSession:
+      type: object
+      additionalProperties: false
+      required: [sessionId, title, updatedAt]
+      properties:
+        sessionId:
+          type: string
+        title:
+          type: string
+          description: The name the user gave it, else Claude's own title, else its first prompt.
+        firstPrompt:
+          type: string
+        updatedAt:
+          type: string
+        open:
+          type: boolean
+          description: An agent in this office is this session right now.
 
     ModelOption:
       description: One entry of a provider's model picker, as it was shown.
@@ -2744,6 +2805,9 @@ components:
           type: string
         skipPermissions:
           type: boolean
+        resume:
+          type: string
+          description: A session id from `pastSessions`; the agent continues it (`claude --resume <id>`).
         model:
           type: string
           description: |
@@ -2837,6 +2901,28 @@ components:
           const: loadAgentModels
         id:
           type: integer
+
+    ListSlashCommands:
+      description: Ask for the agent's slash commands (see slashCommands). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: listSlashCommands
+        id:
+          type: integer
+
+    ListPastSessions:
+      description: List a folder's earlier sessions (see pastSessions). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, cwd]
+      properties:
+        type:
+          const: listPastSessions
+        cwd:
+          type: string
 
     SetAgentModel:
       description: |

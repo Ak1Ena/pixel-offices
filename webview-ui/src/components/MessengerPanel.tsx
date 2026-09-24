@@ -40,6 +40,7 @@ import {
   MessageText,
 } from './FileAttachments.js';
 import { PinKindTag } from './PinKindTag.js';
+import { type SlashCommandList, useSlashMenu } from './SlashMenu.js';
 import { TextSettings } from './TextSettings.js';
 import { Button } from './ui/Button.js';
 import { WorkflowRunSteps } from './WorkflowRunSteps.js';
@@ -89,6 +90,11 @@ interface MessengerPanelProps {
   /** The workflow each agent is working through, if any. */
   runOf?: (agentId: number) => WorkflowRun | undefined;
   onStopRun?: (runId: string) => void;
+  /** An agent's slash commands for the `/` menu; absent = no menu. */
+  slashCommandsOf?: (agentId: number) => SlashCommandList | undefined;
+  onLoadSlashCommands?: (agentId: number) => void;
+  /** Whether the `/` menu is offered for this agent (the office can type into it). */
+  slashEnabled?: (agentId: number) => boolean;
   docked: boolean;
   onToggleDock: () => void;
   onClose: () => void;
@@ -364,6 +370,17 @@ export function MessengerPanel(props: MessengerPanelProps) {
   const [draft, setDraft] = useState<Record<number, string>>({});
   const [showPins, setShowPins] = useState(false);
   const attachments = useFileAttachments();
+  const slash = useSlashMenu({
+    draft: selectedId === null ? '' : (draft[selectedId] ?? ''),
+    setDraft: (text) => {
+      if (selectedId !== null) setDraft((d) => ({ ...d, [selectedId]: text }));
+    },
+    list: selectedId === null ? undefined : props.slashCommandsOf?.(selectedId),
+    onNeedList:
+      selectedId !== null && props.onLoadSlashCommands && props.slashEnabled?.(selectedId)
+        ? () => props.onLoadSlashCommands!(selectedId)
+        : undefined,
+  });
   const [isFileDropTarget, setIsFileDropTarget] = useState(false);
   const filesEnabled = canSendChatFiles();
   const { clear: clearFiles } = attachments;
@@ -838,28 +855,32 @@ export function MessengerPanel(props: MessengerPanelProps) {
                         </div>
                       )}
                       {filesEnabled && <FileChips attachments={attachments} />}
-                      <textarea
-                        value={draft[agent.id] ?? ''}
-                        onPaste={(e) => {
-                          if (!filesEnabled) return;
-                          const pasted = pastedFiles(e.clipboardData);
-                          if (pasted.length === 0) return;
-                          e.preventDefault();
-                          attachments.add(pasted);
-                        }}
-                        onChange={(e) => setDraft((d) => ({ ...d, [agent.id]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      <div className="relative">
+                        {slash.menu}
+                        <textarea
+                          value={draft[agent.id] ?? ''}
+                          onPaste={(e) => {
+                            if (!filesEnabled) return;
+                            const pasted = pastedFiles(e.clipboardData);
+                            if (pasted.length === 0) return;
                             e.preventDefault();
-                            void send();
-                          }
-                        }}
-                        rows={3}
-                        placeholder={`Message ${agent.label}…`}
-                        className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-read text-text"
-                        data-testid="messenger-input"
-                      />
+                            attachments.add(pasted);
+                          }}
+                          onChange={(e) => setDraft((d) => ({ ...d, [agent.id]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (slash.onKeyDown(e)) return;
+                            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              void send();
+                            }
+                          }}
+                          rows={3}
+                          placeholder={`Message ${agent.label}…`}
+                          className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-read text-text"
+                          data-testid="messenger-input"
+                        />
+                      </div>
                       <div className="flex items-center gap-6 relative">
                         <Button size="sm" onClick={() => setShowPins((v) => !v)}>
                           + Attach
