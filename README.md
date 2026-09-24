@@ -103,7 +103,7 @@ Pixel Agents also detects Claude sessions started outside the extension. Turn on
 Pixel Office is not on npm. Install a release tarball (see [releases](https://github.com/Ak1Ena/pixel-offices/releases) for the newest):
 
 ```bash
-npm install -g https://github.com/Ak1Ena/pixel-offices/releases/download/v2.2.2/ak1ena-pixel-office-2.2.2.tgz
+npm install -g https://github.com/Ak1Ena/pixel-offices/releases/download/v2.3.0/ak1ena-pixel-office-2.3.0.tgz
 ```
 
 Or run it from source (`npm link` puts your checkout's `pixel-office` on your PATH; run `npm run compile` again after pulling):
