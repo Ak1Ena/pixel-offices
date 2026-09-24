@@ -1,0 +1,102 @@
+# Desktop app packaging (adapters/electron/): builds installers for every
+# OS/arch we ship. Separate from ci.yml on purpose -- native rebuilds + a
+# full Electron download per OS make this slow, and it must never run on
+# every PR the way ci.yml does.
+
+name: Desktop Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+# Only what softprops/action-gh-release needs to create/update a draft
+# release and attach assets to it -- nothing wider.
+permissions:
+  contents: write
+
+env:
+  # electron-builder must never pick up a random keychain identity on a
+  # hosted macOS runner -- packaging is ad-hoc-signed only (see
+  # electron-builder.yml's mac.identity: null). Harmless on the non-mac jobs.
+  CSC_IDENTITY_AUTO_DISCOVERY: false
+
+jobs:
+  build:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One native arch per macOS runner, never cross-arch: node-pty is
+          # a compiled addon, and the `electron-rebuild` step inside
+          # `package:desktop` targets whatever arch it itself runs on. A
+          # single mac host CAN ask electron-builder for both arm64+x64
+          # dmgs in one invocation (electron-builder.yml lists both under
+          # mac.target[].arch) -- but that would ship one of the two dmgs
+          # with a native module built for the wrong arch, so each mac
+          # runner here is restricted to its own arch via --arm64/--x64.
+          - os: macos-14 # Apple Silicon
+            build_args: --mac --arm64
+            artifact_name: macos-arm64
+            artifact_path: release/*.dmg
+          - os: macos-13 # Intel
+            build_args: --mac --x64
+            artifact_name: macos-x64
+            artifact_path: release/*.dmg
+          - os: windows-latest
+            build_args: --win
+            artifact_name: windows
+            artifact_path: release/*.exe
+          - os: ubuntu-latest
+            build_args: --linux
+            artifact_name: linux
+            artifact_path: |
+              release/*.AppImage
+              release/*.deb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # node-pty is a native addon; @electron/rebuild (inside
+      # package:desktop) recompiles it against Electron's own ABI on
+      # whichever OS/arch this job runs on. Each hosted runner image already
+      # ships the toolchain node-gyp needs for that: windows-latest carries
+      # the MSVC Build Tools + Python, macos-* carries Xcode Command Line
+      # Tools, ubuntu-latest carries build-essential + Python -- no extra
+      # setup step needed on any of the four.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build + package
+        run: npm run package:desktop -- ${{ matrix.build_args }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pixel-office-${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+      # Only on an actual version tag -- workflow_dispatch runs (building on
+      # demand without tagging) upload the workflow artifact above and stop
+      # there. softprops/action-gh-release is safe to run once per matrix
+      # leg: it finds-or-creates the draft release for this tag and appends
+      # each job's own files to it rather than overwriting.
+      - name: Attach to draft GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          files: ${{ matrix.artifact_path }}

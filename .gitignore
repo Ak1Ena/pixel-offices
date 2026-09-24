@@ -27,10 +27,10 @@ allure-report/
 *.vsix
 *.map
 
-# electron-builder output (dmg/nsis/AppImage/deb + the unpacked app) and its
-# generated build-resources icon (see electron-builder.yml)
+# electron-builder output (dmg/nsis/AppImage/deb + the unpacked app). Not
+# build/icon.png -- that IS committed (CI has no way to generate it); see
+# electron-builder.yml for what it's for.
 /release/
-/build/
 
 # Environment files
 .env*
