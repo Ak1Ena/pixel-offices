@@ -71,6 +71,9 @@ mac:
 
 win:
   target: nsis
+  # Same reason as linux.artifactName: ${name} is scoped (@ak1ena/...) and
+  # would put the installer in a subdirectory that does not exist.
+  artifactName: '${productName}-${version}-${arch}.${ext}'
 
 linux:
   category: Development
@@ -83,6 +86,12 @@ linux:
   # and a GitHub noreply address rather than a personal inbox, since this
   # string ships inside every published package.
   maintainer: Ak1Ena <Ak1Ena@users.noreply.github.com>
+  # The .deb default naming is "${name}_${version}_${arch}.${ext}", and
+  # ${name} is the SCOPED package name, so fpm was handed
+  # "release/@ak1ena/pixel-office_2.4.0_amd64.deb" and died with "Parent
+  # directory does not exist: .../release/@ak1ena". Same explicit naming as
+  # mac, which also keeps the arch suffix unambiguous.
+  artifactName: '${productName}-${version}-${arch}.${ext}'
   target:
     - AppImage
     - deb

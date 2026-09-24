@@ -47,7 +47,15 @@ jobs:
             build_args: --mac --x64
             artifact_name: macos-x64
             artifact_path: release/*.dmg
-          - os: windows-latest
+          # windows-2022, NOT windows-latest: the latest image is
+          # win25-vs2026, whose Visual Studio 18 the node-gyp bundled inside
+          # @electron/rebuild cannot enumerate ("not looking for VS2017 ...
+          # VS2015 ... VS2013"), and its VSSetup listing overruns node-gyp's
+          # child-process buffer, so the rebuild fails with "Could not find
+          # any Visual Studio installation to use" on a runner that has one.
+          # Setting VCINSTALLDIR does not avoid the probe. Revisit when
+          # electron's node-gyp knows VS 2026.
+          - os: windows-2022
             build_args: --win
             artifact_name: windows
             artifact_path: release/*.exe
