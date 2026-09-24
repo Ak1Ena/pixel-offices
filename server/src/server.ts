@@ -92,7 +92,7 @@ export class PixelAgentsServer {
     // used to leave a standalone attached to VS Code's SPA-less embedded
     // server (blank page). Prune dead entries first so a crashed server's
     // stale file never blocks discovery of a live one.
-    const registry = this.readAndPruneRegistry();
+    const registry = readAndPruneRegistry();
     const candidate = registry.find((e) => e.servesSpa === wantsSpa);
     if (candidate) {
       this.config = candidate;
@@ -222,7 +222,7 @@ export class PixelAgentsServer {
 
   /** Returns the absolute path to ~/.pixel-agents/servers/. */
   private getRegistryDir(): string {
-    return path.join(os.homedir(), SERVER_JSON_DIR, SERVERS_DIR);
+    return registryDir();
   }
 
   /** Returns the absolute path to this config's registry entry file. Keyed on
@@ -231,46 +231,6 @@ export class PixelAgentsServer {
    *  process -- still get distinct, non-colliding registry files. */
   private getRegistryFilePath(config: Pick<ServerConfig, 'pid' | 'port'>): string {
     return path.join(this.getRegistryDir(), `${config.pid}-${config.port}.json`);
-  }
-
-  /**
-   * Read every registry entry, pruning (deleting) any whose owning PID is no
-   * longer alive -- so a crashed server's stale file never blocks discovery
-   * or gets fanned out to by the hook script. Malformed/mid-write files are
-   * treated the same as dead entries and removed. Returns only live entries.
-   */
-  private readAndPruneRegistry(): ServerConfig[] {
-    const dir = this.getRegistryDir();
-    let files: string[];
-    try {
-      files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
-    } catch {
-      return []; // Directory doesn't exist yet -- no live servers registered.
-    }
-
-    const live: ServerConfig[] = [];
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      try {
-        const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
-        if (!isServerConfig(entry)) {
-          fs.unlinkSync(filePath);
-          continue;
-        }
-        if (isProcessRunning(entry.pid)) {
-          live.push(entry);
-        } else {
-          fs.unlinkSync(filePath);
-        }
-      } catch {
-        try {
-          fs.unlinkSync(filePath);
-        } catch {
-          /* already gone */
-        }
-      }
-    }
-    return live;
   }
 
   /** Write this server's registry entry atomically (tmp + rename) with mode 0o600. */
@@ -309,4 +269,54 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** Absolute path to ~/.pixel-agents/servers/. */
+function registryDir(): string {
+  return path.join(os.homedir(), SERVER_JSON_DIR, SERVERS_DIR);
+}
+
+/**
+ * Read every registry entry, pruning (deleting) any whose owning PID is no
+ * longer alive -- so a crashed server's stale file never blocks discovery or
+ * gets fanned out to by the hook script. Malformed/mid-write files are
+ * treated the same as dead entries and removed. Returns only live entries.
+ *
+ * Exported so a caller that needs to know whether a compatible server is
+ * already running -- BEFORE deciding whether to build its own runtime -- can
+ * ask without duplicating the registry file format (see
+ * `standaloneOffice.ts`'s `attachOrStartOffice`).
+ */
+export function readAndPruneRegistry(): ServerConfig[] {
+  const dir = registryDir();
+  let files: string[];
+  try {
+    files = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
+  } catch {
+    return []; // Directory doesn't exist yet -- no live servers registered.
+  }
+
+  const live: ServerConfig[] = [];
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    try {
+      const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
+      if (!isServerConfig(entry)) {
+        fs.unlinkSync(filePath);
+        continue;
+      }
+      if (isProcessRunning(entry.pid)) {
+        live.push(entry);
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+  return live;
 }

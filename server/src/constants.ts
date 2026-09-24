@@ -436,3 +436,8 @@ export const DOC_OUTLINE_TEXT_CHARS = 100;
 /** `pixel-office doc outline`: first rows shown per sheet, and cells per row. */
 export const DOC_OUTLINE_ROWS = 5;
 export const DOC_OUTLINE_CELLS = 8;
+
+// ── Electron shell (adapters/electron/) ─────────────────────────
+/** How often the Electron shell polls GET /api/health of a server it
+ *  attached to (rather than owning). Two misses in a row -> "server stopped". */
+export const ELECTRON_HEALTH_POLL_MS = 5_000;

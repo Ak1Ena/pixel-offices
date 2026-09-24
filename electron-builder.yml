@@ -1,0 +1,79 @@
+# Packaging config for the Electron desktop shell (adapters/electron/).
+# `npm run package:desktop` runs this. This only builds installers -- CI
+# (desktop.yml) uploads them to a draft GitHub Release itself, separately.
+#
+# package.json's `main` stays `./dist/extension.js` (the .vsix entry) and
+# `files` stays the npm package's own allowlist -- neither is touched here.
+# `extraMetadata.main` below overrides just the packaged app's own
+# package.json to point at the Electron entry instead.
+
+appId: com.pixelagents.office
+productName: Pixel Office
+copyright: Copyright © Pixel Office contributors
+
+# Feed metadata for electron-updater (Windows/Linux only -- see
+# adapters/electron/updater.ts; macOS never uses this, see updateCheck.ts).
+# This does NOT make `package:desktop` upload anything itself: that script
+# always passes `--publish never` explicitly (see its definition in
+# package.json), regardless of this block or any ambient GH token, so the
+# existing desktop.yml upload step remains the only publisher.
+publish:
+  provider: github
+  owner: Ak1Ena
+  repo: pixel-offices
+
+directories:
+  output: release
+  # build/icon.png (1024x1024, upscaled from the repo's 128x128 icon.png --
+  # macOS requires >=512x512 to generate a .icns) is picked up automatically
+  # from here for all three platforms; not part of `files`, never shipped as
+  # a runtime asset. Swap it for a real high-res icon before shipping.
+  buildResources: build
+
+# Mirrors what package.json:files ships to npm (the built hooks/assets/
+# webview + icon), swapping the npm CLI entry (dist/cli.js) for the
+# Electron entry -- dist/extension.js (VS Code) and dist/uninstall.js
+# (VS Code) are irrelevant to the desktop app and left out.
+files:
+  - dist/electron/main.js
+  - dist/webview/**/*
+  - dist/assets/**/*
+  - dist/hooks/**/*
+  - icon.png
+
+extraMetadata:
+  main: dist/electron/main.js
+
+mac:
+  category: public.app-category.developer-tools
+  # Ad-hoc signing only, no Developer ID cert, no notarization: Gatekeeper
+  # will warn on first launch until the human decides packaging is worth a
+  # paid cert. identity: null tells electron-builder not to look for one.
+  identity: null
+  # No `arch:` here deliberately: an explicit per-target arch list (as this
+  # used to have -- [arm64, x64]) overrides the CLI's --arm64/--x64 flags
+  # entirely, so `electron-builder --mac --arm64` would still build BOTH
+  # arches (confirmed locally). Leaving arch unset lets those flags work --
+  # desktop.yml passes exactly one per mac runner, matching whichever arch
+  # `electron-rebuild` (inside package:desktop) just compiled node-pty for
+  # on that host. Locally, `--mac` alone still builds both (electron-builder
+  # defaults to darwin's `archs` default of [x64, arm64] on Apple Silicon),
+  # which is fine for a manual test build but NOT what CI wants.
+  target:
+    - dmg
+  # electron-builder's default naming omits the arch suffix for x64 (its
+  # "default" arch) but keeps it for arm64 -- e.g. "Pixel Office-2.3.1.dmg"
+  # vs "Pixel Office-2.3.1-arm64.dmg" for the SAME version. That ambiguity
+  # is exactly what scripts/install-macos.sh has to guess right to pick the
+  # correct download, so force both arches to always carry an explicit
+  # suffix instead.
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+
+win:
+  target: nsis
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb

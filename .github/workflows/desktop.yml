@@ -1,0 +1,149 @@
+# Desktop app packaging (adapters/electron/): builds installers for every
+# OS/arch we ship. Separate from ci.yml on purpose -- native rebuilds + a
+# full Electron download per OS make this slow, and it must never run on
+# every PR the way ci.yml does.
+
+name: Desktop Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+# Only what softprops/action-gh-release needs to create/update a draft
+# release and attach assets to it -- nothing wider.
+permissions:
+  contents: write
+
+env:
+  # electron-builder must never pick up a random keychain identity on a
+  # hosted macOS runner -- packaging is ad-hoc-signed only (see
+  # electron-builder.yml's mac.identity: null). Harmless on the non-mac jobs.
+  CSC_IDENTITY_AUTO_DISCOVERY: false
+
+jobs:
+  build:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One native arch per macOS runner, never cross-arch: node-pty is
+          # a compiled addon, and the `electron-rebuild` step inside
+          # `package:desktop` targets whatever arch it itself runs on.
+          # electron-builder.yml deliberately leaves mac.target's arch
+          # unset so these --arm64/--x64 flags actually take effect (an
+          # explicit per-target arch list in the config would override
+          # them and build both on either runner -- confirmed locally,
+          # see the comment in electron-builder.yml).
+          - os: macos-14 # Apple Silicon
+            build_args: --mac --arm64
+            artifact_name: macos-arm64
+            artifact_path: release/*.dmg
+          - os: macos-13 # Intel
+            build_args: --mac --x64
+            artifact_name: macos-x64
+            artifact_path: release/*.dmg
+          - os: windows-latest
+            build_args: --win
+            artifact_name: windows
+            artifact_path: release/*.exe
+          - os: ubuntu-latest
+            build_args: --linux
+            artifact_name: linux
+            artifact_path: |
+              release/*.AppImage
+              release/*.deb
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # node-pty is a native addon; @electron/rebuild (inside
+      # package:desktop) recompiles it against Electron's own ABI on
+      # whichever OS/arch this job runs on. Each hosted runner image already
+      # ships the toolchain node-gyp needs for that: windows-latest carries
+      # the MSVC Build Tools + Python, macos-* carries Xcode Command Line
+      # Tools, ubuntu-latest carries build-essential + Python -- no extra
+      # setup step needed on any of the four.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build + package
+        run: npm run package:desktop -- ${{ matrix.build_args }}
+
+      # scripts/install-macos.sh verifies its download against a SHA256SUMS
+      # file before it will even mount it. One combined SHA256SUMS across
+      # all four matrix legs would need a separate job that waits for and
+      # downloads every leg's artifacts first -- awkward for parallel legs
+      # that otherwise don't depend on each other -- so this is one sums
+      # file PER LEG instead: `SHA256SUMS-<artifact_name>` (matches the
+      # `pixel-office-<artifact_name>` workflow-artifact naming below).
+      # install-macos.sh only ever needs its own leg's file
+      # (`SHA256SUMS-macos-<arch>`).
+      - name: Compute checksums (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sums_file="SHA256SUMS-${{ matrix.artifact_name }}"
+          : > "$sums_file"
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            bare="${pattern#release/}"
+            for f in $bare; do
+              [ -f "$f" ] && shasum -a 256 "$f" >> "$sums_file"
+            done
+          done <<< "${{ matrix.artifact_path }}"
+          cat "$sums_file"
+
+      - name: Compute checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location release
+          $sumsFile = "SHA256SUMS-${{ matrix.artifact_name }}"
+          Remove-Item -ErrorAction SilentlyContinue $sumsFile
+          $patterns = "${{ matrix.artifact_path }}" -split "`n" | Where-Object { $_.Trim() -ne '' }
+          foreach ($pattern in $patterns) {
+            $bare = $pattern.Trim() -replace '^release/', ''
+            Get-ChildItem -Path $bare -ErrorAction SilentlyContinue | ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+              "$hash  $($_.Name)" | Out-File -Append -Encoding ascii $sumsFile
+            }
+          }
+          Get-Content $sumsFile
+
+      - name: Upload installer + checksum artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: pixel-office-${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_path }}
+            release/SHA256SUMS-${{ matrix.artifact_name }}
+          if-no-files-found: error
+
+      # Only on an actual version tag -- workflow_dispatch runs (building on
+      # demand without tagging) upload the workflow artifact above and stop
+      # there. softprops/action-gh-release is safe to run once per matrix
+      # leg: it finds-or-creates the draft release for this tag and appends
+      # each job's own files to it rather than overwriting.
+      - name: Attach to draft GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: true
+          files: |
+            ${{ matrix.artifact_path }}
+            release/SHA256SUMS-${{ matrix.artifact_name }}

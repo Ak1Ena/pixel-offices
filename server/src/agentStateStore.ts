@@ -108,6 +108,13 @@ export class AgentStateStore {
     return this;
   }
 
+  /** Read-only introspection for tests (e.g. pinning that a compose/dispose
+   *  cycle returns subscriber counts to their starting point). Never used to
+   *  suppress Node's leak-detection warning -- that stays as-is. */
+  listenerCount(event: keyof StoreEvents): number {
+    return this.emitter.listenerCount(event);
+  }
+
   // ── Map-compatible write (emits events) ─────────────────────
 
   set(id: number, agent: AgentState): this {
