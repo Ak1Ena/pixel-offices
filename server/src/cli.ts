@@ -13,41 +13,18 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { HookProvider } from '../../core/src/provider.js';
-import { AgentRuntime } from './agentRuntime.js';
 import { runAgentsCommand } from './agentsCli.js';
-import { AgentStateStore } from './agentStateStore.js';
-import {
-  buildAssetCache,
-  loadAllCharacters,
-  loadAllFurniture,
-  loadAllPets,
-} from './assetReload.js';
 import { runBoardCommand } from './boardCli.js';
 import { runClearCommand } from './clearCli.js';
-import type { AssetCache, ReloadAssetsSideEffect } from './clientMessageHandler.js';
-import {
-  getHooksConsent,
-  getHooksEnabled,
-  grantHooksConsent,
-  readConfig,
-} from './configPersistence.js';
+import { getHooksConsent, getHooksEnabled, grantHooksConsent } from './configPersistence.js';
 import { MAX_PORT, MIN_PORT } from './constants.js';
 import { runDocCommand } from './docCli.js';
-import { readEndedSessions, recordEndedSessions } from './endedSessions.js';
-import { FileStateAdapter } from './fileStateAdapter.js';
+import { recordEndedSessions } from './endedSessions.js';
 import { runLauncher } from './launcher.js';
-import { OfficeSessions } from './officeSessions.js';
 import { runProposeCommand } from './proposeCli.js';
-import {
-  activeHookProviders,
-  antigravityProvider,
-  claudeProvider,
-  copyProviderHookScript,
-  hookProviderById,
-  secondaryHookProviders,
-} from './providers/index.js';
-import { PixelAgentsServer } from './server.js';
+import { activeHookProviders, claudeProvider } from './providers/index.js';
 import { runShowCommand } from './showCli.js';
+import { copyHookScriptOrReport, startStandaloneOffice } from './standaloneOffice.js';
 import { runTaskCommand } from './taskCli.js';
 import { runWorkflowCommand } from './workflowCli.js';
 
@@ -125,26 +102,6 @@ Options:
 // prompts; a headless run just starts without hooks until consent is granted
 // through the UI. The one exception that needs no dialog is the silent-grant
 // migration below (our hooks already installed by a pre-consent version).
-
-/**
- * Copy the provider's bundled hook script into ~/.pixel-agents/hooks/,
- * reporting failure.
- *
- * Callers run this BEFORE installing the settings entries and abort when it
- * returns false: an entry whose command points at a missing script makes the
- * CLI spawn a dead `node` process for every event, which is strictly worse
- * than no hooks at all.
- */
-function copyHookScriptOrReport(
-  provider: HookProvider,
-  packageRoot: string,
-  context = '',
-): boolean {
-  if (copyProviderHookScript(provider, packageRoot)) return true;
-  const label = provider.id === claudeProvider.id ? 'Hooks' : `${provider.displayName} hooks`;
-  console.error(`[Pixel Agents] ${label} NOT installed${context}: hook script missing.`);
-  return false;
-}
 
 /**
  * Install one provider's hooks on startup if its persisted preference says so
@@ -296,198 +253,21 @@ async function main(): Promise<void> {
   const packageRoot = path.dirname(distRoot);
   const staticDir = path.join(distRoot, 'webview');
 
-  // ── Load assets on startup (same pipeline as VS Code extension) ──
-  // External asset directories are merged at startup too, so directories added
-  // in a previous session survive a restart. buildAssetCache is the shared
-  // loader used by both the standalone server and the VS Code adapter.
-  console.log('[Pixel Agents] Loading assets...');
-  const assetCache: AssetCache = await buildAssetCache(
-    distRoot,
-    readConfig().externalAssetDirectories,
-  );
-  const charCount = assetCache.characters?.characters.length ?? 0;
-  const petCount = assetCache.pets?.pets.length ?? 0;
-  const furnitureCount = assetCache.furniture?.catalog.length ?? 0;
-  console.log(
-    `[Pixel Agents] Assets loaded: ${charCount} characters, ${petCount} pets, ${furnitureCount} furniture items`,
-  );
-
-  // ── Store + adapter (shared settings + standalone-scoped agents/seats) ──
-  const store = new AgentStateStore();
-  const adapter = new FileStateAdapter({ namespace: 'standalone' });
-  store.setAdapter(adapter);
-
-  // ── Create server ──
-  const server = new PixelAgentsServer();
-  let disposeOfficeSessions = (): void => {};
-  let ownedTranscripts = (): string[] => [];
-
   try {
-    // Create runtime first (before server.start, so we can pass it in)
-    // Claude is the primary provider; Codex, Gemini and Generic HTTP events
-    // are routed too (POST /api/hooks/<id>) and become hooks-only agents.
-    const runtime = new AgentRuntime(store, claudeProvider, secondaryHookProviders);
-
-    // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
-    server.onHookEvent((providerId, event) => {
-      runtime.handleHookEvent(providerId, event);
-    });
-
-    // onSetHooksEnabled side effect: install/uninstall the named provider's
-    // hooks when the user toggles in the UI (or answers the consent ask).
-    // Captures config from the outer scope after server.start().
-    let currentConfig: { port: number; token: string } | null = null;
-    const onSetHooksEnabled = async (providerId: string, enabled: boolean): Promise<void> => {
-      if (!currentConfig) return;
-      const provider = hookProviderById(providerId);
-      if (!provider) return; // unknown id: nothing to install into
-      if (enabled) {
-        // An explicit toggle in the UI IS the consent to modify the
-        // provider's settings file. Each provider copies only its OWN hook
-        // script; another provider's install is neither blocked by it nor
-        // copies it.
-        grantHooksConsent(provider.id);
-        if (!copyHookScriptOrReport(provider, packageRoot, ' (user toggle)')) {
-          return;
-        }
-        try {
-          await provider.installHooks(
-            `http://127.0.0.1:${currentConfig.port}`,
-            currentConfig.token,
-          );
-        } catch (err) {
-          console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
-          return;
-        }
-        console.log('[Pixel Agents] Hooks installed (user toggle)');
-      } else {
-        try {
-          await provider.uninstallHooks();
-          console.log('[Pixel Agents] Hooks uninstalled (user toggle)');
-        } catch (err) {
-          console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    };
-
-    // onReloadAssets side effect: re-run the shared loaders (bundled + external
-    // dirs) after an external-asset-directory change, then re-broadcast the
-    // updated sprites to the requesting client. Mutates the assetCache object in
-    // place so already-open sockets (which captured the same reference) and
-    // future webviewReady handshakes both observe the new assets. Only
-    // characters/pets/furniture can come from external dirs, so only those three
-    // are reloaded and re-sent (mirrors the VS Code reload path).
-    const onReloadAssets: ReloadAssetsSideEffect = async (send): Promise<void> => {
-      const externalDirs = readConfig().externalAssetDirectories;
-      const [characters, pets, furniture] = await Promise.all([
-        loadAllCharacters(distRoot, externalDirs),
-        loadAllPets(distRoot, externalDirs),
-        loadAllFurniture(distRoot, externalDirs),
-      ]);
-      assetCache.characters = characters;
-      assetCache.pets = pets;
-      assetCache.furniture = furniture;
-      if (characters) {
-        send({ type: 'characterSpritesLoaded', characters: characters.characters });
-      }
-      if (pets) {
-        send({
-          type: 'petSpritesLoaded',
-          pets: pets.pets,
-          petNames: pets.manifests.map((m) => m.name),
-        });
-      }
-      if (furniture) {
-        send({
-          type: 'furnitureAssetsLoaded',
-          catalog: furniture.catalog,
-          sprites: Object.fromEntries(furniture.sprites),
-        });
-      }
-      console.log('[Pixel Agents] Assets reloaded (external directory change)');
-    };
-
-    // Agents the office runs itself (+ Agent in the browser).
-    const officeSessions = new OfficeSessions(store, {
-      adoptLaunchedSession: (sessionId, cwd) => runtime.adoptLaunchedSession(sessionId, cwd),
-      followPid: (pid, key, cwd) => runtime.followLaunchedPid(pid, key, cwd),
-      adoptLaunchedHooksSession: (key, cwd, providerId) =>
-        runtime.adoptLaunchedHooksSession(key, cwd, providerId),
-      forgetPid: (pid) => runtime.forgetLaunchedPid(pid),
-      renameAgent: (id, name) => runtime.renameAgent(id, name),
-      removeAgent: (id) => runtime.removeAgent(id),
-      refreshSendable: () => runtime.chatSender.refreshSendable(),
-      inputReady: (id) => runtime.chatSender.retry(id),
-    });
-    runtime.chatSender.addWriter(officeSessions.writer);
-    // Agents the office started were started to be given work.
-    runtime.deskDefaultPickup = (agentId) => officeSessions.owns(agentId);
-    runtime.agentStarter = officeSessions;
-    disposeOfficeSessions = () => officeSessions.dispose();
-    ownedTranscripts = () => officeSessions.ownedTranscripts();
-
-    const config = await server.start({
-      store,
-      runtime,
-      embedded: false,
-      host: args.host,
-      port: args.port,
-      staticDir,
-      assetCache,
-      onSetHooksEnabled,
-      onReloadAssets,
-      launchers: runtime.launchers,
-      onLauncherPoll: (sessionId, cwd, pid) => {
-        if (!pid) return runtime.adoptLaunchedSession(sessionId, cwd);
-        // `pixel-office agy`: shown at once, linked to agy's conversation by pid.
-        runtime.followLaunchedPid(pid, sessionId, cwd);
-        runtime.adoptLaunchedHooksSession(sessionId, cwd, antigravityProvider.id);
-      },
-      onLauncherEnd: (sessionId) => runtime.endLaunched(sessionId),
-      officeSessions,
-      taskDesk: () => runtime.desk,
-      getBoardPins: () => runtime.board.getPins(),
-      saveBoardPin: (pin) => runtime.board.savePin(pin),
-      removeBoardPin: (pinId) => runtime.board.removePin(pinId),
-      resolveBoardAgent: (name) => {
-        const wanted = name.toLowerCase();
-        for (const agent of store.values()) {
-          if (
-            agent.displayName?.toLowerCase() === wanted ||
-            agent.agentName?.toLowerCase() === wanted
-          ) {
-            return agent.id;
-          }
-        }
-        return undefined;
-      },
-    });
-    currentConfig = { port: config.port, token: config.token };
-
-    // Sync runtime refs with persisted settings BEFORE first scan tick. The
-    // runtime's single hooksEnabled ref follows the Claude provider until the
-    // scanners grow per-provider awareness alongside the Settings UI.
-    runtime.hooksEnabled.current = getHooksEnabled(claudeProvider.id);
-    runtime.watchAllSessions.current = adapter.getSetting('pixel-agents.watchAllSessions', false);
+    const { runtime, server, config, disposeOfficeSessions, ownedTranscripts } =
+      await startStandaloneOffice({
+        host: args.host,
+        port: args.port,
+        distRoot,
+        packageRoot,
+        staticDir,
+        projectDir: process.cwd(),
+      });
 
     // Install hooks on startup, per provider, if the persisted setting says so
     // — each gated on its own one-time consent to modify that CLI's settings.
     for (const provider of activeHookProviders()) {
       await installHooksAtStartup(provider, packageRoot, config.port, config.token);
-    }
-
-    // Agents the previous office ran ended with it: keep them from coming back as ghosts.
-    runtime.dismissEndedSessions(readEndedSessions());
-
-    // Start scanning for external sessions (Claude running in user's terminal)
-    const cwd = process.cwd();
-    const dirs = claudeProvider.getSessionDirs?.(cwd);
-    if (dirs && dirs[0]) {
-      const projectDir = dirs[0];
-      console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
-      runtime.startProjectScan(projectDir);
-      runtime.startExternalScanning(projectDir);
-      runtime.startStaleCheck();
     }
 
     // The URL the operator opens has to be REACHABLE (a wildcard bind address

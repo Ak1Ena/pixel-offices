@@ -16,6 +16,7 @@
 	},
 	"include": [
 		"adapters/vscode",
+		"adapters/electron",
 		"server/src",
 		"core/src"
 	],
@@ -24,6 +25,8 @@
 		"webview-ui",
 		"dist",
 		"out",
-		"scripts"
+		"scripts",
+		"adapters/electron/__tests__",
+		"adapters/electron/vitest.config.ts"
 	]
 }
