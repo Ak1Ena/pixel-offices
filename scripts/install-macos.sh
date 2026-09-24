@@ -44,18 +44,55 @@ esac
 RAW_VERSION="${1:-}"
 if [ -n "$RAW_VERSION" ]; then
   TAG="v${RAW_VERSION#v}"
+  RELEASE_API="https://api.github.com/repos/${OWNER}/${REPO}/releases/tags/${TAG}"
+  log "Looking up release ${TAG}..."
 else
+  RELEASE_API="https://api.github.com/repos/${OWNER}/${REPO}/releases/latest"
   log "Looking up the latest release..."
-  LATEST_JSON="$(curl -fsSL --proto '=https' "https://api.github.com/repos/${OWNER}/${REPO}/releases/latest")" \
-    || die "could not reach the GitHub API to find the latest release. Check your network connection."
-  TAG="$(printf '%s' "$LATEST_JSON" \
-    | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
-    | head -1 \
-    | sed -E 's/.*"([^"]+)"$/\1/')"
-  [ -n "$TAG" ] || die "could not determine the latest release tag from the GitHub API response."
 fi
+
+RELEASE_JSON="$(curl -fsSL --proto '=https' "$RELEASE_API")" \
+  || die "could not reach the GitHub API. Check your network connection, or that ${TAG:-the latest release} exists."
+
+TAG="$(printf '%s' "$RELEASE_JSON" \
+  | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+  | head -1 | sed -E 's/.*"([^"]+)"$/\1/')"
+[ -n "$TAG" ] || die "could not determine the release tag from the GitHub API response."
 VERSION="${TAG#v}"
-log "Target version: ${VERSION} (${ARCH})"
+
+# Take the download URLs from the release's OWN asset list rather than
+# rebuilding the file name from the version. electron-builder's naming is not
+# something to guess at -- it substitutes characters (a space becomes a dot:
+# "Pixel.Office-2.4.0-arm64.dmg"), and a release's assets do not necessarily
+# carry the tag's version. Asking the release what it actually has avoids
+# both traps, and a missing asset becomes a clear error instead of a 404.
+asset_url() {
+  printf '%s' "$RELEASE_JSON" \
+    | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*"(https:[^"]+)"$/\1/' \
+    | grep -E -- "$1" \
+    | head -1
+}
+
+DMG_URL="$(asset_url "-${ARCH}\.dmg$")"
+[ -n "$DMG_URL" ] || die "release ${TAG} has no macOS ${ARCH} .dmg asset. Published assets:
+$(printf '%s' "$RELEASE_JSON" | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*\.\(dmg\|exe\|AppImage\|deb\)"' | sed -E 's/.*"([^"]+)"$/  - \1/')"
+SUMS_URL="$(asset_url "SHA256SUMS-macos-${ARCH}$")"
+[ -n "$SUMS_URL" ] || die "release ${TAG} publishes a ${ARCH} .dmg but no SHA256SUMS-macos-${ARCH} to verify it against. Refusing to install an unverified download."
+
+DMG_NAME="$(basename "${DMG_URL%%\?*}" | sed 's/%20/ /g')"
+SUMS_NAME="$(basename "${SUMS_URL%%\?*}")"
+
+# The version that matters for "is this already installed?" is the one INSIDE
+# the asset, which is not always the tag's: a release can carry a dmg built
+# before it was cut (v2.4.2 shipping Pixel.Office-2.4.1-arm64.dmg). Comparing
+# the tag against the installed bundle version would then reinstall forever.
+ASSET_VERSION="$(printf '%s' "$DMG_NAME" | sed -E "s/.*[-.]([0-9]+\.[0-9]+\.[0-9]+[^-]*)-${ARCH}\.dmg$/\1/")"
+case "$ASSET_VERSION" in
+  [0-9]*) VERSION="$ASSET_VERSION" ;;
+  *) ;; # unrecognized naming -- keep the tag's version
+esac
+log "Target version: ${VERSION} (${ARCH}) -- ${DMG_NAME}"
 
 # ── Idempotent no-op: already installed ─────────────────────────
 
@@ -82,13 +119,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-DMG_NAME="${APP_NAME}-${VERSION}-${ARCH}.dmg"
-DMG_NAME_ENCODED="${DMG_NAME// /%20}"
-SUMS_NAME="SHA256SUMS-macos-${ARCH}"
-DOWNLOAD_BASE="https://github.com/${OWNER}/${REPO}/releases/download/${TAG}"
-DMG_URL="${DOWNLOAD_BASE}/${DMG_NAME_ENCODED}"
-SUMS_URL="${DOWNLOAD_BASE}/${SUMS_NAME}"
-
 for url in "$DMG_URL" "$SUMS_URL"; do
   case "$url" in
     https://*) ;;
@@ -104,11 +134,28 @@ log "Downloading ${SUMS_NAME}..."
 curl -fsSL --proto '=https' -o "${WORKDIR}/${SUMS_NAME}" "$SUMS_URL" \
   || die "could not download the checksum file. Aborting without installing anything."
 
+# Compare hashes directly instead of `shasum -c`: the SUMS file lists the
+# file name as electron-builder produced it ("Pixel Office-...dmg"), while
+# GitHub serves the asset with spaces rewritten ("Pixel.Office-...dmg"), so
+# name-based checking would fail on a download that is in fact correct. The
+# HASH is the thing being trusted here, not the name.
 log "Verifying checksum..."
-if ! (cd "$WORKDIR" && shasum -a 256 -c "$SUMS_NAME"); then
+EXPECTED_SHA="$(grep -E "[0-9a-f]{64}[[:space:]]+\*?.*-${ARCH}\.dmg$" "${WORKDIR}/${SUMS_NAME}" \
+  | head -1 | awk '{print $1}')"
+ACTUAL_SHA="$(shasum -a 256 "${WORKDIR}/${DMG_NAME}" | awk '{print $1}')"
+
+if [ -z "$EXPECTED_SHA" ]; then
   rm -f "${WORKDIR}/${DMG_NAME}"
-  die "checksum verification FAILED for ${DMG_NAME}. The download has been deleted; nothing was installed or modified."
+  die "${SUMS_NAME} has no entry for a ${ARCH} .dmg. The download has been deleted; nothing was installed or modified."
 fi
+if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+  rm -f "${WORKDIR}/${DMG_NAME}"
+  die "checksum verification FAILED for ${DMG_NAME}
+  expected: ${EXPECTED_SHA}
+  actual:   ${ACTUAL_SHA}
+The download has been deleted; nothing was installed or modified."
+fi
+log "Checksum OK (${ACTUAL_SHA})"
 
 # ── Mount, locate the .app ───────────────────────────────────────
 
