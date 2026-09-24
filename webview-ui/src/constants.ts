@@ -502,6 +502,10 @@ export const TASK_DESK_WIDTH_PX = 420;
 export const TASK_DESK_COLUMN_MIN_PX = 230;
 export const TASK_TITLE_MAX_CHARS = 120;
 export const TASK_BODY_MAX_CHARS = 4000;
+/** Lines the card form's details box shows; longer text scrolls inside it. */
+export const TASK_DETAILS_ROWS = 12;
+/** Lines it shows after Expand. */
+export const TASK_DETAILS_EXPANDED_ROWS = 28;
 export const TASK_NOTE_MAX_CHARS = 2000;
 export const TASK_SUBTASK_MAX_CHARS = 200;
 /** A step's ref: a path plus place flags. */

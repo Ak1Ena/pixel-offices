@@ -16,6 +16,8 @@ import {
   TASK_BODY_MAX_CHARS,
   TASK_DESK_COMMAND_KEY,
   TASK_DESK_FIRST_MESSAGE,
+  TASK_DETAILS_EXPANDED_ROWS,
+  TASK_DETAILS_ROWS,
   TASK_NOTE_MAX_CHARS,
   TASK_TITLE_MAX_CHARS,
 } from '../constants.js';
@@ -126,6 +128,7 @@ function CardForm({
   const [teamId, setTeamId] = useState(editing?.teamId ?? '');
   const [workflowId, setWorkflowId] = useState(editing?.workflowId ?? '');
   const [files, setFiles] = useState<string[]>(editing?.attachments?.map((a) => a.path) ?? []);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const extras = useContext(DeskExtrasContext);
   const deskWorkflows = useContext(DeskWorkflowsContext);
   const canAdd = title.trim().length > 0 && folder.trim().length > 0;
@@ -187,15 +190,34 @@ function CardForm({
         data-testid="desk-card-title"
         autoFocus
       />
-      <textarea
-        className={`${fieldClass} resize-y`}
-        rows={6}
-        value={body}
-        maxLength={TASK_BODY_MAX_CHARS}
-        placeholder="What you know so far (optional)"
-        aria-label="Card details"
-        onChange={(e) => setBody(e.target.value)}
-      />
+      <div className="flex flex-col gap-2">
+        <textarea
+          // A fixed size: longer details scroll inside the box.
+          className={`${fieldClass} resize-y overflow-y-auto shrink-0`}
+          rows={detailsExpanded ? TASK_DETAILS_EXPANDED_ROWS : TASK_DETAILS_ROWS}
+          value={body}
+          maxLength={TASK_BODY_MAX_CHARS}
+          placeholder="What you know so far (optional)"
+          aria-label="Card details"
+          onChange={(e) => setBody(e.target.value)}
+          data-testid="desk-card-details"
+        />
+        <div className="flex items-center gap-8 text-2xs text-text-muted">
+          <span>
+            {body.length}/{TASK_BODY_MAX_CHARS}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            className="ml-auto"
+            aria-expanded={detailsExpanded}
+            onClick={() => setDetailsExpanded((v) => !v)}
+            data-testid="desk-card-details-expand"
+          >
+            {detailsExpanded ? 'Smaller' : 'Expand'}
+          </Button>
+        </div>
+      </div>
       <div className="flex flex-col gap-2 text-sm">
         Folder the agent must be in
         {canBrowseFolders ? (
