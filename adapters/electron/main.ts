@@ -3,8 +3,9 @@
  *
  * Wraps the same standalone office composition `server/src/cli.ts` uses
  * (`attachOrStartOffice`, in-process, `standalone` namespace) in a
- * BrowserWindow + tray icon instead of a terminal + browser tab. R2a: macOS
- * local run only -- no packaging, CI, or auto-updater yet.
+ * BrowserWindow + tray icon instead of a terminal + browser tab. Packaged
+ * via `npm run package:desktop` (electron-builder.yml); CI in
+ * .github/workflows/desktop.yml.
  */
 
 import { execFileSync } from 'child_process';
@@ -21,6 +22,7 @@ import type {
 } from '../../server/src/standaloneOffice.js';
 import { attachOrStartOffice } from '../../server/src/standaloneOffice.js';
 import { resolveProjectFolder } from './projectFolder.js';
+import { startUpdateChecks } from './updater.js';
 import { ensureUsablePath, readLoginShellPath } from './widenPath.js';
 
 /** OfficeSessions, the launcher, gitRoot.ts and slash-command probing all
@@ -376,6 +378,12 @@ async function main(): Promise<void> {
 
   buildAppMenu();
   createTray();
+
+  // Once per app launch, not per relaunchOffice -- Change folder/Restart
+  // don't need a fresh update check. Packaged builds only: electron-updater
+  // needs the app-update.yml a dev run doesn't have, and there's no point
+  // banner-checking a dev build against real releases.
+  if (app.isPackaged) startUpdateChecks(() => mainWindow);
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

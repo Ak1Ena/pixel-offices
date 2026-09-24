@@ -105,7 +105,7 @@
     "build": "npm run compile",
     "electron": "npm run compile && electron dist/electron/main.js",
     "rebuild:electron": "electron-rebuild -f -w node-pty",
-    "package:desktop": "npm run package && npm run rebuild:electron && electron-builder",
+    "package:desktop": "npm run package && npm run rebuild:electron && electron-builder --publish never",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -177,6 +177,7 @@
     "@fastify/websocket": "^11.2.0",
     "@xmldom/xmldom": "^0.8.15",
     "@xterm/headless": "^6.0.0",
+    "electron-updater": "^6.8.9",
     "fastify": "^5.8.5",
     "jszip": "^3.10.2"
   },

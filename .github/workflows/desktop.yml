@@ -33,12 +33,12 @@ jobs:
         include:
           # One native arch per macOS runner, never cross-arch: node-pty is
           # a compiled addon, and the `electron-rebuild` step inside
-          # `package:desktop` targets whatever arch it itself runs on. A
-          # single mac host CAN ask electron-builder for both arm64+x64
-          # dmgs in one invocation (electron-builder.yml lists both under
-          # mac.target[].arch) -- but that would ship one of the two dmgs
-          # with a native module built for the wrong arch, so each mac
-          # runner here is restricted to its own arch via --arm64/--x64.
+          # `package:desktop` targets whatever arch it itself runs on.
+          # electron-builder.yml deliberately leaves mac.target's arch
+          # unset so these --arm64/--x64 flags actually take effect (an
+          # explicit per-target arch list in the config would override
+          # them and build both on either runner -- confirmed locally,
+          # see the comment in electron-builder.yml).
           - os: macos-14 # Apple Silicon
             build_args: --mac --arm64
             artifact_name: macos-arm64
@@ -82,11 +82,56 @@ jobs:
       - name: Build + package
         run: npm run package:desktop -- ${{ matrix.build_args }}
 
-      - name: Upload installer artifact
+      # scripts/install-macos.sh verifies its download against a SHA256SUMS
+      # file before it will even mount it. One combined SHA256SUMS across
+      # all four matrix legs would need a separate job that waits for and
+      # downloads every leg's artifacts first -- awkward for parallel legs
+      # that otherwise don't depend on each other -- so this is one sums
+      # file PER LEG instead: `SHA256SUMS-<artifact_name>` (matches the
+      # `pixel-office-<artifact_name>` workflow-artifact naming below).
+      # install-macos.sh only ever needs its own leg's file
+      # (`SHA256SUMS-macos-<arch>`).
+      - name: Compute checksums (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release
+          sums_file="SHA256SUMS-${{ matrix.artifact_name }}"
+          : > "$sums_file"
+          while IFS= read -r pattern; do
+            [ -z "$pattern" ] && continue
+            bare="${pattern#release/}"
+            for f in $bare; do
+              [ -f "$f" ] && shasum -a 256 "$f" >> "$sums_file"
+            done
+          done <<< "${{ matrix.artifact_path }}"
+          cat "$sums_file"
+
+      - name: Compute checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Set-Location release
+          $sumsFile = "SHA256SUMS-${{ matrix.artifact_name }}"
+          Remove-Item -ErrorAction SilentlyContinue $sumsFile
+          $patterns = "${{ matrix.artifact_path }}" -split "`n" | Where-Object { $_.Trim() -ne '' }
+          foreach ($pattern in $patterns) {
+            $bare = $pattern.Trim() -replace '^release/', ''
+            Get-ChildItem -Path $bare -ErrorAction SilentlyContinue | ForEach-Object {
+              $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+              "$hash  $($_.Name)" | Out-File -Append -Encoding ascii $sumsFile
+            }
+          }
+          Get-Content $sumsFile
+
+      - name: Upload installer + checksum artifact
         uses: actions/upload-artifact@v7
         with:
           name: pixel-office-${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_path }}
+          path: |
+            ${{ matrix.artifact_path }}
+            release/SHA256SUMS-${{ matrix.artifact_name }}
           if-no-files-found: error
 
       # Only on an actual version tag -- workflow_dispatch runs (building on
@@ -99,4 +144,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           draft: true
-          files: ${{ matrix.artifact_path }}
+          files: |
+            ${{ matrix.artifact_path }}
+            release/SHA256SUMS-${{ matrix.artifact_name }}

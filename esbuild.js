@@ -161,6 +161,7 @@ async function buildElectron() {
     outfile: 'dist/electron/main.js',
     external: [
       'electron',
+      'electron-updater',
       'fastify',
       '@fastify/websocket',
       '@fastify/static',
