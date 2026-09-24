@@ -99,7 +99,12 @@ export class MentionRelay {
       if (this.passes.length >= RELAY_TOTAL_LIMIT) return;
       if (this.passes.filter((p) => p.pair === pair).length >= RELAY_PAIR_LIMIT) continue;
       this.passes.push({ at: now, pair });
-      const body = part.length > RELAY_MAX_CHARS ? `${part.slice(0, RELAY_MAX_CHARS)}…` : part;
+      // A silent cut is worse than a short message: the receiver reads a
+      // half sentence as the whole one and the sender never learns. Say it.
+      const cut = part.length > RELAY_MAX_CHARS;
+      const body = cut
+        ? `${part.slice(0, RELAY_MAX_CHARS)}\n[The office cut this message here: it was ${part.length} characters, the limit is ${RELAY_MAX_CHARS}. Ask ${from} for the rest, or ask them to put it in a file and send the path.]`
+        : part;
       this.deliver(
         targetId,
         `Message from ${from} (teammate, via the office): ${body}\n(To answer, start a paragraph with @${from}.)`,

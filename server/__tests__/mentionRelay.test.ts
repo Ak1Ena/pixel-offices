@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { AgentStateStore } from '../src/agentStateStore.js';
-import { RELAY_PAIR_LIMIT } from '../src/constants.js';
+import { RELAY_MAX_CHARS, RELAY_PAIR_LIMIT } from '../src/constants.js';
 import { mentionedAgents, MentionRelay } from '../src/mentionRelay.js';
 import type { AgentState } from '../src/types.js';
 
@@ -74,5 +74,30 @@ describe('relay sends one conversation per pair', () => {
       [2, 'Message from Backend Bob (teammate, via the office): @Pat use cents.'],
       [3, 'Message from Backend Bob (teammate, via the office): @Patrick write tests.'],
     ]);
+  });
+});
+
+describe('an over-long pass is cut out loud, never silently', () => {
+  it('says it cut, how long the message was, and how to get the rest', () => {
+    const { relay, sent } = setup();
+    relay.setEnabled(true);
+    const long = 'x'.repeat(RELAY_MAX_CHARS + 500);
+    relay.onReply(1, `@Pat ${long}`);
+    const [[, text]] = sent;
+    expect(text).toContain('The office cut this message here');
+    expect(text).toContain(`the limit is ${RELAY_MAX_CHARS}`);
+    // The sender is named, so the receiver knows who to ask for the rest.
+    expect(text).toContain('Ask Backend Bob for the rest');
+    // The cut notice must survive: it comes after the body, not before it.
+    expect(text.indexOf('The office cut this message here')).toBeGreaterThan(RELAY_MAX_CHARS);
+  });
+
+  it('leaves a message inside the limit untouched — no notice, no ellipsis', () => {
+    const { relay, sent } = setup();
+    relay.setEnabled(true);
+    relay.onReply(1, '@Pat a short hand-off');
+    const [[, text]] = sent;
+    expect(text).not.toContain('The office cut this message here');
+    expect(text).toContain('@Pat a short hand-off');
   });
 });

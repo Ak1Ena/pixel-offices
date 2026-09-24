@@ -148,8 +148,11 @@ export const RELAY_WINDOW_MS = 10 * 60_000;
 export const RELAY_PAIR_LIMIT = 4;
 /** Passes allowed across the whole office per window. */
 export const RELAY_TOTAL_LIMIT = 20;
-/** Longest reply passed along. */
-export const RELAY_MAX_CHARS = 2_000;
+/** Longest reply passed along. Below CHAT_SEND_MAX_CHARS, which is what the
+ *  terminal itself accepts: a pass is a paid turn for the receiver, so a
+ *  runaway reply is still capped — but not so low that ordinary hand-offs
+ *  (a spec, a diff summary) are cut. A cut is announced, never silent. */
+export const RELAY_MAX_CHARS = 8_000;
 /** Human-readable index of the whiteboard that agents can read. */
 export const BOARD_INDEX_FILE_NAME = 'board.md';
 /** Agents (any harness) read and post whiteboard pins here (httpServer.ts, boardCli.ts). */
