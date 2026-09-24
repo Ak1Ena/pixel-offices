@@ -77,22 +77,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The node-gyp bundled with npm detects Visual Studio by parsing
-      # PowerShell output, and on windows-latest that output overruns its
-      # child-process buffer:
-      #   gyp ERR! find VS ... ERR_CHILD_PROCESS_STDIO_MAXBUFFER
+      # node-gyp finds Visual Studio by asking PowerShell for every VSSetup
+      # instance, and on windows-latest that JSON overruns its child-process
+      # buffer -- so it concludes there is no Visual Studio on a runner that
+      # has it:
+      #   gyp sill find VS PS err = "RangeError [ERR_CHILD_PROCESS_STDIO_MAXBUFFER] ..."
       #   Error: Could not find any Visual Studio installation to use
-      # The runner HAS Visual Studio; only the probe fails. A current
-      # node-gyp raises that buffer, so install one and point npm at it for
-      # the rebuild step.
-      - name: Windows native-build toolchain
+      # Installing a newer node-gyp does NOT help: @electron/rebuild bundles
+      # its own (electron/node-gyp), so npm_config_node_gyp is ignored.
+      # Setting VCINSTALLDIR is what actually helps -- node-gyp then treats
+      # this as a VS Command Prompt and never runs the probe. vswhere ships
+      # with the VS Installer on the runner image.
+      - name: Point node-gyp at the runner's Visual Studio
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          npm install -g node-gyp@latest
-          echo "npm_config_node_gyp=$(npm prefix -g)/node_modules/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
-          echo "GYP_MSVS_VERSION=2022" >> "$GITHUB_ENV"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vsPath = & $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+          if (-not $vsPath) { throw 'no Visual Studio with the C++ toolset found on this runner' }
+          Write-Host "Visual Studio: $vsPath"
+          "VCINSTALLDIR=$vsPath\VC\" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build + package
         run: npm run package:desktop -- ${{ matrix.build_args }}

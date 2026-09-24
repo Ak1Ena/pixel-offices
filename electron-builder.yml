@@ -78,6 +78,11 @@ linux:
   # (@ak1ena/pixel-office) and the AppImage build aborts: "executableName
   # contains characters that cannot be safely used in file paths".
   executableName: pixel-office
+  # The .deb target requires a maintainer address. Set here rather than as
+  # package.json's `author.email` so the npm package's metadata is untouched,
+  # and a GitHub noreply address rather than a personal inbox, since this
+  # string ships inside every published package.
+  maintainer: Ak1Ena <Ak1Ena@users.noreply.github.com>
   target:
     - AppImage
     - deb
