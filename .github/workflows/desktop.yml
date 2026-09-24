@@ -43,7 +43,15 @@ jobs:
             build_args: --mac --arm64
             artifact_name: macos-arm64
             artifact_path: release/*.dmg
-          - os: macos-13 # Intel
+          # macos-15-intel, NOT macos-13: GitHub retired the Intel macOS 13
+          # image, so the `macos-13` label matches no hosted runner and the
+          # job sits in "Waiting for a runner to pick up this job..."
+          # forever (it never started once across four runs, while the other
+          # three legs picked up in seconds). macos-15-intel is the current
+          # Intel image, which is what the x64 dmg needs -- node-pty is
+          # compiled natively per leg, so this cannot be moved onto the
+          # arm64 runner.
+          - os: macos-15-intel # Intel
             build_args: --mac --x64
             artifact_name: macos-x64
             artifact_path: release/*.dmg
