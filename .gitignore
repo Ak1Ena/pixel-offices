@@ -27,6 +27,11 @@ allure-report/
 *.vsix
 *.map
 
+# electron-builder output (dmg/nsis/AppImage/deb + the unpacked app) and its
+# generated build-resources icon (see electron-builder.yml)
+/release/
+/build/
+
 # Environment files
 .env*
 !.env.example

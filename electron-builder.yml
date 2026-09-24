@@ -1,0 +1,55 @@
+# Packaging config for the Electron desktop shell (adapters/electron/).
+# `npm run package:desktop` runs this. CI wiring and the auto-updater are
+# separate, later steps -- this only builds installers for manual testing.
+#
+# package.json's `main` stays `./dist/extension.js` (the .vsix entry) and
+# `files` stays the npm package's own allowlist -- neither is touched here.
+# `extraMetadata.main` below overrides just the packaged app's own
+# package.json to point at the Electron entry instead.
+
+appId: com.pixelagents.office
+productName: Pixel Office
+copyright: Copyright © Pixel Office contributors
+
+directories:
+  output: release
+  # build/icon.png (1024x1024, upscaled from the repo's 128x128 icon.png --
+  # macOS requires >=512x512 to generate a .icns) is picked up automatically
+  # from here for all three platforms; not part of `files`, never shipped as
+  # a runtime asset. Swap it for a real high-res icon before shipping.
+  buildResources: build
+
+# Mirrors what package.json:files ships to npm (the built hooks/assets/
+# webview + icon), swapping the npm CLI entry (dist/cli.js) for the
+# Electron entry -- dist/extension.js (VS Code) and dist/uninstall.js
+# (VS Code) are irrelevant to the desktop app and left out.
+files:
+  - dist/electron/main.js
+  - dist/webview/**/*
+  - dist/assets/**/*
+  - dist/hooks/**/*
+  - icon.png
+
+extraMetadata:
+  main: dist/electron/main.js
+
+mac:
+  category: public.app-category.developer-tools
+  # Ad-hoc signing only, no Developer ID cert, no notarization: Gatekeeper
+  # will warn on first launch until the human decides packaging is worth a
+  # paid cert. identity: null tells electron-builder not to look for one.
+  identity: null
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+
+win:
+  target: nsis
+
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb

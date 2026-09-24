@@ -7,6 +7,7 @@
  * local run only -- no packaging, CI, or auto-updater yet.
  */
 
+import { execFileSync } from 'child_process';
 import { app, BrowserWindow, dialog, Menu, Tray } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -20,6 +21,12 @@ import type {
 } from '../../server/src/standaloneOffice.js';
 import { attachOrStartOffice } from '../../server/src/standaloneOffice.js';
 import { resolveProjectFolder } from './projectFolder.js';
+import { ensureUsablePath, readLoginShellPath } from './widenPath.js';
+
+/** OfficeSessions, the launcher, gitRoot.ts and slash-command probing all
+ *  shell out to these -- see widenPath.ts for why a packaged, GUI-launched
+ *  app can lose sight of them entirely. */
+const REQUIRED_BINARIES = ['claude', 'node', 'git'] as const;
 
 /** Clicking this (unregistered, harmless) scheme is how the "server stopped"
  *  screen asks the main process to restart -- no preload/IPC channel needed. */
@@ -320,6 +327,22 @@ function createTray(): void {
   );
 }
 
+/** `which <bin>` under the (possibly just-widened) PATH -- logged once at
+ *  startup so a Finder/Dock launch can be verified without a debugger
+ *  attached: "resolved" means OfficeSessions/the launcher/gitRoot.ts will
+ *  actually find it too. */
+function logResolvedBinary(bin: string): void {
+  try {
+    const resolved = execFileSync('/usr/bin/which', [bin], {
+      encoding: 'utf-8',
+      timeout: 2_000,
+    }).trim();
+    console.log(`[Pixel Office] Resolved ${bin} -> ${resolved || '(not found)'}`);
+  } catch {
+    console.log(`[Pixel Office] Resolved ${bin} -> (not found)`);
+  }
+}
+
 async function main(): Promise<void> {
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -328,6 +351,18 @@ async function main(): Promise<void> {
   app.on('second-instance', () => revealWindow());
 
   await app.whenReady();
+
+  // A packaged, Dock/Finder-launched app inherits launchd's minimal PATH,
+  // not a terminal's -- widen it (if needed) before anything shells out.
+  if (app.isPackaged) {
+    ensureUsablePath({
+      required: REQUIRED_BINARIES,
+      env: process.env,
+      getLoginShellPath: readLoginShellPath,
+      log: (message) => console.log(message),
+    });
+  }
+  for (const bin of REQUIRED_BINARIES) logResolvedBinary(bin);
 
   // Probe/attach happens first, inside relaunchOffice -> attachOrStartOffice;
   // resolveOwnOptions (and the folder picker it may show) only runs if that
