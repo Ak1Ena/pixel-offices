@@ -1,7 +1,7 @@
 #!/bin/bash
 # Install or update the Pixel Office desktop app on macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/pixel-agents-hq/pixel-agents/main/scripts/install-macos.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Ak1Ena/pixel-offices/main/scripts/install-macos.sh | bash
 #   curl -fsSL .../install-macos.sh | bash -s -- v2.4.0   # a specific version
 #
 # This replaces an app on the user's disk, so every failure aborts BEFORE
@@ -13,8 +13,8 @@
 # attributes either.
 set -euo pipefail
 
-OWNER="pixel-agents-hq"
-REPO="pixel-agents"
+OWNER="Ak1Ena"
+REPO="pixel-offices"
 APP_NAME="Pixel Office"
 APP_PROCESS_PATH="${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
 # Real installs always use /Applications; the override exists solely so this

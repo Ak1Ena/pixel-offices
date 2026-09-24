@@ -19,8 +19,8 @@ copyright: Copyright © Pixel Office contributors
 # existing desktop.yml upload step remains the only publisher.
 publish:
   provider: github
-  owner: pixel-agents-hq
-  repo: pixel-agents
+  owner: Ak1Ena
+  repo: pixel-offices
 
 directories:
   output: release

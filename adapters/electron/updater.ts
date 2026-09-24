@@ -23,8 +23,8 @@ import { evaluateLatestRelease, fetchLatestRelease, type UpdateAvailable } from 
 export const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 const INSTALL_COMMAND =
-  'curl -fsSL https://raw.githubusercontent.com/pixel-agents-hq/pixel-agents/main/scripts/install-macos.sh | bash';
-const RELEASES_PAGE_URL = 'https://github.com/pixel-agents-hq/pixel-agents/releases';
+  'curl -fsSL https://raw.githubusercontent.com/Ak1Ena/pixel-offices/main/scripts/install-macos.sh | bash';
+const RELEASES_PAGE_URL = 'https://github.com/Ak1Ena/pixel-offices/releases';
 
 // ── Windows / Linux: electron-updater ───────────────────────────
 

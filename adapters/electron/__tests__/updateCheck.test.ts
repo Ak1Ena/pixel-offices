@@ -61,7 +61,7 @@ function release(overrides: Partial<GithubRelease> = {}): GithubRelease {
     tag_name: 'v2.4.0',
     draft: false,
     prerelease: false,
-    html_url: 'https://github.com/pixel-agents-hq/pixel-agents/releases/tag/v2.4.0',
+    html_url: 'https://github.com/Ak1Ena/pixel-offices/releases/tag/v2.4.0',
     ...overrides,
   };
 }
@@ -72,7 +72,7 @@ describe('evaluateLatestRelease', () => {
     expect(result).toEqual({
       updateAvailable: true,
       version: '2.4.0',
-      url: 'https://github.com/pixel-agents-hq/pixel-agents/releases/tag/v2.4.0',
+      url: 'https://github.com/Ak1Ena/pixel-offices/releases/tag/v2.4.0',
     });
   });
 

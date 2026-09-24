@@ -13,8 +13,7 @@
  * `readLoginShellPath` is.
  */
 
-const RELEASES_LATEST_URL =
-  'https://api.github.com/repos/pixel-agents-hq/pixel-agents/releases/latest';
+const RELEASES_LATEST_URL = 'https://api.github.com/repos/Ak1Ena/pixel-offices/releases/latest';
 const FETCH_TIMEOUT_MS = 5_000;
 
 export interface GithubRelease {
