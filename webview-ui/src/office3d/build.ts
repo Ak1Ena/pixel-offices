@@ -121,6 +121,90 @@ export interface OfficeMeshes {
   bounds: { x0: number; x1: number; z0: number; z1: number };
   /** Monitor screens per desk tile ("col,row"), lit when someone works there. */
   screens: Map<string, THREE.Mesh>;
+  /** The front door agents leave by: the wall tile it replaces, the floor
+   *  tile inside it, and a point outside on the grass. Null = no outer wall. */
+  door: {
+    col: number;
+    row: number;
+    /** A door frame in an outer wall; false = an open edge of the floor. */
+    frame: boolean;
+    inside: { col: number; row: number };
+    outside: { x: number; z: number };
+    /** Facing out of the office (radians, as a rig's rotation.y). */
+    yaw: number;
+  } | null;
+  /** Tables big enough to meet around (desks of 2×2 tiles or more), in tiles. */
+  tables: Array<{ col: number; row: number; w: number; h: number; room: string | null }>;
+  /** Lamp spots for the night: one per desk cluster, in metres. */
+  lampSpots: Array<{ x: number; z: number }>;
+}
+
+type DoorInfo = OfficeMeshes['door'];
+
+/** A wall tile with floor on one side and nothing on the other: the outer wall.
+ *  The door goes in the southmost one, a quarter of the way across. */
+function pickDoor(layout: OfficeLayout, x0: number, x1: number): DoorInfo {
+  const { cols, rows, tiles } = layout;
+  const at = (c: number, r: number) =>
+    c < 0 || r < 0 || c >= cols || r >= rows ? TileType.VOID : tiles[r * cols + c];
+  const isFloor = (t: number) => t !== TileType.VOID && t !== TileType.WALL;
+  let best: DoorInfo = null;
+  let bestScore = Infinity;
+  const aim = x0 + (x1 - x0) * 0.25;
+  // Outward directions, best first: toward the camera (south), then the sides, then north.
+  const dirs = [
+    { dc: 0, dr: 1, pref: 0 },
+    { dc: -1, dr: 0, pref: 1 },
+    { dc: 1, dr: 0, pref: 1 },
+    { dc: 0, dr: -1, pref: 2 },
+  ];
+  const consider = (c: number, r: number, frame: boolean, dc: number, dr: number, pref: number) => {
+    // Toward the camera first (people leave where you can see them), then a
+    // framed door over an open edge, then nearest the aim point.
+    const along = dr !== 0 ? c + 0.5 : r + 0.5;
+    const score =
+      pref * 10_000 + (frame ? 0 : 1_000) + Math.abs(along - (dr !== 0 ? aim : rows / 2));
+    if (score >= bestScore) return;
+    bestScore = score;
+    const inside = frame ? { col: c - dc, row: r - dr } : { col: c, row: r };
+    best = {
+      col: c,
+      row: r,
+      frame,
+      inside,
+      outside: { x: c + 0.5 + dc * 2.2, z: r + 0.5 + dr * 2.2 },
+      yaw: Math.atan2(dc, dr),
+    };
+  };
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = at(c, r);
+      for (const { dc, dr, pref } of dirs) {
+        if (at(c + dc, r + dr) !== TileType.VOID) continue;
+        if (t === TileType.WALL) {
+          // A wall with floor behind it and nothing in front: the outer wall.
+          if (!isFloor(at(c - dc, r - dr))) continue;
+          // Wall on both sides along it, so the frame has something to sit in.
+          if (at(c - dr, r - dc) !== TileType.WALL || at(c + dr, r + dc) !== TileType.WALL)
+            continue;
+          consider(c, r, true, dc, dr, pref);
+        } else if (isFloor(t)) {
+          // An open edge (dollhouse front): walk off the floor onto the grass.
+          consider(c, r, false, dc, dr, pref);
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function roomOf(layout: OfficeLayout, col: number, row: number): string | null {
+  for (const a of layout.areas ?? []) {
+    const rc = a.teamRoom ? a.rect : undefined;
+    if (rc && col >= rc.col && col < rc.col + rc.w && row >= rc.row && row < rc.row + rc.h)
+      return a.label;
+  }
+  return null;
 }
 
 export function buildOffice(layout: OfficeLayout): OfficeMeshes {
@@ -197,15 +281,19 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
     mat(C.wallCap),
     Math.max(1, wallCells.length),
   );
-  wallCells.forEach(([col, row], k) => {
+  const door = pickDoor(layout, x0, x1);
+  const shownWalls = wallCells.filter(([c, r]) => !door?.frame || c !== door.col || r !== door.row);
+  shownWalls.forEach(([col, row], k) => {
     mtx.makeTranslation(col + 0.5, H / 2 - 0.3, row + 0.5);
     walls.setMatrixAt(k, mtx);
     mtx.makeTranslation(col + 0.5, H - 0.25, row + 0.5);
     caps.setMatrixAt(k, mtx);
   });
-  walls.count = caps.count = wallCells.length;
+  walls.count = caps.count = shownWalls.length;
   walls.castShadow = walls.receiveShadow = true;
   group.add(walls, caps);
+  if (door) buildDoor(door, group);
+  buildTeamRooms(layout, group);
 
   // Desk tiles, so surface items (monitors, mugs) know to sit on top.
   const deskTiles = new Set<string>();
@@ -218,7 +306,107 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
   }
   for (const f of layout.furniture) buildFurniture(f, group, deskTiles, screens);
 
-  return { group, bounds: { x0, x1, z0, z1 }, screens };
+  const tables: OfficeMeshes['tables'] = [];
+  const lampSpots: OfficeMeshes['lampSpots'] = [];
+  for (const f of layout.furniture) {
+    const e = getCatalogEntry(f.type);
+    if (!e?.isDesk) continue;
+    const bg = e.backgroundTiles ?? 0;
+    const h = e.footprintH - bg;
+    if (e.footprintW >= 2 && h >= 2) {
+      tables.push({
+        col: f.col,
+        row: f.row + bg,
+        w: e.footprintW,
+        h,
+        room: roomOf(layout, f.col, f.row + bg),
+      });
+    }
+    const lx = f.col + e.footprintW / 2,
+      lz = f.row + bg + h / 2;
+    if (!lampSpots.some((p) => Math.hypot(p.x - lx, p.z - lz) < 3.5))
+      lampSpots.push({ x: lx, z: lz });
+  }
+
+  return { group, bounds: { x0, x1, z0, z1 }, screens, door, tables, lampSpots };
+}
+
+function buildDoor(d: NonNullable<DoorInfo>, parent: THREE.Group): void {
+  // Built facing +z (out), then turned to face out of the office.
+  const g = new THREE.Group();
+  g.position.set(d.col + 0.5, 0, d.row + 0.5);
+  g.rotation.y = d.yaw;
+  parent.add(g);
+  if (d.frame) {
+    const top = OFFICE3D_WALL_HEIGHT_M - 0.25;
+    for (const sx of [-0.45, 0.45]) rbox(0.1, top + 0.05, 1, C.wallCap, sx, -0.3, 0, g);
+    rbox(1, 0.12, 1, C.wallCap, 0, top - 0.05, 0, g);
+    const sign = new THREE.Mesh(
+      new THREE.BoxGeometry(0.36, 0.1, 0.03),
+      new THREE.MeshBasicMaterial({ color: C.exitSign }),
+    );
+    sign.position.set(0, top + 0.18, 0.52);
+    g.add(sign);
+  }
+  // A doormat just outside, so the way out reads at a glance.
+  rbox(0.9, 0.03, 0.6, C.mat, 0, -0.02, d.frame ? 0.9 : 0.85, g);
+}
+
+/** Glass walls around each team room, open at its door, with the room's name. */
+function buildTeamRooms(layout: OfficeLayout, g: THREE.Group): void {
+  const glass = new THREE.MeshStandardMaterial({
+    color: C.glass,
+    transparent: true,
+    opacity: 0.22,
+    roughness: 0.05,
+  });
+  const hG = 1.1;
+  for (const a of layout.areas ?? []) {
+    const rc = a.teamRoom ? a.rect : undefined;
+    if (!rc) continue;
+    const isDoor = (col: number, row: number, side: string) =>
+      a.door?.col === col && a.door?.row === row && a.door?.side === side;
+    const pane = (x: number, z: number, alongX: boolean) => {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(alongX ? 1 : 0.04, hG, alongX ? 0.04 : 1),
+        glass,
+      );
+      m.position.set(x, hG / 2, z);
+      g.add(m);
+      rbox(alongX ? 1 : 0.06, 0.05, alongX ? 0.06 : 1, C.frames, x, hG, z, g);
+    };
+    for (let c = rc.col; c < rc.col + rc.w; c++) {
+      if (!isDoor(c, rc.row, 'N')) pane(c + 0.5, rc.row, true);
+      if (!isDoor(c, rc.row + rc.h - 1, 'S')) pane(c + 0.5, rc.row + rc.h, true);
+    }
+    for (let r = rc.row; r < rc.row + rc.h; r++) {
+      if (!isDoor(rc.col, r, 'W')) pane(rc.col, r + 0.5, false);
+      if (!isDoor(rc.col + rc.w - 1, r, 'E')) pane(rc.col + rc.w, r + 0.5, false);
+    }
+    g.add(nameTag(a.label, rc.col + rc.w / 2, hG + 0.35, rc.row + rc.h));
+  }
+}
+
+function nameTag(text: string, x: number, y: number, z: number): THREE.Sprite {
+  const cv = document.createElement('canvas');
+  cv.width = 256;
+  cv.height = 64;
+  const ctx = cv.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = C.tagBg;
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.fillStyle = C.tagInk;
+    ctx.font = 'bold 30px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text.slice(0, 18), 128, 33);
+  }
+  const s = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: true }),
+  );
+  s.scale.set(1.6, 0.4, 1);
+  s.position.set(x, y, z);
+  return s;
 }
 
 function buildFurniture(

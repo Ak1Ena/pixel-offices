@@ -5,9 +5,10 @@
  */
 
 import type React from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
+import { Button } from '../components/ui/Button.js';
 import {
   DESK_CARD_DRAG_MIME,
   MATRIX_EFFECT_DURATION_SEC,
@@ -17,6 +18,9 @@ import {
   OFFICE3D_DRAG_SLOP_PX,
   OFFICE3D_FOV,
   OFFICE3D_HEMI_INTENSITY,
+  OFFICE3D_NIGHT_FROM_HOUR,
+  OFFICE3D_NIGHT_KEY,
+  OFFICE3D_NIGHT_TO_HOUR,
   OFFICE3D_PX_PER_M,
   OFFICE3D_RISE_M_PER_PX,
   OFFICE3D_SUN_INTENSITY,
@@ -34,6 +38,16 @@ import { CharacterState } from '../office/types.js';
 import { isE2E } from '../runtime.js';
 import { buildOffice, disposeGroup, type OfficeMeshes } from './build.js';
 import { buildRig, disposeRig, lookKey, poseRig, type Rig } from './characters3d.js';
+import {
+  applyNight,
+  buildLamps,
+  type Leaver,
+  type NightRig,
+  startLeaving,
+  stepLeaver,
+  updateBurn,
+} from './life.js';
+import { MeetingDirector } from './meetings.js';
 
 export interface Office3DViewProps {
   officeState: OfficeState;
@@ -55,6 +69,17 @@ export default function Office3DView({
   const hostRef = useRef<HTMLDivElement>(null);
   const pickRef = useRef<(clientX: number, clientY: number) => number | null>(() => null);
   const dropRef = useRef({ onPinDrop, onWorkflowDrop, onCardDrop, onClick });
+  const overlayRef = useRef<OverlayItem[]>([]);
+  const [nightMode, setNightMode] = useState<NightMode>(() => {
+    try {
+      const v = localStorage.getItem(OFFICE3D_NIGHT_KEY);
+      return v === 'day' || v === 'night' ? v : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  const nightRef = useRef(nightMode);
+  nightRef.current = nightMode;
   dropRef.current = { onPinDrop, onWorkflowDrop, onCardDrop, onClick };
 
   useEffect(() => {
@@ -71,7 +96,8 @@ export default function Office3DView({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(C.sky);
-    scene.add(new THREE.HemisphereLight(C.hemiSky, C.hemiGround, OFFICE3D_HEMI_INTENSITY));
+    const hemi = new THREE.HemisphereLight(C.hemiSky, C.hemiGround, OFFICE3D_HEMI_INTENSITY);
+    scene.add(hemi);
     const sun = new THREE.DirectionalLight(C.sun, OFFICE3D_SUN_INTENSITY);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -110,6 +136,10 @@ export default function Office3DView({
       }
       office = buildOffice(layout);
       scene.add(office.group);
+      const lit = buildLamps(office, office.group);
+      night.lamps = lit.lamps;
+      night.bulbs = lit.bulbs;
+      director.end();
       const b = office.bounds;
       const cx = (b.x0 + b.x1) / 2,
         cz = (b.z0 + b.z1) / 2,
@@ -130,11 +160,19 @@ export default function Office3DView({
       sc.updateProjectionMatrix();
     };
 
+    const night: NightRig = { hemi, sun, lamps: [], bulbs: [] };
+    let nightK = -1;
+    const director = new MeetingDirector(officeState);
+    const leavers: Leaver[] = [];
+    /** Characters whose rig became a leaver: never re-created while they despawn. */
+    const left = new Set<number>();
+
     const rigs = new Map<number, Rig>();
     const syncRigs = () => {
       const seen = new Set<number>();
       for (const ch of officeState.getCharacters()) {
         seen.add(ch.id);
+        if (left.has(ch.id)) continue;
         let r = rigs.get(ch.id);
         if (r && r.lookKey !== lookKey(ch)) {
           scene.remove(r.g);
@@ -146,6 +184,12 @@ export default function Office3DView({
           r.g.rotation.y = 0;
           rigs.set(ch.id, r);
           scene.add(r.g);
+        }
+      }
+      for (const id of left) {
+        if (!seen.has(id)) {
+          left.delete(id);
+          officeState.leavingIds.delete(id);
         }
       }
       for (const [id, r] of rigs) {
@@ -215,6 +259,8 @@ export default function Office3DView({
     // e2e: find a character on screen without hunting pixels.
     if (isE2E) {
       const hooks = (window.__pixelAgentsTestHooks ??= {});
+      hooks.standupNow3D = () => director.standupNow();
+      hooks.meeting3D = () => director.meeting?.title ?? null;
       hooks.screenOf3D = (id) => {
         const r = rigs.get(id);
         if (!r) return null;
@@ -307,7 +353,39 @@ export default function Office3DView({
       time += dt;
       officeState.update(dt);
       rebuild();
+      // Closed from the office: hand the rig to a leaver that walks it out.
+      for (const ch of officeState.getCharacters()) {
+        if (ch.matrixEffect !== 'despawn' || !officeState.leavingIds.has(ch.id)) continue;
+        const r = rigs.get(ch.id);
+        if (!r || left.has(ch.id)) continue;
+        rigs.delete(ch.id);
+        left.add(ch.id);
+        leavers.push(
+          startLeaving(
+            ch.id,
+            r,
+            ch,
+            office?.door ?? null,
+            officeState.tileMap,
+            officeState.blockedTiles,
+          ),
+        );
+      }
       syncRigs();
+      for (let i = leavers.length - 1; i >= 0; i--) {
+        if (!stepLeaver(leavers[i], office?.door ?? null, dt, time, scene)) leavers.splice(i, 1);
+      }
+      director.update(dt, office, officeState.leavingIds);
+
+      const want = nightWanted(nightRef.current) ? 1 : 0;
+      const k =
+        nightK < 0
+          ? want
+          : nightK + Math.sign(want - nightK) * Math.min(Math.abs(want - nightK), dt * 0.8);
+      if (k !== nightK) {
+        nightK = k;
+        applyNight(scene, night, k);
+      }
 
       for (const ch of officeState.getCharacters()) {
         const r = rigs.get(ch.id);
@@ -315,7 +393,55 @@ export default function Office3DView({
         const f = Math.min(1, ch.matrixEffectTimer / MATRIX_EFFECT_DURATION_SEC);
         const grow = ch.matrixEffect === 'spawn' ? f : ch.matrixEffect === 'despawn' ? 1 - f : 1;
         poseRig(r, ch, dt, time, grow);
+        updateBurn(r, ch.burnLevel ?? 0, dt);
       }
+
+      // What the overlay draws this frame: bubbles, goodbyes, the meeting.
+      const items: OverlayItem[] = [];
+      const at = (x: number, y: number, z: number) => {
+        v.set(x, y, z).project(camera);
+        return {
+          x: (v.x * 0.5 + 0.5) * host.clientWidth,
+          y: (-v.y * 0.5 + 0.5) * host.clientHeight,
+        };
+      };
+      const mt = director.meeting;
+      for (const ch of officeState.getCharacters()) {
+        const r = rigs.get(ch.id);
+        if (!r) continue;
+        const kind =
+          ch.bubbleType === 'permission'
+            ? 'ask'
+            : ch.bubbleType === 'waiting'
+              ? 'done'
+              : mt?.speaker === ch.id
+                ? 'talk'
+                : null;
+        if (kind)
+          items.push({
+            key: `b${ch.id}`,
+            kind,
+            ...at(r.g.position.x, r.height + 0.35, r.g.position.z),
+          });
+      }
+      for (const L of leavers) {
+        if (L.say)
+          items.push({
+            key: `l${L.id}`,
+            kind: 'say',
+            text: L.say,
+            ...at(L.rig.g.position.x, L.rig.height + 0.35, L.rig.g.position.z),
+          });
+      }
+      if (mt) {
+        items.push({
+          key: 'meet',
+          kind: 'meet',
+          text: mt.title,
+          ...at(mt.table.col + mt.table.w / 2, 1.5, mt.table.row + mt.table.h / 2),
+        });
+      }
+      overlayRef.current = items;
 
       // Screens light up in front of whoever is typing.
       if (office) {
@@ -383,40 +509,126 @@ export default function Office3DView({
     return officeState.subagentMeta.get(hit)?.parentAgentId ?? hit;
   };
 
+  const cycleNight = () => {
+    const next: NightMode = nightMode === 'auto' ? 'night' : nightMode === 'night' ? 'day' : 'auto';
+    setNightMode(next);
+    try {
+      localStorage.setItem(OFFICE3D_NIGHT_KEY, next);
+    } catch {
+      /* not remembered, still switched */
+    }
+  };
+
   return (
-    <div
-      ref={hostRef}
-      className="absolute inset-0"
-      onDragOver={(e) => {
-        const kind = kindOf(e);
-        if (!kind) return;
-        e.preventDefault();
-        const target = targetOf(e);
-        officeState.hoveredAgentId = target;
-        e.dataTransfer.dropEffect = target === null ? 'none' : kind === 'card' ? 'move' : 'copy';
-      }}
-      onDragLeave={() => {
-        officeState.hoveredAgentId = null;
-      }}
-      onDrop={(e) => {
-        const kind = kindOf(e);
-        const target = targetOf(e);
-        officeState.hoveredAgentId = null;
-        if (!kind || target === null) return;
-        const mime =
-          kind === 'pin'
-            ? PIN_DRAG_MIME
-            : kind === 'card'
-              ? DESK_CARD_DRAG_MIME
-              : WORKFLOW_DRAG_MIME;
-        const id = e.dataTransfer.getData(mime);
-        if (!id) return;
-        e.preventDefault();
-        const d = dropRef.current;
-        if (kind === 'pin') d.onPinDrop?.(target, id);
-        else if (kind === 'card') d.onCardDrop?.(target, id);
-        else d.onWorkflowDrop?.(target, id);
-      }}
-    />
+    <>
+      <div
+        ref={hostRef}
+        className="absolute inset-0"
+        onDragOver={(e) => {
+          const kind = kindOf(e);
+          if (!kind) return;
+          e.preventDefault();
+          const target = targetOf(e);
+          officeState.hoveredAgentId = target;
+          e.dataTransfer.dropEffect = target === null ? 'none' : kind === 'card' ? 'move' : 'copy';
+        }}
+        onDragLeave={() => {
+          officeState.hoveredAgentId = null;
+        }}
+        onDrop={(e) => {
+          const kind = kindOf(e);
+          const target = targetOf(e);
+          officeState.hoveredAgentId = null;
+          if (!kind || target === null) return;
+          const mime =
+            kind === 'pin'
+              ? PIN_DRAG_MIME
+              : kind === 'card'
+                ? DESK_CARD_DRAG_MIME
+                : WORKFLOW_DRAG_MIME;
+          const id = e.dataTransfer.getData(mime);
+          if (!id) return;
+          e.preventDefault();
+          const d = dropRef.current;
+          if (kind === 'pin') d.onPinDrop?.(target, id);
+          else if (kind === 'card') d.onCardDrop?.(target, id);
+          else d.onWorkflowDrop?.(target, id);
+        }}
+      />
+      <Overlay3D itemsRef={overlayRef} />
+      <div className="absolute top-8 left-8 z-10">
+        <Button
+          type="button"
+          size="sm"
+          onClick={cycleNight}
+          title="Day, night, or follow the clock"
+          data-testid="office3d-night"
+        >
+          {nightMode === 'auto'
+            ? 'Time: clock'
+            : nightMode === 'night'
+              ? 'Time: night'
+              : 'Time: day'}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+type NightMode = 'auto' | 'day' | 'night';
+
+function nightWanted(mode: NightMode): boolean {
+  if (mode !== 'auto') return mode === 'night';
+  const h = new Date().getHours();
+  return h >= OFFICE3D_NIGHT_FROM_HOUR || h < OFFICE3D_NIGHT_TO_HOUR;
+}
+
+interface OverlayItem {
+  key: string;
+  kind: 'ask' | 'done' | 'talk' | 'say' | 'meet';
+  text?: string;
+  x: number;
+  y: number;
+}
+
+const BUBBLE_CLASS: Record<OverlayItem['kind'], string> = {
+  ask: 'bg-status-permission text-bg-dark px-6 font-bold',
+  done: 'bg-status-success text-bg-dark px-6 font-bold',
+  talk: 'bg-board text-board-ink px-6',
+  say: 'bg-board text-board-ink px-8',
+  meet: 'bg-bg-dark text-text px-8 border-accent',
+};
+
+/** Bubbles and labels over the 3D office, redrawn every frame from the scene. */
+function Overlay3D({ itemsRef }: { itemsRef: React.RefObject<OverlayItem[]> }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setTick((n) => (n + 1) % 1_000_000);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {itemsRef.current.map((it) => (
+        <div
+          key={it.key}
+          className={`absolute -translate-x-1/2 -translate-y-full py-1 text-sm whitespace-nowrap border-2 border-border shadow-pixel ${BUBBLE_CLASS[it.kind]}`}
+          style={{ left: it.x, top: it.y }}
+          data-testid={`office3d-${it.kind}`}
+        >
+          {it.kind === 'ask'
+            ? '…'
+            : it.kind === 'done'
+              ? '✓'
+              : it.kind === 'talk'
+                ? '···'
+                : it.text}
+        </div>
+      ))}
+    </div>
   );
 }

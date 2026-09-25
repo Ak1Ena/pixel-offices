@@ -1177,6 +1177,13 @@ export class OfficeState {
     if (ch) ch.burnLevel = level;
   }
 
+  /** Agents closed from the office: the 3D view walks them out the door. */
+  leavingIds = new Set<number>();
+
+  markLeaving(id: number): void {
+    this.leavingIds.add(id);
+  }
+
   /** 3D looks by agent id: kept apart from the characters so a look that
    *  arrives before its agent (handshake order) still lands. */
   agentLooks = new Map<number, AgentLook>();

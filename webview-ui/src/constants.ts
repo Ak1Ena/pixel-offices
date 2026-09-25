@@ -570,6 +570,19 @@ export const OFFICE3D_COLORS = {
   collar: '#F4F1EA',
   tie: '#C23B3B',
   tieKnot: '#A12F2F',
+  exitSign: '#2FB36B',
+  mat: '#B98A5E',
+  glass: '#BFD9E8',
+  tagBg: '#FFF6EA',
+  tagInk: '#2A2638',
+  skyNight: '#221F37',
+  hemiNight: '#6A6590',
+  sunNight: '#9DB4FF',
+  lamp: '#FFC978',
+  smoke: '#9A9AA6',
+  flame: '#FF8A2A',
+  flameCore: '#FFD34D',
+  talk: '#FFFFFF',
 } as const;
 /** The six character palettes, in the same order as char_0..char_5.png. */
 export const OFFICE3D_PALETTES: ReadonlyArray<{
@@ -624,3 +637,14 @@ export const OFFICE3D_SWATCHES = {
 } as const;
 /** Studio preview backdrop. */
 export const OFFICE3D_STUDIO_BG = '#2A2E36';
+/** 3D meetings: how often, how long, how long each speaker talks, and how long
+ *  a whole team must be free before it gathers. */
+export const OFFICE3D_MEET_EVERY_SEC = 180;
+export const OFFICE3D_MEET_LENGTH_SEC = 35;
+export const OFFICE3D_MEET_SPEAK_SEC = 4;
+export const OFFICE3D_TEAM_MEET_AFTER_SEC = 20;
+/** localStorage key: the 3D office's day/night choice ('day' | 'night' | 'auto'). */
+export const OFFICE3D_NIGHT_KEY = 'pixel-agents.office3dNight';
+/** 'auto' night hours (local time). */
+export const OFFICE3D_NIGHT_FROM_HOUR = 19;
+export const OFFICE3D_NIGHT_TO_HOUR = 7;

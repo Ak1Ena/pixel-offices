@@ -89,6 +89,8 @@ declare global {
       selectAgent?: (id: number) => void;
       /** 3D view only: where a character's body is on screen (CSS px), or null. */
       screenOf3D?: (id: number) => { x: number; y: number } | null;
+      standupNow3D?: () => void;
+      meeting3D?: () => string | null;
     };
   }
 }

@@ -468,6 +468,8 @@ function App() {
   );
 
   const handleCloseAgent = useCallback((id: number) => {
+    // Closed from the office: in 3D the character walks out the front door.
+    getOfficeState().markLeaving(id);
     transport.send({ type: 'closeAgent', id });
   }, []);
 
