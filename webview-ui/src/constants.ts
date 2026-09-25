@@ -725,3 +725,7 @@ export const OFFICE3D_PET_COLORS = [
   '#C98A5E',
   '#B8B8B8',
 ];
+/** The 3D office's chat panel, docked on the right like the design's. */
+export const CHAT_DOCK_WIDTH_PX = 380;
+export const CHAT_DOCK_TOP_PX = 60;
+export const CHAT_DOCK_BOTTOM_PX = 96;

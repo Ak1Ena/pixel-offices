@@ -13,10 +13,14 @@ import type {
   ScreenQuestion,
   WorkflowRun,
 } from '../../../core/src/messages.js';
+import { agentColor } from '../agentStatus.js';
 import {
   AGENT_NAME_INPUT_MAX_CHARS,
   CHAT_CARD_EDGE_MARGIN_PX,
   CHAT_CARD_GAP_PX,
+  CHAT_DOCK_BOTTOM_PX,
+  CHAT_DOCK_TOP_PX,
+  CHAT_DOCK_WIDTH_PX,
   MOBILE_BREAKPOINT_PX,
   PIN_DRAG_MIME,
 } from '../constants.js';
@@ -73,6 +77,8 @@ interface ChatCardProps {
   onRename: (name: string) => void;
   /** 3D office: open the character studio for this agent. */
   onEditLook?: () => void;
+  /** Dock the card as a panel on the right (the 3D office's chat), not beside the character. */
+  docked?: boolean;
   /** Terminal screen of an agent the office runs itself; undefined for every other agent. */
   screen?: string[];
   onKeys?: (keys: AgentKey[]) => void;
@@ -194,7 +200,7 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
   if (entry.role === 'tool') {
     return (
       <div
-        className="flex gap-6 items-center px-6 py-1 bg-chat-tool text-xs"
+        className="flex gap-8 items-center px-10 py-4 border border-dashed border-border rounded-ui font-mono text-code-sm text-text-muted"
         data-testid="chat-tool"
       >
         <span className={entry.toolDone ? 'text-status-success' : 'text-status-active'}>
@@ -208,26 +214,19 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
   const fromOffice = entry.source === 'office';
   return (
     <div
-      className={`flex flex-col gap-2 max-w-[85%] ${isUser ? 'self-end items-end' : 'self-start'}`}
+      className={`flex flex-col gap-3 max-w-[85%] ${isUser ? 'self-end items-end' : 'self-start'}`}
       data-testid={isUser ? 'chat-user' : 'chat-assistant'}
     >
       <div className="flex gap-6 text-2xs text-text-muted">
-        {isUser && (
-          <span className={`px-4 border ${fromOffice ? 'border-accent' : 'border-border'}`}>
-            {fromOffice ? 'OFFICE' : 'TERMINAL'}
-          </span>
-        )}
         <span>
-          {isUser ? 'you' : 'claude'} {timeLabel(entry.timestamp)}
+          {isUser ? (fromOffice ? 'you' : 'you · terminal') : 'claude'} {timeLabel(entry.timestamp)}
         </span>
       </div>
       <div
-        className={`px-8 py-4 border font-reading text-read leading-snug whitespace-pre-wrap break-words ${
+        className={`px-12 py-8 font-reading text-read leading-snug whitespace-pre-wrap break-words rounded-panel ${
           isUser
-            ? fromOffice
-              ? 'bg-chat-office border-accent'
-              : 'bg-bg-thumb border-border'
-            : 'bg-bg-dark border-bg-thumb'
+            ? 'bg-chat-office rounded-br-[4px]'
+            : 'bg-btn-bg border border-border rounded-bl-[4px]'
         }`}
       >
         {isUser ? <MessageText text={entry.text} /> : entry.text}
@@ -282,6 +281,7 @@ export function ChatCard({
   customName,
   onRename,
   onEditLook,
+  docked = false,
   screen,
   onKeys,
   onStop,
@@ -356,6 +356,9 @@ export function ChatCard({
     on?: boolean;
     danger?: boolean;
   }> = [
+    ...(onEditLook
+      ? [{ id: 'chat-look', icon: '☺', label: 'Change look', onClick: onEditLook }]
+      : []),
     ...(onSetClearPolicy || onSetDocEditMode || onSetModel
       ? [
           {
@@ -433,15 +436,24 @@ export function ChatCard({
   // Small screens: a bottom sheet across the whole panel, no anchoring.
   const sheetFraction = tunable('chatSheetHeightFraction');
   const isSheet = rect.width < MOBILE_BREAKPOINT_PX;
-  const frame = isSheet
-    ? {
-        left: 0,
-        top: Math.round(rect.height * (1 - sheetFraction)),
-        width: rect.width,
-        height: Math.round(rect.height * sheetFraction),
-      }
-    : { left, top, width, height };
-  const showTail = !isSheet && left === rawLeft;
+  const dockW = Math.min(CHAT_DOCK_WIDTH_PX, rect.width - CHAT_CARD_EDGE_MARGIN_PX * 2);
+  const frame =
+    docked && !isSheet
+      ? {
+          left: rect.width - dockW - CHAT_CARD_EDGE_MARGIN_PX,
+          top: CHAT_DOCK_TOP_PX,
+          width: dockW,
+          height: Math.max(240, rect.height - CHAT_DOCK_TOP_PX - CHAT_DOCK_BOTTOM_PX),
+        }
+      : isSheet
+        ? {
+            left: 0,
+            top: Math.round(rect.height * (1 - sheetFraction)),
+            width: rect.width,
+            height: Math.round(rect.height * sheetFraction),
+          }
+        : { left, top, width, height };
+  const showTail = !isSheet && !docked && left === rawLeft;
 
   const canSend = readOnlyReason === null;
   /** Mid-turn or asking: Send queues, "Send now" stops the turn first. */
@@ -525,26 +537,37 @@ export function ChatCard({
         />
       )}
 
-      <div className="flex items-center gap-8 px-10 py-4 border-b-2 border-bg-thumb">
+      <div className="flex items-center gap-8 px-14 pt-12 pb-10">
         <span
-          className="w-8 h-8 shrink-0"
-          style={{
-            background: needsApproval
-              ? 'var(--color-status-permission)'
-              : ch.isActive
-                ? 'var(--color-status-active)'
-                : 'var(--color-status-success)',
-          }}
-        />
+          className="relative w-36 h-36 shrink-0 rounded-ui grid place-items-center text-base font-semibold text-white"
+          style={{ background: agentColor(officeState, agentId) }}
+          aria-hidden="true"
+        >
+          {title.slice(0, 1).toUpperCase()}
+          <span
+            className={`absolute -right-2 -bottom-2 w-10 h-10 rounded-full border-2 border-bg ${
+              needsApproval
+                ? 'bg-status-permission'
+                : ch.isActive
+                  ? 'bg-status-active'
+                  : 'bg-status-success'
+            }`}
+          />
+        </span>
         {nameDraft === null ? (
           <>
-            <span
-              className="min-w-0 text-base overflow-hidden text-ellipsis whitespace-nowrap"
-              onDoubleClick={() => setNameDraft(customName || title)}
-              title={title}
-              data-testid="chat-title"
-            >
-              {title}
+            <span className="flex-1 min-w-0 flex flex-col">
+              <span
+                className="font-display text-lg font-medium overflow-hidden text-ellipsis whitespace-nowrap"
+                onDoubleClick={() => setNameDraft(customName || title)}
+                title={title}
+                data-testid="chat-title"
+              >
+                {title}
+              </span>
+              <span className="font-mono text-2xs text-text-muted truncate">
+                {[ch.folderName, readOnlyReason ? 'read-only' : null].filter(Boolean).join(' · ')}
+              </span>
             </span>
             <Button
               variant="ghost"
@@ -566,17 +589,6 @@ export function ChatCard({
                 <path d="M2 12 L2 9 L9 2 L12 5 L5 12 Z" />
               </svg>
             </Button>
-            {onEditLook && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onEditLook}
-                title="Change how this agent looks"
-                data-testid="chat-look"
-              >
-                Look
-              </Button>
-            )}
           </>
         ) : (
           <form
@@ -608,12 +620,7 @@ export function ChatCard({
             />
           </form>
         )}
-        {readOnlyReason && (
-          <span className="text-2xs px-4 border border-border text-text-muted shrink-0">
-            READ-ONLY
-          </span>
-        )}
-        <span className="flex-1" />
+
         {onStop && !readOnlyReason && (ch.isActive || needsApproval) && (
           <Button
             size="sm"
@@ -687,7 +694,7 @@ export function ChatCard({
       {question && onShowQuestion && (
         <div
           role="alert"
-          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-status-permission text-xs"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b border-status-permission text-xs"
           data-testid="chat-question"
         >
           <span className="flex-1 min-w-0 truncate">
@@ -704,7 +711,7 @@ export function ChatCard({
         <div
           role="alertdialog"
           aria-label="Agent asks to clear its context"
-          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-warning text-xs flex-wrap"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b border-warning text-xs flex-wrap"
           data-testid="chat-clear-request"
         >
           <span className="flex-1 min-w-0">
@@ -724,7 +731,7 @@ export function ChatCard({
         <div
           role="dialog"
           aria-label="Clear context"
-          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b-2 border-danger text-xs"
+          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b border-danger text-xs"
           data-testid="chat-clear-panel"
         >
           <fieldset className="flex flex-col gap-2">
@@ -776,7 +783,7 @@ export function ChatCard({
         <div
           role="dialog"
           aria-label="Agent settings"
-          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b-2 border-border text-xs"
+          className="flex flex-col gap-6 px-10 py-6 bg-bg-dark border-b border-border text-xs"
           data-testid="chat-prefs-panel"
         >
           {onSetModel && onLoadModels && (
@@ -827,7 +834,7 @@ export function ChatCard({
         <div
           role="alertdialog"
           aria-label="Remove agent"
-          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b-2 border-danger text-xs flex-wrap"
+          className="flex items-center gap-8 px-10 py-6 bg-bg-dark border-b border-danger text-xs flex-wrap"
           data-testid="chat-remove-confirm"
         >
           <span className="flex-1 min-w-0">
@@ -853,62 +860,59 @@ export function ChatCard({
       )}
 
       <div
-        className="grid grid-cols-3 gap-8 px-10 py-4 bg-bg-dark border-b-2 border-bg-thumb text-2xs"
+        className="flex flex-col gap-6 px-14 pb-12 border-b border-border text-2xs"
         data-testid="chat-stats"
       >
-        <div className="flex flex-col gap-2 min-w-0">
-          <span className="text-xs">CONTEXT</span>
-          {ch.contextTokens > 0 ? (
-            <>
-              <div
-                role="meter"
-                aria-label="Context used"
-                aria-valuenow={Math.round((ch.contextTokens / ch.maxContextTokens) * 100)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                className="h-6 bg-bg border border-border"
-              >
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${Math.min(100, (ch.contextTokens / ch.maxContextTokens) * 100)}%`,
-                    background: contextColor(ch.contextTokens / ch.maxContextTokens),
-                  }}
-                />
-              </div>
-              <span className="text-text-muted">
-                {formatTokens(ch.contextTokens)} / {formatTokens(ch.maxContextTokens)}
-              </span>
-            </>
-          ) : (
-            <span className="text-text-muted">no turn yet</span>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 min-w-0">
-          <span className="text-xs">SESSION</span>
-          <span className="text-sm">
-            {usage ? `${formatTokens(usage.outputTokens)} tokens out` : '—'}
-          </span>
-          <span className="text-text-muted">
-            {usage
-              ? `${usage.requests} requests${usage.partial ? ' · recent only' : ''}`
-              : 'no usage yet'}
+        <div className="flex justify-between text-text-muted">
+          <span>Context used</span>
+          <span>
+            {ch.contextTokens > 0
+              ? `${formatTokens(ch.contextTokens)} of ${formatTokens(ch.maxContextTokens)}`
+              : 'no turn yet'}
           </span>
         </div>
-        <div className="flex flex-col gap-2 min-w-0">
+        <div
+          role="meter"
+          aria-label="Context used"
+          aria-valuenow={
+            ch.contextTokens > 0 ? Math.round((ch.contextTokens / ch.maxContextTokens) * 100) : 0
+          }
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="h-6 rounded-full bg-bg-thumb overflow-hidden"
+        >
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${ch.contextTokens > 0 ? Math.min(100, (ch.contextTokens / ch.maxContextTokens) * 100) : 0}%`,
+              background: contextColor(ch.contextTokens / Math.max(1, ch.maxContextTokens)),
+            }}
+          />
+        </div>
+        <div className="flex justify-between gap-8 text-text-muted">
+          <span className="truncate">
+            {needsApproval ? 'Needs you' : ch.isActive ? 'Working' : 'Waiting for you'}
+          </span>
           <span
-            className={`text-xs ${burnLevelFor(usage?.burnPerMinute ?? 0) === 2 ? 'text-danger' : burnLevelFor(usage?.burnPerMinute ?? 0) === 1 ? 'text-warning' : ''}`}
+            className={`whitespace-nowrap ${
+              burnLevelFor(usage?.burnPerMinute ?? 0) === 2
+                ? 'text-danger'
+                : burnLevelFor(usage?.burnPerMinute ?? 0) === 1
+                  ? 'text-warning'
+                  : ''
+            }`}
           >
-            {burnLevelFor(usage?.burnPerMinute ?? 0) === 2 ? 'ON FIRE' : 'BURN'}
+            {usage ? `${formatTokens(usage.outputTokens)} written` : 'nothing written yet'}
+            {usage && (usage.burnPerMinute ?? 0) > 0
+              ? ` · ${formatTokens(usage.burnPerMinute ?? 0)}/min`
+              : ''}
           </span>
-          <span className="text-sm">{formatTokens(usage?.burnPerMinute ?? 0)} tok/min</span>
-          <span className="text-text-muted">new tokens, last 5 min</span>
         </div>
       </div>
 
       {screen && showScreen && (
         <div
-          className="flex flex-col gap-4 p-8 bg-bg-dark border-b-2 border-bg-thumb"
+          className="flex flex-col gap-4 p-8 bg-bg-dark border-b border-bg-thumb"
           data-testid="chat-screen"
         >
           <pre className="m-0 max-h-200 overflow-auto p-6 bg-chat-tool text-text text-code-sm leading-tight whitespace-pre">
@@ -985,13 +989,13 @@ export function ChatCard({
         <WorkflowRunSteps
           run={run}
           onStop={onStopRun}
-          className="px-8 py-6 border-t-2 border-border bg-bg"
+          className="px-8 py-6 border-t border-border bg-bg"
         />
       )}
 
       {canSend ? (
         <div
-          className="flex flex-col gap-4 p-8 border-t-2 border-border bg-bg-dark"
+          className="flex flex-col gap-4 p-8 border-t border-border bg-bg-dark"
           onDragOver={(e) => {
             if (!acceptsPin(e)) return;
             e.preventDefault();
@@ -1156,7 +1160,7 @@ export function ChatCard({
         </div>
       ) : (
         <div
-          className="flex flex-col gap-2 p-10 border-t-2 border-border bg-bg-dark"
+          className="flex flex-col gap-2 p-10 border-t border-border bg-bg-dark"
           data-testid="chat-read-only"
         >
           <span className="text-sm">The office can't type into this session.</span>

@@ -1002,6 +1002,7 @@ function App() {
                   customName={chat.names[id] ?? ''}
                   onRename={(name) => chat.renameAgent(id, name)}
                   onEditLook={is3DView ? () => setLookAgentId(id) : undefined}
+                  docked={show3D}
                   screen={chat.screens[id]}
                   onKeys={(keys) => chat.sendKeys(id, keys)}
                   onStop={() => chat.interruptAgent(id)}
