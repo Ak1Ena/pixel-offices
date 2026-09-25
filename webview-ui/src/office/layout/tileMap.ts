@@ -16,6 +16,11 @@ export function setNavigation(next: Navigation): void {
   navigation = next;
 }
 
+/** Whether a step between two neighbouring tiles crosses no room wall. */
+export function canStep(col: number, row: number, nextCol: number, nextRow: number): boolean {
+  return !navigation.blocked.has(`${col},${row}>${nextCol},${nextRow}`);
+}
+
 /** Check if a tile is walkable (floor, carpet, or doorway, and not blocked by furniture) */
 export function isWalkable(
   col: number,

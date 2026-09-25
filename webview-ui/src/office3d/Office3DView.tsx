@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 import { agentColor } from '../agentStatus.js';
+import { LookModal } from '../components/LookModal.js';
 import { Button } from '../components/ui/Button.js';
 import {
   DESK_CARD_DRAG_MIME,
@@ -20,11 +21,15 @@ import {
   OFFICE3D_FOV,
   OFFICE3D_GROW_STEP,
   OFFICE3D_HEMI_INTENSITY,
+  OFFICE3D_KEY_PAN_K,
+  OFFICE3D_KEY_TURN_RAD,
+  OFFICE3D_KEY_ZOOM_K,
   OFFICE3D_NIGHT_FROM_HOUR,
   OFFICE3D_NIGHT_KEY,
   OFFICE3D_NIGHT_TO_HOUR,
   OFFICE3D_PX_PER_M,
   OFFICE3D_RISE_M_PER_PX,
+  OFFICE3D_SCROLL_PAN_K,
   OFFICE3D_SUN_INTENSITY,
   OFFICE3D_TILT_MAX,
   OFFICE3D_TILT_MIN,
@@ -36,10 +41,12 @@ import {
 } from '../constants.js';
 import type { ExpandDirection } from '../office/editor/editorActions.js';
 import type { OfficeState } from '../office/engine/officeState.js';
+import { isWalkable } from '../office/layout/tileMap.js';
 import { setScreen3D } from '../office/projection.js';
 import type { OfficeLayout } from '../office/types.js';
 import { CharacterState } from '../office/types.js';
 import { isE2E } from '../runtime.js';
+import { Avatar, DEFAULT_AVATAR_LOOK, loadAvatarLook, saveAvatarLook } from './avatar.js';
 import { buildOffice, disposeGroup, type OfficeMeshes } from './build.js';
 import { buildRig, disposeRig, lookKey, poseRig, type Rig } from './characters3d.js';
 import { applyDesignColors } from './colorMode.js';
@@ -110,6 +117,51 @@ export default function Office3DView({
   const nightRef = useRef(nightMode);
   nightRef.current = nightMode;
   dropRef.current = { onPinDrop, onWorkflowDrop, onCardDrop, onClick };
+  /** Walk mode: the keys and floor clicks move your character, the camera follows. */
+  const [walk, setWalk] = useState(false);
+  const walkRef = useRef(walk);
+  walkRef.current = walk;
+  const [avatarLook, setAvatarLook] = useState(loadAvatarLook);
+  const [lookOpen, setLookOpen] = useState(false);
+  const avatarRef = useRef<Avatar | null>(null);
+  /** Keys held down, and camera-pad buttons held (same names: KeyW, ArrowUp, …). */
+  const keysRef = useRef(new Set<string>());
+  const homeRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    avatarRef.current?.setLook(avatarLook);
+  }, [avatarLook]);
+
+  // Camera keys: WASD / arrows move (or walk), Q/E turn, +/- zoom, F frames the office.
+  useEffect(() => {
+    const keys = keysRef.current;
+    const typing = (e: KeyboardEvent) =>
+      e.metaKey ||
+      e.ctrlKey ||
+      e.altKey ||
+      !!(e.target as HTMLElement | null)?.closest?.(
+        'input, textarea, select, [contenteditable="true"]',
+      );
+    const onDown = (e: KeyboardEvent) => {
+      if (typing(e) || !CAMERA_KEYS.has(e.code)) return;
+      if (e.code === 'KeyF') {
+        homeRef.current();
+        return;
+      }
+      keys.add(e.code);
+      if (e.code.startsWith('Arrow')) e.preventDefault();
+    };
+    const onUp = (e: KeyboardEvent) => keys.delete(e.code);
+    const clear = () => keys.clear();
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -207,6 +259,22 @@ export default function Office3DView({
     directorRef.current = director;
     const editor = new Editor3D(scene, officeState);
     const leavers: Leaver[] = [];
+    const avatar = new Avatar(scene, avatarRef.current?.look ?? loadAvatarLook());
+    avatarRef.current = avatar;
+    const nav = () => ({ tileMap: officeState.tileMap, blockedTiles: officeState.blockedTiles });
+    /** Put the avatar at the door the first time, and again whenever the
+     *  floor under it stops being floor (a layout change). */
+    const standAvatar = () => {
+      const t = avatar.tile;
+      const n = nav();
+      if (avatar.isPlaced && isWalkable(t.col, t.row, n.tileMap, n.blockedTiles)) return;
+      const d = office?.door?.inside;
+      if (d && isWalkable(d.col, d.row, n.tileMap, n.blockedTiles)) avatar.placeAt(d.col, d.row);
+      else {
+        const any = officeState.walkableTiles[0];
+        if (any) avatar.placeAt(any.col, any.row);
+      }
+    };
     /** Characters whose rig became a leaver: never re-created while they despawn. */
     const left = new Set<number>();
 
@@ -243,6 +311,15 @@ export default function Office3DView({
           rigs.delete(id);
         }
       }
+    };
+
+    homeRef.current = () => {
+      if (!fitted) return;
+      cam.goal.set(fitted.cx, 0, fitted.cz);
+      cam.zoom = 1;
+      cam.az = Math.PI / 4;
+      cam.el = OFFICE3D_TILT_START;
+      officeState.cameraFollowId = null;
     };
 
     const placeCamera = () => {
@@ -313,6 +390,7 @@ export default function Office3DView({
         };
       };
       hooks.meeting3D = () => director.meeting?.title ?? null;
+      hooks.avatar3D = () => ({ x: avatar.x, z: avatar.z });
       hooks.screenOf3D = (id) => {
         const r = rigs.get(id);
         if (!r) return null;
@@ -413,6 +491,16 @@ export default function Office3DView({
       }
       if (!d || d.moved || d.mode !== 'pick') return;
       const hit = pickRef.current(e.clientX, e.clientY);
+      if (walkRef.current) {
+        // Walking: go to the clicked spot, or up to the clicked agent.
+        const ch = hit !== null ? officeState.characters.get(hit) : undefined;
+        if (ch) avatar.goNear(ch.tileCol, ch.tileRow, nav());
+        else {
+          const t = tileAt(e.clientX, e.clientY);
+          // Furniture or a wall: walk up next to it instead.
+          if (t && !avatar.goTo(t.col, t.row, nav())) avatar.goNear(t.col, t.row, nav());
+        }
+      }
       if (hit !== null) {
         officeState.dismissBubble(hit);
         if (officeState.selectedAgentId === hit) {
@@ -428,12 +516,28 @@ export default function Office3DView({
       officeState.selectedAgentId = null;
       officeState.cameraFollowId = null;
     };
+    const zoomBy = (f: number) => {
+      cam.zoom = Math.min(OFFICE3D_ZOOM_MAX, Math.max(OFFICE3D_ZOOM_MIN, cam.zoom * f));
+    };
+    const panBy = (sideM: number, fwdM: number) => {
+      cam.goal.x += Math.cos(cam.az) * sideM - Math.sin(cam.az) * fwdM;
+      cam.goal.z += -Math.sin(cam.az) * sideM - Math.cos(cam.az) * fwdM;
+      officeState.cameraFollowId = null;
+    };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      cam.zoom = Math.min(
-        OFFICE3D_ZOOM_MAX,
-        Math.max(OFFICE3D_ZOOM_MIN, cam.zoom * Math.exp(-e.deltaY * 0.0012)),
-      );
+      // Pinch (ctrl + wheel) and a mouse wheel zoom; a trackpad's two-finger
+      // scroll (pixel deltas, sideways or fractional) moves the camera.
+      const trackpad =
+        !e.ctrlKey &&
+        e.deltaMode === 0 &&
+        (e.deltaX !== 0 || !Number.isInteger(e.deltaY) || Math.abs(e.deltaY) < 40);
+      if (trackpad && !walkRef.current) {
+        const k = (cam.dist / cam.zoom) * OFFICE3D_SCROLL_PAN_K;
+        panBy(e.deltaX * k, -e.deltaY * k);
+        return;
+      }
+      zoomBy(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0012)));
     };
     const onLeave = () => {
       if (!drag) officeState.hoveredAgentId = null;
@@ -565,6 +669,9 @@ export default function Office3DView({
         }
         if (kind) items.push({ key: `b${ch.id}`, kind, ...above, y: above.y - (tag ? 30 : 0) });
       }
+      const youAt = at(avatar.x, avatar.rig.height + 0.3, avatar.z);
+      if (avatar.isPlaced && Number.isFinite(youAt.x) && Number.isFinite(youAt.y))
+        items.push({ key: 'you', kind: 'you', text: 'You', ...youAt });
       for (const L of leavers) {
         if (L.say)
           items.push({
@@ -621,6 +728,34 @@ export default function Office3DView({
       ring.visible = !!fr;
       if (fr) ring.position.set(fr.g.position.x, 0.02, fr.g.position.z);
 
+      // Keys and the camera pad: move (or walk), turn, zoom.
+      const keys = keysRef.current;
+      const held = (...codes: string[]) => (codes.some((c) => keys.has(c)) ? 1 : 0);
+      const fwd = held('KeyW', 'ArrowUp') - held('KeyS', 'ArrowDown');
+      const side = held('KeyD', 'ArrowRight') - held('KeyA', 'ArrowLeft');
+      const turn = held('KeyE') - held('KeyQ');
+      const zoomDir = held('Equal', 'NumpadAdd') - held('Minus', 'NumpadSubtract');
+      if (turn) cam.az -= turn * OFFICE3D_KEY_TURN_RAD * dt;
+      if (zoomDir) zoomBy(Math.exp(zoomDir * Math.log(OFFICE3D_KEY_ZOOM_K) * dt));
+      standAvatar();
+      const walking = walkRef.current;
+      let steer = { x: 0, z: 0 };
+      if (fwd || side) {
+        const n = Math.hypot(fwd, side);
+        const sx = Math.cos(cam.az) * side - Math.sin(cam.az) * fwd;
+        const sz = -Math.sin(cam.az) * side - Math.cos(cam.az) * fwd;
+        if (walking) steer = { x: sx / n, z: sz / n };
+        else {
+          const k = (cam.dist / cam.zoom) * OFFICE3D_KEY_PAN_K * dt;
+          panBy((side / n) * k, (fwd / n) * k);
+        }
+      }
+      avatar.update(steer, dt, time, nav());
+      if (walking) {
+        officeState.cameraFollowId = null;
+        cam.goal.set(avatar.x, 0, avatar.z);
+      }
+
       const follow =
         officeState.cameraFollowId !== null ? rigs.get(officeState.cameraFollowId) : undefined;
       if (follow) cam.goal.set(follow.g.position.x, 0, follow.g.position.z);
@@ -643,6 +778,8 @@ export default function Office3DView({
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('contextmenu', noMenu);
       for (const r of rigs.values()) disposeRig(r);
+      avatar.dispose();
+      avatarRef.current = null;
       if (office) disposeGroup(office.group);
       renderer.dispose();
       host.removeChild(el);
@@ -731,11 +868,179 @@ export default function Office3DView({
       {!edit?.isEditMode && (
         <ClockPanel nightMode={nightMode} onCycle={cycleNight} nextMeetRef={nextMeetRef} />
       )}
+      <CameraPad
+        keysRef={keysRef}
+        walk={walk}
+        onWalk={() => setWalk((w) => !w)}
+        onHome={() => homeRef.current()}
+        onLook={() => setLookOpen(true)}
+        lookColor={avatarLook.shirt}
+      />
+      <LookModal
+        agentName={lookOpen ? 'You' : null}
+        title="Your look"
+        current={avatarLook}
+        onSave={(look) => {
+          const next = look ?? DEFAULT_AVATAR_LOOK;
+          setAvatarLook(next);
+          saveAvatarLook(next);
+          setLookOpen(false);
+        }}
+        onClose={() => setLookOpen(false)}
+      />
     </>
   );
 }
 
 type NightMode = 'auto' | 'day' | 'night';
+
+const CAMERA_KEYS = new Set([
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'KeyQ',
+  'KeyE',
+  'Equal',
+  'Minus',
+  'NumpadAdd',
+  'NumpadSubtract',
+  'KeyF',
+]);
+
+/** A camera-pad button: held down, it acts like holding its key. */
+function HoldButton({
+  code,
+  keysRef,
+  label,
+  children,
+}: {
+  code: string;
+  keysRef: React.RefObject<Set<string>>;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const release = () => keysRef.current.delete(code);
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      className="w-28 h-28 grid place-items-center rounded-ui text-text-muted hover:text-text hover:bg-btn-hover cursor-pointer select-none"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        keysRef.current.add(code);
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onLostPointerCapture={release}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Bottom-right: your character (Walk, look) and the camera (move, turn, zoom, frame). */
+function CameraPad({
+  keysRef,
+  walk,
+  onWalk,
+  onHome,
+  onLook,
+  lookColor,
+}: {
+  keysRef: React.RefObject<Set<string>>;
+  walk: boolean;
+  onWalk: () => void;
+  onHome: () => void;
+  onLook: () => void;
+  lookColor: string;
+}) {
+  const hint = walk
+    ? 'Walking: WASD / arrows or click the floor · Q/E turn'
+    : 'Drag to turn · Right-drag or two fingers to move · WASD / arrows · Q/E · +/-';
+  return (
+    <div
+      className="absolute bottom-12 right-12 z-20 flex flex-col items-end gap-6"
+      data-testid="office3d-camera-pad"
+    >
+      <span className="hidden xl:block px-10 py-4 rounded-full bg-bg/80 text-2xs text-text-muted">
+        {hint}
+      </span>
+      <div className="flex items-center gap-4 p-6 pixel-panel">
+        <button
+          type="button"
+          onClick={onLook}
+          title="Change your look"
+          aria-label="Change your look"
+          className="w-28 h-28 rounded-full grid place-items-center text-2xs font-bold text-white cursor-pointer border-2 border-border hover:border-accent"
+          style={{ background: lookColor }}
+          data-testid="office3d-you-look"
+        >
+          You
+        </button>
+        <button
+          type="button"
+          onClick={onWalk}
+          aria-pressed={walk}
+          title={walk ? 'Stop walking (the camera moves freely)' : 'Walk around as you'}
+          className={`h-28 px-10 rounded-ui text-xs font-semibold cursor-pointer border ${
+            walk
+              ? 'bg-accent text-accent-ink border-accent'
+              : 'bg-btn-bg text-text border-border hover:bg-btn-hover'
+          }`}
+          data-testid="office3d-walk"
+        >
+          {walk ? 'Walking' : 'Walk'}
+        </button>
+        <div className="hidden xl:flex items-center gap-4">
+          <span className="w-1 h-20 bg-border mx-2" />
+          <HoldButton code="KeyQ" keysRef={keysRef} label="Turn left (Q)">
+            ⟲
+          </HoldButton>
+          <HoldButton code="ArrowLeft" keysRef={keysRef} label="Left (A / ←)">
+            ←
+          </HoldButton>
+          <div className="flex flex-col">
+            <HoldButton code="ArrowUp" keysRef={keysRef} label="Forward (W / ↑)">
+              ↑
+            </HoldButton>
+            <HoldButton code="ArrowDown" keysRef={keysRef} label="Back (S / ↓)">
+              ↓
+            </HoldButton>
+          </div>
+          <HoldButton code="ArrowRight" keysRef={keysRef} label="Right (D / →)">
+            →
+          </HoldButton>
+          <HoldButton code="KeyE" keysRef={keysRef} label="Turn right (E)">
+            ⟳
+          </HoldButton>
+          <span className="w-1 h-20 bg-border mx-2" />
+          <HoldButton code="Minus" keysRef={keysRef} label="Zoom out (-)">
+            −
+          </HoldButton>
+          <HoldButton code="Equal" keysRef={keysRef} label="Zoom in (+)">
+            +
+          </HoldButton>
+        </div>
+        <button
+          type="button"
+          onClick={onHome}
+          title="Show the whole office (F)"
+          aria-label="Show the whole office"
+          className="w-28 h-28 grid place-items-center rounded-ui text-text-muted hover:text-text hover:bg-btn-hover cursor-pointer"
+          data-testid="office3d-home"
+        >
+          ⌂
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Re-render every half second (panels that read the meeting as it goes). */
 function useTick(ms = 500): void {
@@ -1084,7 +1389,7 @@ type TagStatus = 'work' | 'perm' | 'done' | 'idle';
 
 interface OverlayItem {
   key: string;
-  kind: 'ask' | 'done' | 'talk' | 'say' | 'meet' | 'tag';
+  kind: 'ask' | 'done' | 'talk' | 'say' | 'meet' | 'tag' | 'you';
   text?: string;
   sub?: string;
   status?: TagStatus;
@@ -1098,6 +1403,7 @@ const BUBBLE_CLASS: Record<Exclude<OverlayItem['kind'], 'tag'>, string> = {
   talk: 'bg-board text-board-ink px-10 rounded-panel border-accent',
   say: 'bg-board text-board-ink px-12 rounded-panel border-accent',
   meet: 'bg-bg text-text px-12 rounded-full border-accent',
+  you: 'bg-accent text-accent-ink px-10 rounded-full border-accent font-semibold text-2xs',
 };
 
 const TAG_DOT: Record<TagStatus, string> = {

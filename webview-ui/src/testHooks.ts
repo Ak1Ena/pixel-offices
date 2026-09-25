@@ -91,6 +91,7 @@ declare global {
       screenOf3D?: (id: number) => { x: number; y: number } | null;
       standupNow3D?: () => void;
       screenOfTile3D?: (col: number, row: number, y?: number) => { x: number; y: number };
+      avatar3D?: () => { x: number; z: number };
       meeting3D?: () => string | null;
     };
   }

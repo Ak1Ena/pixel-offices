@@ -664,6 +664,24 @@ export const OFFICE3D_NIGHT_KEY = 'pixel-agents.office3dNight';
 /** 'auto' night hours (local time). */
 export const OFFICE3D_NIGHT_FROM_HOUR = 19;
 export const OFFICE3D_NIGHT_TO_HOUR = 7;
+/** localStorage key: the viewer's own character's look (the "You" avatar). */
+export const OFFICE3D_AVATAR_KEY = 'pixel-agents.office3dAvatar';
+/** The avatar's first look (colours; hair, top etc. are in avatar.ts). */
+export const OFFICE3D_AVATAR_COLORS = {
+  skin: '#e8b894',
+  hairColor: '#3b2a20',
+  shirt: '#f07a5a',
+  pants: '#3d4556',
+};
+/** The avatar's walking speed (m/s) and body radius (m) for bumping into things. */
+export const OFFICE3D_AVATAR_SPEED_M = 2.8;
+export const OFFICE3D_AVATAR_RADIUS_M = 0.22;
+/** Keyboard / camera-pad camera: pan (view widths per second), turn (rad/s), zoom (×/s). */
+export const OFFICE3D_KEY_PAN_K = 0.55;
+export const OFFICE3D_KEY_TURN_RAD = 1.6;
+export const OFFICE3D_KEY_ZOOM_K = 1.8;
+/** Trackpad two-finger scroll: metres moved per pixel of scroll, per metre of view. */
+export const OFFICE3D_SCROLL_PAN_K = 0.0014;
 /** Tiles added per click on a 3D edit-mode "+" edge button. */
 export const OFFICE3D_GROW_STEP = 4;
 /** Colours for the 3D furniture models (Soft Dollhouse). */

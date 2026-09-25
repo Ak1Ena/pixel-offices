@@ -10,12 +10,14 @@ interface LookModalProps {
   /** Whose look is being changed; null = closed. */
   agentName: string | null;
   current: AgentLook | undefined;
+  /** Panel title; default "<name>'s look". */
+  title?: string;
   onSave: (look: AgentLook | undefined) => void;
   onClose: () => void;
 }
 
 /** The character studio for an agent already in the office. */
-export function LookModal({ agentName, current, onSave, onClose }: LookModalProps) {
+export function LookModal({ agentName, current, title, onSave, onClose }: LookModalProps) {
   const [look, setLook] = useState<AgentLook>(() => current ?? randomLook());
   useEffect(() => {
     if (agentName !== null) setLook(current ?? randomLook());
@@ -27,7 +29,7 @@ export function LookModal({ agentName, current, onSave, onClose }: LookModalProp
     <Modal
       isOpen={agentName !== null}
       onClose={onClose}
-      title={`${agentName ?? ''}'s look`}
+      title={title ?? `${agentName ?? ''}'s look`}
       zIndex={54}
       side
     >
