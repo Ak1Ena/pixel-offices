@@ -417,7 +417,7 @@ export function expandLayout(
   }));
 
   // Rooms, doors and portals are tile positions too: they move with the map.
-  const at = (p: { col: number; row: number }) => ({
+  const at = <T extends { col: number; row: number }>(p: T): T => ({
     ...p,
     col: p.col + shiftCol,
     row: p.row + shiftRow,
