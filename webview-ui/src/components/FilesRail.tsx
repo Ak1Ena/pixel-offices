@@ -47,7 +47,7 @@ function Ext({ name }: { name: string }) {
   const ext = fileExtension(name);
   return (
     <span
-      className={`w-44 shrink-0 text-center py-2 text-2xs uppercase border-2 ${
+      className={`w-44 shrink-0 text-center py-2 text-2xs uppercase border ${
         EXT_CLASS[ext] ?? 'text-text-muted border-border'
       }`}
     >
@@ -134,7 +134,7 @@ export function FilesRail({
               setTab(t);
               setConfirm(null);
             }}
-            className={`flex-1 min-w-0 px-4 py-6 text-xs border-0 border-b-4 rounded-none cursor-pointer whitespace-nowrap ${
+            className={`flex-1 min-w-0 px-4 py-6 text-xs border-0 border-b-4 rounded-ui cursor-pointer whitespace-nowrap ${
               tab === t
                 ? 'bg-bg text-text border-accent'
                 : 'bg-bg-dark text-text-muted border-transparent'
@@ -165,7 +165,7 @@ export function FilesRail({
             suggestions.map((p) => (
               <div
                 key={p.proposalId}
-                className="flex flex-col gap-4 p-8 border-2 border-status-permission bg-bg-dark"
+                className="flex flex-col gap-4 p-8 border border-status-permission bg-bg-dark"
                 data-testid="files-review-item"
               >
                 <div className="flex items-center gap-8 min-w-0">
@@ -206,7 +206,7 @@ export function FilesRail({
               backups.map((g) => (
                 <div
                   key={g.key}
-                  className="flex items-center gap-8 p-8 border-2 border-border bg-bg-dark"
+                  className="flex items-center gap-8 p-8 border border-border bg-bg-dark"
                   data-testid="files-backup-group"
                 >
                   <Ext name={g.name} />
@@ -279,11 +279,11 @@ export function FilesRail({
               return (
                 <div
                   key={f.fileId}
-                  className={`flex flex-col border-2 ${isOpen ? 'border-accent bg-bg-dark' : 'border-transparent'}`}
+                  className={`flex flex-col border ${isOpen ? 'border-accent bg-bg-dark' : 'border-transparent'}`}
                   data-testid="files-item"
                 >
                   <button
-                    className="flex items-center gap-8 p-6 text-left bg-transparent border-0 rounded-none cursor-pointer text-text hover:bg-btn-hover min-w-0"
+                    className="flex items-center gap-8 p-6 text-left bg-transparent border-0 rounded-ui cursor-pointer text-text hover:bg-btn-hover min-w-0"
                     onClick={() => {
                       setSelected(isOpen ? null : f.fileId);
                       setConfirm(null);
@@ -373,7 +373,7 @@ export function FilesRail({
                           ))}
                       </div>
                       {confirm === f.fileId && (
-                        <div className="flex flex-col gap-4 p-6 border-2 border-dashed border-danger text-xs">
+                        <div className="flex flex-col gap-4 p-6 border border-dashed border-danger text-xs">
                           <span>
                             Delete the office&apos;s copy of {f.name}? Your original is not touched.
                           </span>

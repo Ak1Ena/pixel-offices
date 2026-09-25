@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 
 // The office new users get (the server serves the same file as the default layout).
 import originalOfficeLayout from '../public/assets/default-layout-1.json';
+import { agentStatus } from './agentStatus.js';
 import { isInFolder } from './askAgent.js';
 import { toMajorMinor } from './changelogData.js';
 import { AddAgentModal } from './components/AddAgentModal.js';
@@ -21,6 +22,7 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { LookModal } from './components/LookModal.js';
 import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { OfficeRoster } from './components/OfficeRoster.js';
 import { OpenFileDialog } from './components/OpenFileDialog.js';
 import { PermissionPrompts } from './components/PermissionPrompts.js';
 import { ReviewPanel } from './components/ReviewPanel.js';
@@ -60,6 +62,7 @@ import { useProposals } from './hooks/useProposals.js';
 import { useTaskDesk } from './hooks/useTaskDesk.js';
 import { useTeams } from './hooks/useTeams.js';
 import { useWorkflows } from './hooks/useWorkflows.js';
+import { getActivityText } from './office/activityText.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -726,6 +729,21 @@ function App() {
             onPinDrop={handlePinDrop}
             onWorkflowDrop={handleWorkflowDrop}
             onCardDrop={handleCardDrop}
+            tagOf={(id) => {
+              const ch = officeState.characters.get(id);
+              if (!ch || ch.isSubagent) return null;
+              return {
+                name: agentLabel(id),
+                activity: getActivityText(
+                  id,
+                  agentTools,
+                  ch.isActive,
+                  ch.bubbleType,
+                  !!ch.waitingAwaitingInput,
+                ),
+                status: agentStatus(officeState, id, agentTools).cls,
+              };
+            }}
             edit={{
               isEditMode: editor.isEditMode,
               editorState,
@@ -783,7 +801,7 @@ function App() {
 
           {showRotateHint && (
             <div
-              className="absolute left-1/2 -translate-x-1/2 z-11 bg-accent-bright text-white text-sm py-3 px-8 rounded-none border-2 border-accent shadow-pixel pointer-events-none whitespace-nowrap"
+              className="absolute left-1/2 -translate-x-1/2 z-11 bg-accent-bright text-white text-sm py-3 px-8 rounded-ui border border-accent shadow-pixel pointer-events-none whitespace-nowrap"
               style={{ top: editor.isDirty ? 64 : 8 }}
             >
               Rotate (R)
@@ -853,6 +871,16 @@ function App() {
               );
             })()}
 
+          {show3D && !editor.isEditMode && (
+            <OfficeRoster
+              officeState={officeState}
+              agents={agents}
+              agentTools={agentTools}
+              subagentCharacters={subagentCharacters}
+              labelOf={agentLabel}
+              onOpen={openChat}
+            />
+          )}
           <ToolOverlay
             officeState={officeState}
             agents={agents}
@@ -1396,7 +1424,7 @@ function App() {
           <div className="text-center">
             <button
               onClick={() => setIsHooksInfoOpen(false)}
-              className="py-4 px-20 text-lg bg-accent text-white border-2 border-accent rounded-none cursor-pointer shadow-pixel"
+              className="py-4 px-20 text-lg bg-accent text-white border border-accent rounded-ui cursor-pointer shadow-pixel"
             >
               Got it
             </button>
@@ -1534,7 +1562,7 @@ function App() {
               maxLength={32}
               placeholder="Team Payments"
               onChange={(e) => setRoomNameDraft(e.target.value)}
-              className="px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent"
+              className="px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent"
               data-testid="room-name"
             />
           </label>

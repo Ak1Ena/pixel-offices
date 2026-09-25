@@ -59,7 +59,7 @@ export function WorkflowBadges({
         return (
           <div
             key={id}
-            className={`absolute z-35 -translate-x-1/2 flex items-center gap-2 px-3 py-1 bg-bg border-2 ${
+            className={`absolute z-35 -translate-x-1/2 flex items-center gap-2 px-3 py-1 bg-bg border ${
               p.waiting ? 'border-status-permission' : 'border-accent'
             } pointer-events-none`}
             style={{

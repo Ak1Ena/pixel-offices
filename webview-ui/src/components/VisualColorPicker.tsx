@@ -264,7 +264,7 @@ export function VisualColorPicker({ value, onChange }: VisualColorPickerProps) {
         onClick={() => setExpanded((v) => !v)}
       >
         <div
-          className="border-2 border-border"
+          className="border border-border"
           style={{
             width: VISUAL_COLOR_PICKER_SWATCH_PX,
             height: VISUAL_COLOR_PICKER_SWATCH_PX,
@@ -281,7 +281,7 @@ export function VisualColorPicker({ value, onChange }: VisualColorPickerProps) {
             e.stopPropagation();
             setExpanded(true);
           }}
-          className="flex-1 min-w-0 bg-bg text-text border-2 border-border px-2 py-0.5 font-mono text-code-sm"
+          className="flex-1 min-w-0 bg-bg text-text border border-border px-2 py-0.5 font-mono text-code-sm"
           spellCheck={false}
           maxLength={7}
         />
@@ -290,7 +290,7 @@ export function VisualColorPicker({ value, onChange }: VisualColorPickerProps) {
       {/* Expanded: popup to the right of the trigger, bottom-aligned. */}
       {expanded && (
         <div
-          className="absolute z-20 flex flex-col gap-4 py-4 px-6 bg-bg-dark border-2 border-border"
+          className="absolute z-20 flex flex-col gap-4 py-4 px-6 bg-bg-dark border border-border"
           style={{ left: '100%', bottom: 0, marginLeft: VISUAL_COLOR_PICKER_POPUP_GAP_PX }}
           onClick={(e) => e.stopPropagation()}
         >

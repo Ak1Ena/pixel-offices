@@ -655,3 +655,51 @@ export const OFFICE3D_NIGHT_FROM_HOUR = 19;
 export const OFFICE3D_NIGHT_TO_HOUR = 7;
 /** Tiles added per click on a 3D edit-mode "+" edge button. */
 export const OFFICE3D_GROW_STEP = 4;
+/** Colours for the 3D furniture models (Soft Dollhouse). */
+export const OFFICE3D_FURNITURE = {
+  wood: '#E9B872',
+  woodDark: '#B98A5E',
+  cushion: '#86B8BE',
+  sofa: '#F2A7A0',
+  metal: '#8A8F98',
+  dark: '#2B2D31',
+  white: '#FAFAF7',
+  fridge: '#EEF2F4',
+  vending: '#E86F5C',
+  cooler: '#9FD3F0',
+  server: '#3A3D4A',
+  led: '#4ADE80',
+  arcade: '#8C5BB5',
+  table: '#3F8F6B',
+  water: '#6EC6F0',
+  fish: '#FF9F43',
+  lampShade: '#FFE3B0',
+  bin: '#9AA3AD',
+  paper: '#FFFFFF',
+  divider: '#C9D8E0',
+  clockFace: '#FFFDF7',
+  sky: '#BFE3F7',
+  cactus: '#6DBA6A',
+  leafLight: '#86CB79',
+  trunk: '#9A6B45',
+  flowerA: '#FF8FA3',
+  flowerB: '#FFD166',
+  flowerC: '#FFFFFF',
+  bulb: '#FFE9B0',
+} as const;
+export const OFFICE3D_BOOK_COLORS = [
+  '#D1495B',
+  '#3B6EA8',
+  '#EDAE49',
+  '#3F8F6B',
+  '#8C5BB5',
+  '#E9E4DA',
+];
+export const OFFICE3D_ART_COLORS = [
+  '#E86F5C',
+  '#5AA2F0',
+  '#F0B429',
+  '#6CC98A',
+  '#B08CF0',
+  '#F2A7A0',
+];

@@ -13,6 +13,7 @@ import type { ColorValue } from '../components/ui/types.js';
 import {
   OFFICE3D_COLORS as C,
   OFFICE3D_DESK_HEIGHT_M,
+  OFFICE3D_FURNITURE as F,
   OFFICE3D_LAND_MARGIN,
   OFFICE3D_SEAT_HEIGHT_M,
   OFFICE3D_WALL_HEIGHT_M,
@@ -20,6 +21,7 @@ import {
 import { getCatalogEntry } from '../office/layout/furnitureCatalog.js';
 import type { OfficeLayout, PlacedFurniture, SpriteData } from '../office/types.js';
 import { TileType } from '../office/types.js';
+import { baseName, buildModel, buildWallModel, type ModelKit, yawOf } from './furniture3d.js';
 
 const materials = new Map<string, THREE.MeshStandardMaterial>();
 /** Shared matte material per colour (flat faces read as the soft toy look). */
@@ -119,7 +121,7 @@ export interface OfficeMeshes {
   group: THREE.Group;
   /** Floor bounds in metres, for the camera and the shadow box. */
   bounds: { x0: number; x1: number; z0: number; z1: number };
-  /** Monitor screens per desk tile ("col,row"), lit when someone works there. */
+  /** Monitor screens (keyed per item), lit when someone works in front of them. */
   screens: Map<string, THREE.Mesh>;
   /** The front door agents leave by: the wall tile it replaces, the floor
    *  tile inside it, and a point outside on the grass. Null = no outer wall. */
@@ -135,6 +137,8 @@ export interface OfficeMeshes {
   } | null;
   /** Tables big enough to meet around (desks of 2×2 tiles or more), in tiles. */
   tables: Array<{ col: number; row: number; w: number; h: number; room: string | null }>;
+  /** String-light bulbs outside (they glow at night). */
+  outdoorBulbs: THREE.Mesh[];
   /** Lamp spots for the night: one per desk cluster, in metres. */
   lampSpots: Array<{ x: number; z: number }>;
 }
@@ -198,6 +202,90 @@ function pickDoor(layout: OfficeLayout, x0: number, x1: number): DoorInfo {
   return best;
 }
 
+/** Trees, flowers, a bench and string lights on the grass around the office. */
+function buildGarden(
+  g: THREE.Group,
+  x0: number,
+  x1: number,
+  z0: number,
+  z1: number,
+  seed: number,
+): THREE.Mesh[] {
+  let s = seed >>> 0 || 7;
+  const r = () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  const grassY = -0.3;
+  const tree = (x: number, z: number, k: number) => {
+    const t = new THREE.Group();
+    t.position.set(x, grassY, z);
+    g.add(t);
+    rbox(0.2 * k, 0.9 * k, 0.2 * k, F.trunk, 0, 0, 0, t);
+    const leaf = (rad: number, col: string, lx: number, ly: number, lz: number) => {
+      const m = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(rad, 1),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.85, flatShading: true }),
+      );
+      m.position.set(lx, ly, lz);
+      m.castShadow = true;
+      t.add(m);
+    };
+    leaf(0.75 * k, C.leaf, 0, 1.3 * k, 0);
+    leaf(0.5 * k, F.leafLight, 0.3 * k, 1.8 * k, 0.1 * k);
+  };
+  const flowers = (x: number, z: number) => {
+    const cols = [F.flowerA, F.flowerB, F.flowerC];
+    for (let i = 0; i < 5; i++) {
+      const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.08, 0), mat(cols[i % 3]));
+      m.position.set(x + (r() - 0.5) * 0.8, grassY + 0.08, z + (r() - 0.5) * 0.4);
+      g.add(m);
+    }
+  };
+  // Front (+z) and right (+x) edges face the camera; trees in the back corners frame it.
+  const front = z1 + 1.6,
+    right = x1 + 1.6;
+  for (let x = x0 + 1.5; x < x1 - 1; x += 3.2 + r() * 1.5) {
+    if (r() < 0.5) tree(x, front + 0.3, 0.7 + r() * 0.35);
+    else flowers(x, front);
+  }
+  for (let z = z0 + 1.5; z < z1 - 1; z += 3.5 + r() * 1.5) {
+    if (r() < 0.55) tree(right + 0.2, z, 0.7 + r() * 0.35);
+    else flowers(right, z);
+  }
+  tree(x0 - 1.8, z0 - 1.2, 1.05);
+  tree(x1 + 1.8, z0 - 1.4, 0.9);
+  tree(x0 - 1.6, z1 + 1.4, 0.95);
+  // A bench out front.
+  const bench = new THREE.Group();
+  bench.position.set((x0 + x1) / 2 + 2, grassY, front);
+  g.add(bench);
+  rbox(1.6, 0.08, 0.4, F.wood, 0, 0.2, 0, bench);
+  for (const bx of [-0.65, 0.65]) rbox(0.08, 0.2, 0.35, F.woodDark, bx, 0, 0, bench);
+  // String lights along the front: poles and a sagging line of bulbs.
+  const bulbs: THREE.Mesh[] = [];
+  const bulbMat = new THREE.MeshBasicMaterial({ color: F.bulb, transparent: true, opacity: 0.65 });
+  const zL = z1 + 0.8,
+    span = x1 - x0,
+    poles = Math.max(2, Math.round(span / 7) + 1);
+  const px = (i: number) => x0 + (span * i) / (poles - 1);
+  for (let i = 0; i < poles; i++) rbox(0.07, 2.4, 0.07, F.woodDark, px(i), grassY, zL, g);
+  for (let i = 0; i < poles - 1; i++) {
+    for (let j = 1; j < 10; j++) {
+      const t = j / 10;
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), bulbMat);
+      b.position.set(
+        px(i) + (px(i + 1) - px(i)) * t,
+        grassY + 2.35 - Math.sin(Math.PI * t) * 0.35,
+        zL,
+      );
+      g.add(b);
+      bulbs.push(b);
+    }
+  }
+  return bulbs;
+}
+
 function roomOf(layout: OfficeLayout, col: number, row: number): string | null {
   for (const a of layout.areas ?? []) {
     const rc = a.teamRoom ? a.rect : undefined;
@@ -251,6 +339,7 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
   const base = new THREE.Mesh(new THREE.BoxGeometry(lw, 2.2, ld), mat(C.base));
   base.position.set(cx, -1.9, cz);
   group.add(base);
+  const outdoorBulbs = buildGarden(group, x0, x1, z0, z1, cols * 131 + rows);
 
   // Floor: one instanced tile per walkable cell.
   const tileGeo = new THREE.BoxGeometry(1, 0.3, 1);
@@ -322,7 +411,7 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
       lampSpots.push({ x: lx, z: lz });
   }
 
-  return { group, bounds: { x0, x1, z0, z1 }, screens, door, tables, lampSpots };
+  return { group, bounds: { x0, x1, z0, z1 }, screens, door, tables, lampSpots, outdoorBulbs };
 }
 
 function buildDoor(d: NonNullable<DoorInfo>, parent: THREE.Group): void {
@@ -462,6 +551,33 @@ function buildFurniture(
   const color = tint(spriteColor(f.type, e.sprite, C.deskTop), f.color);
   const cat = e.category ?? '';
   const name = (e.label + ' ' + f.type).toLowerCase();
+
+  // Detailed Soft Dollhouse model when the asset is one we know.
+  const base = baseName(f.type);
+  const kit: ModelKit = {
+    box: rbox,
+    mat,
+    screen: (m) => screens.set(`${f.uid}#${screens.size}`, m),
+  };
+  if (e.canPlaceOnWalls) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, f.row + e.footprintH);
+    parent.add(g);
+    buildWallModel(base, kit, g, w, color, f.uid);
+    return;
+  }
+  {
+    const onDesk = !!e.canPlaceOnSurfaces && deskTiles.has(`${f.col},${f.row + e.footprintH - 1}`);
+    const yaw = yawOf(e.orientation, f.type);
+    const side = Math.abs(Math.sin(yaw)) > 0.5;
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = yaw;
+    if (buildModel(base, kit, g, side ? d : w, side ? w : d, color, onDesk, f.uid)) {
+      parent.add(g);
+      return;
+    }
+  }
 
   if (e.canPlaceOnWalls || cat === 'wall') {
     // Hung on the wall face that looks into the room (the tile's south side).

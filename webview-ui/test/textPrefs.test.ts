@@ -45,11 +45,16 @@ test("the Messenger's old reading settings seed the text prefs once", () => {
 test('prefs become the :root custom properties the tokens read', () => {
   assert.deepEqual(textPrefsCssVars(DEFAULT_TEXT_PREFS), {
     '--font-scale': '1',
-    '--font-ui': 'var(--font-stack-pixel)',
-    '--font-ui-k': '1',
+    // The interface defaults to the modern face (Figtree), scaled from the pixel-tuned sizes.
+    '--font-ui': 'var(--font-stack-sans)',
+    '--font-ui-k': '0.66',
     '--font-read': 'var(--font-stack-sans)',
     '--font-read-k': '1',
   });
+  assert.equal(
+    textPrefsCssVars({ ...DEFAULT_TEXT_PREFS, uiFont: 'pixel' })['--font-ui'],
+    'var(--font-stack-pixel)',
+  );
   const vars = textPrefsCssVars({ size: 'large', readingFont: 'pixel', uiFont: 'system' });
   assert.equal(vars['--font-scale'], String(TEXT_SIZE_SCALES.large));
   assert.equal(vars['--font-ui'], 'var(--font-stack-sans)');

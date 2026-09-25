@@ -171,7 +171,7 @@ export default function LookStudio({ look, onChange }: LookStudioProps) {
           aria-label={`${label} ${i + 1}`}
           aria-pressed={look[field] === c}
           onClick={() => onChange({ ...look, [field]: c })}
-          className={`w-20 h-20 p-0 rounded-none cursor-pointer border-2 ${
+          className={`w-20 h-20 p-0 rounded-ui cursor-pointer border ${
             look[field] === c ? 'border-accent' : 'border-border'
           }`}
           style={{ background: c }}
@@ -182,7 +182,7 @@ export default function LookStudio({ look, onChange }: LookStudioProps) {
 
   return (
     <div className="flex flex-col gap-8 text-sm" data-testid="look-studio">
-      <div className="relative h-180 border-2 border-border cursor-grab" ref={hostRef}>
+      <div className="relative h-180 border border-border cursor-grab" ref={hostRef}>
         <span className="absolute right-4 bottom-2 text-2xs text-text-muted pointer-events-none">
           Drag to turn
         </span>

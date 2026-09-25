@@ -176,7 +176,7 @@ export function SettingsModal({
             value={assetDirDraft}
             placeholder="Absolute asset directory path"
             onChange={(e) => setAssetDirDraft(e.target.value)}
-            className="flex-1 min-w-0 text-xs py-2 px-4 bg-bg border-2 border-border rounded-none text-text"
+            className="flex-1 min-w-0 text-xs py-2 px-4 bg-bg border border-border rounded-ui text-text"
           />
           <Button
             variant="default"
@@ -273,7 +273,7 @@ export function SettingsModal({
               id="settings-doc-edit-default"
               value={docEditDefault}
               onChange={(e) => onDocEditDefault(e.target.value as DocEditMode)}
-              className="bg-bg-dark text-text border-2 border-border rounded-none px-4"
+              className="bg-bg-dark text-text border border-border rounded-ui px-4"
             >
               <option value="ask">Ask before applying</option>
               <option value="auto">Auto-accept</option>

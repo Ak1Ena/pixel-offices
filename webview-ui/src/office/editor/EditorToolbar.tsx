@@ -698,7 +698,7 @@ function TileColorBox({
 }) {
   const contrastFill = ((value.c + 100) / 200) * 100;
   return (
-    <div className="flex flex-col gap-4 py-8 px-10 bg-bg-dark border-2 border-border rounded-none">
+    <div className="flex flex-col gap-4 py-8 px-10 bg-bg-dark border border-border rounded-ui">
       <div className="flex items-center gap-8">
         <span className="text-sm text-text-muted w-64 shrink-0">Color</span>
         <VisualColorPicker value={value} onChange={onChange} />
@@ -751,7 +751,7 @@ function AreaAddRow({
           }
         }}
         placeholder="Area name…"
-        className="flex-1 text-sm py-2 px-6 bg-bg-dark border-2 border-border rounded-none text-text"
+        className="flex-1 text-sm py-2 px-6 bg-bg-dark border border-border rounded-ui text-text"
       />
       <Button variant="default" size="sm" onClick={handleSubmit} title="Add a new Area">
         Add Area
@@ -810,7 +810,7 @@ function AreaCard({
   return (
     <div
       onClick={onSelect}
-      className={`flex flex-col gap-4 w-130 min-h-170 py-4 px-8 bg-bg-dark border-2 rounded-none cursor-pointer ${
+      className={`flex flex-col gap-4 w-130 min-h-170 py-4 px-8 bg-bg-dark border rounded-ui cursor-pointer ${
         isSelected ? 'border-accent' : 'border-border'
       }`}
     >
@@ -820,7 +820,7 @@ function AreaCard({
           value={area.color}
           onChange={(e) => onColorChange(e.target.value)}
           onClick={(e) => e.stopPropagation()}
-          className="w-24 h-24 p-0 border-2 border-border bg-transparent cursor-pointer"
+          className="w-24 h-24 p-0 border border-border bg-transparent cursor-pointer"
           title="Area color"
         />
         {renaming ? (
@@ -839,7 +839,7 @@ function AreaCard({
                 setRenaming(false);
               }
             }}
-            className="flex-1 text-sm py-2 px-4 bg-bg border-2 border-border rounded-none text-text"
+            className="flex-1 text-sm py-2 px-4 bg-bg border border-border rounded-ui text-text"
           />
         ) : (
           <span

@@ -8,14 +8,20 @@ interface CheckboxProps {
 export function Checkbox({ checked, onChange, label, className = '' }: CheckboxProps) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={onChange}
-      className={`flex items-center justify-between w-full py-6 px-10 bg-transparent border-none rounded-none cursor-pointer text-left hover:bg-btn-bg ${className}`}
+      className={`flex items-center justify-between w-full py-6 px-10 bg-transparent border-none rounded-ui cursor-pointer text-left hover:bg-btn-bg ${className}`}
     >
       <span>{label}</span>
       <span
-        className={`w-14 h-14 border-2 border-white/50 rounded-none shrink-0 flex items-center justify-center text-2xs pl-1.5 pb-4 leading-none text-white ${checked ? 'bg-accent' : 'bg-transparent'}`}
+        aria-hidden="true"
+        className={`relative w-34 h-20 rounded-full shrink-0 transition-colors ${checked ? 'bg-accent' : 'bg-bg-thumb'}`}
       >
-        {checked ? 'x' : ''}
+        <span
+          className={`absolute top-2 w-16 h-16 rounded-full bg-text transition-all ${checked ? 'left-16' : 'left-2'}`}
+        />
       </span>
     </button>
   );

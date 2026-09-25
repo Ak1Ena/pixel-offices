@@ -87,7 +87,7 @@ export function DeskSteps({ taskNum, steps, locked, onChange, onAnswerGate }: De
             return (
               <li
                 key={step.id ?? `new-${index}`}
-                className={`flex flex-col gap-2 px-6 py-2 border-2 ${
+                className={`flex flex-col gap-2 px-6 py-2 border ${
                   step.waiting
                     ? 'border-status-permission'
                     : step.done
@@ -128,7 +128,7 @@ export function DeskSteps({ taskNum, steps, locked, onChange, onAnswerGate }: De
                     type="button"
                     disabled={!canEdit}
                     onClick={() => update(index, { kind: nextStepKind(kind) })}
-                    className={`w-50 shrink-0 px-2 text-2xs uppercase border-2 bg-transparent ${KIND_CLASS[kind]} ${
+                    className={`w-50 shrink-0 px-2 text-2xs uppercase border bg-transparent ${KIND_CLASS[kind]} ${
                       canEdit ? 'cursor-pointer' : 'cursor-default'
                     }`}
                     title={KIND_HELP[kind]}
@@ -214,7 +214,7 @@ export function DeskSteps({ taskNum, steps, locked, onChange, onAnswerGate }: De
                 </div>
                 {canEdit && openRef === index ? (
                   <input
-                    className="ml-20 bg-bg-dark text-text text-code-sm border-2 border-border focus:border-accent outline-none px-4"
+                    className="ml-20 bg-bg-dark text-text text-code-sm border border-border focus:border-accent outline-none px-4"
                     value={step.ref ?? ''}
                     maxLength={TASK_STEP_REF_MAX_CHARS}
                     placeholder={
@@ -262,14 +262,14 @@ export function DeskSteps({ taskNum, steps, locked, onChange, onAnswerGate }: De
           <button
             type="button"
             onClick={() => setNewKind(nextStepKind(newKind))}
-            className={`w-50 shrink-0 px-2 text-2xs uppercase border-2 bg-transparent cursor-pointer ${KIND_CLASS[newKind]}`}
+            className={`w-50 shrink-0 px-2 text-2xs uppercase border bg-transparent cursor-pointer ${KIND_CLASS[newKind]}`}
             title={KIND_HELP[newKind]}
             aria-label={`New step kind: ${newKind}`}
           >
             {newKind}
           </button>
           <input
-            className="w-full px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent"
+            className="w-full px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent"
             value={newTitle}
             maxLength={TASK_SUBTASK_MAX_CHARS}
             placeholder="Add a step"

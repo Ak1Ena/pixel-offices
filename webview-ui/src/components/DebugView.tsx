@@ -106,12 +106,12 @@ export function DebugView({
     return (
       <div
         key={id}
-        className={`rounded-none py-6 px-8 border-2 cursor-pointer ${isSelected ? 'border-accent bg-active-bg' : 'border-border'}`}
+        className={`rounded-ui py-6 px-8 border cursor-pointer ${isSelected ? 'border-accent bg-active-bg' : 'border-border'}`}
         onClick={() => onSelectAgent(id)}
       >
         <span className="flex items-center justify-between">
           <span
-            className={`rounded-none py-6 px-10 text-xl ${isSelected ? 'text-white font-bold' : ''}`}
+            className={`rounded-ui py-6 px-10 text-xl ${isSelected ? 'text-white font-bold' : ''}`}
           >
             Agent #{id}
           </span>

@@ -9,22 +9,25 @@
 }
 
 :root {
-  /* Core palette */
-  --color-bg: #1e1e2e;
-  --color-bg-dark: #181828;
-  --color-bg-thumb: #2a2a3a;
-  --color-border: #4a4a6a;
-  --color-accent: #6030ff;
-  --color-accent-bright: #746fff;
+  color-scheme: dark;
+  /* Core palette (Soft Dollhouse: warm dark panels, coral accent) */
+  --color-bg: #17191e;
+  --color-bg-dark: #101215;
+  --color-bg-thumb: #2b2f37;
+  --color-border: #2b2f37;
+  --color-accent: #e8927c;
+  --color-accent-bright: #f0a792;
+  /* Text drawn on the accent (primary buttons) */
+  --color-accent-ink: #2a120b;
 
   /* Text */
-  --color-text: rgba(255, 255, 255, 0.9);
-  --color-text-muted: rgba(255, 255, 255, 0.5);
+  --color-text: #eceae4;
+  --color-text-muted: #a3a7ae;
 
   /* Buttons */
-  --color-btn-bg: rgb(53, 52, 69);
-  --color-btn-hover: rgb(78, 75, 104);
-  --color-active-bg: rgb(44, 43, 109);
+  --color-btn-bg: #1e2127;
+  --color-btn-hover: #262a31;
+  --color-active-bg: #2a2e36;
 
   /* Semantic */
   --color-reset-text: #ecc;
@@ -32,14 +35,14 @@
   --color-warning: #ff8d14;
 
   /* Status */
-  --color-status-permission: #cca700;
-  --color-status-active: #3794ff;
-  --color-status-success: #89d185;
+  --color-status-permission: #f0b429;
+  --color-status-active: #5aa2f0;
+  --color-status-success: #6cc98a;
   --color-status-error: var(--color-danger);
 
   /* Office chat + whiteboard */
-  --color-chat-office: #2c2b6d;
-  --color-chat-tool: #16161f;
+  --color-chat-office: #2c3140;
+  --color-chat-tool: #121418;
   --color-chat-permission: #2a2410;
   --color-board: #e9e5d8;
   --color-board-edge: #8a8aa6;
@@ -62,11 +65,14 @@
   /* Headings inside agent replies: marked by colour, not size */
   --color-md-heading: #87ceeb;
 
-  /* Shadow */
-  --shadow-pixel: 2px 2px 0px #0a0a14;
+  /* Shadow (soft; the name stays for the components that use it) */
+  --shadow-pixel: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Corners */
+  --radius-ui: 10px;
+  --radius-panel: 14px;
 
   /* Non-utility values */
-  --vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
+  --vignette: none;
   --btn-disabled-opacity: 0.35;
 
   /* Typography. Two faces with two jobs: the INTERFACE face (--font-ui) draws
@@ -77,12 +83,14 @@
      face's size factor (-k), since a pixel face looks smaller than a system one
      at the same px. Components use the text-* utilities, never literal sizes. */
   --font-stack-pixel: 'FS Pixel Sans', sans-serif;
-  --font-stack-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-stack-sans: 'Figtree Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-stack-display: 'Bricolage Grotesque Variable', 'Figtree Variable', system-ui, sans-serif;
   --font-stack-serif: ui-serif, Georgia, Cambria, 'Times New Roman', serif;
-  --font-stack-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-stack-mono:
+    'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-scale: 1;
-  --font-ui: var(--font-stack-pixel);
-  --font-ui-k: 1;
+  --font-ui: var(--font-stack-sans);
+  --font-ui-k: 0.66;
   --font-read: var(--font-stack-sans);
   --font-read-k: 1;
 
@@ -114,6 +122,7 @@
   --font-pixel: var(--font-ui);
   --font-reading: var(--font-read);
   --font-mono: var(--font-stack-mono);
+  --font-display: var(--font-stack-display);
 
   /* Text sizes: every step follows Settings → Text size (see :root) */
   --text-*: initial;
@@ -138,6 +147,7 @@
   --color-bg-thumb: var(--color-bg-thumb);
   --color-border: var(--color-border);
   --color-accent: var(--color-accent);
+  --color-accent-ink: var(--color-accent-ink);
   --color-text: var(--color-text);
   --color-text-muted: var(--color-text-muted);
   --color-btn-bg: var(--color-btn-bg);
@@ -174,11 +184,19 @@
   --shadow-pixel: var(--shadow-pixel);
 }
 
+/* Rounded corners for controls and panels (was square pixel art). */
+@utility rounded-ui {
+  border-radius: var(--radius-ui);
+}
+@utility rounded-panel {
+  border-radius: var(--radius-panel);
+}
+
 @layer base {
   html,
   body,
   #root {
-    @apply m-0 w-full h-full overflow-hidden font-pixel text-base text-text;
+    @apply m-0 w-full h-full overflow-hidden font-pixel text-base text-text bg-bg-dark;
   }
 
   /* The face is INHERITED (preflight gives form controls `font: inherit`), so a
@@ -191,7 +209,7 @@
 @layer components {
   /* Panel with standard pixel-art border + shadow */
   .pixel-panel {
-    @apply bg-bg border-2 border-border rounded-none shadow-pixel;
+    @apply bg-bg border border-border rounded-panel shadow-pixel;
   }
 
   /* Horizontal carousel for editor items */

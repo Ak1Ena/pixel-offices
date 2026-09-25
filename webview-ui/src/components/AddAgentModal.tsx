@@ -22,7 +22,7 @@ interface AddAgentModalProps {
 const LookStudio = lazy(() => import('../office3d/LookStudio.js'));
 
 const fieldClass =
-  'w-full px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent';
+  'w-full px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent';
 
 /**
  * + Agent in the standalone office: starts Claude on this computer as an agent
@@ -273,7 +273,7 @@ function PastSessionList({
   }
   return (
     <div
-      className="flex flex-col max-h-240 overflow-y-auto border-2 border-border"
+      className="flex flex-col max-h-240 overflow-y-auto border border-border"
       role="listbox"
       aria-label="Earlier sessions"
       data-testid="agent-past-sessions"

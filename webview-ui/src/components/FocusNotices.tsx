@@ -98,7 +98,7 @@ export function FocusNotices({
             </span>
             <span className="text-text-muted"> suggests changes</span>
           </div>
-          <div className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border-2 border-board-ink overflow-hidden text-ellipsis whitespace-nowrap">
+          <div className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border border-board-ink overflow-hidden text-ellipsis whitespace-nowrap">
             {fileBaseName(p.path)} · {p.hunks.length} change{p.hunks.length === 1 ? '' : 's'}
           </div>
           {p.why && <div className="text-xs leading-snug">“{p.why}”</div>}
@@ -136,7 +136,7 @@ export function FocusNotices({
               <span className="text-status-success">{who}</span>
               <span className="text-text-muted"> wants you to look</span>
             </div>
-            <div className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border-2 border-board-ink overflow-hidden text-ellipsis whitespace-nowrap">
+            <div className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border border-board-ink overflow-hidden text-ellipsis whitespace-nowrap">
               {fileBaseName(request.path)}
               {spot ? ` · ${spot}` : ''}
             </div>

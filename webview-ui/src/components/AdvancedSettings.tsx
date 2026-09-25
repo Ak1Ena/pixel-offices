@@ -49,7 +49,7 @@ function TunableRow({ id, value }: { id: TunableKey; value: number }) {
             e.stopPropagation();
             if (e.key === 'Enter') commit();
           }}
-          className="w-96 shrink-0 px-4 py-1 bg-bg-dark border-2 border-border text-sm text-text text-right"
+          className="w-96 shrink-0 px-4 py-1 bg-bg-dark border border-border text-sm text-text text-right"
         />
         <span className="w-56 shrink-0 text-2xs text-text-muted">{def.unit}</span>
         <Button

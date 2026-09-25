@@ -211,7 +211,7 @@ export function applyNight(scene: THREE.Scene, n: NightRig, k: number): void {
   n.sun.intensity = OFFICE3D_SUN_INTENSITY * (1 - 0.8 * k);
   n.sun.color.copy(cA.set(C.sun)).lerp(cB.set(C.sunNight), k);
   for (const l of n.lamps) l.intensity = 6 * k;
-  for (const b of n.bulbs) (b.material as THREE.MeshBasicMaterial).opacity = 0.25 + 0.75 * k;
+  for (const b of n.bulbs) (b.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.35 * k;
 }
 
 /** Warm hanging lamps over each desk cluster (at most 8, lights are costly). */

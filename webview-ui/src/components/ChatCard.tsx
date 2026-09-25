@@ -132,7 +132,7 @@ function ModelRow({
             value={current?.label ?? ''}
             disabled={busy}
             onChange={(e) => e.target.value && onSet(e.target.value)}
-            className="bg-bg text-text border-2 border-border rounded-none px-2 max-w-[60%]"
+            className="bg-bg text-text border border-border rounded-ui px-2 max-w-[60%]"
             data-testid="chat-model-select"
           >
             {!current && <option value="">Choose…</option>}
@@ -221,7 +221,7 @@ function ChatRow({ entry }: { entry: ChatEntry }) {
         </span>
       </div>
       <div
-        className={`px-8 py-4 border-2 font-reading text-read leading-snug whitespace-pre-wrap break-words ${
+        className={`px-8 py-4 border font-reading text-read leading-snug whitespace-pre-wrap break-words ${
           isUser
             ? fromOffice
               ? 'bg-chat-office border-accent'
@@ -494,7 +494,7 @@ export function ChatCard({
     >
       {isFileDropTarget && (
         <div
-          className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border border-dashed border-accent text-sm pointer-events-none"
           data-testid="chat-file-drop"
         >
           Drop files to send them to {title}
@@ -600,7 +600,7 @@ export function ChatCard({
                 }
               }}
               onBlur={() => setNameDraft(null)}
-              className="min-w-0 w-160 px-4 bg-bg text-text text-base border-2 border-accent rounded-none outline-none"
+              className="min-w-0 w-160 px-4 bg-bg text-text text-base border border-accent rounded-ui outline-none"
               data-testid="chat-rename-input"
             />
           </form>
@@ -662,7 +662,7 @@ export function ChatCard({
                       setShowMenu(false);
                       item.onClick();
                     }}
-                    className={`flex items-center gap-8 text-left px-8 py-4 bg-transparent border-0 rounded-none text-sm cursor-pointer hover:bg-btn-hover ${
+                    className={`flex items-center gap-8 text-left px-8 py-4 bg-transparent border-0 rounded-ui text-sm cursor-pointer hover:bg-btn-hover ${
                       item.danger ? 'text-danger' : 'text-text'
                     }`}
                     data-testid={item.id}
@@ -789,7 +789,7 @@ export function ChatCard({
                 id={`clear-policy-${agentId}`}
                 value={clearPolicy}
                 onChange={(e) => onSetClearPolicy(e.target.value as AgentClearPolicy)}
-                className="bg-bg text-text border-2 border-border rounded-none px-2"
+                className="bg-bg text-text border border-border rounded-ui px-2"
                 data-testid="chat-clear-policy"
               >
                 <option value="ask">Ask me</option>
@@ -805,7 +805,7 @@ export function ChatCard({
                 id={`doc-mode-${agentId}`}
                 value={docEditMode ?? docEditDefault}
                 onChange={(e) => onSetDocEditMode(e.target.value as DocEditMode)}
-                className="bg-bg text-text border-2 border-border rounded-none px-2"
+                className="bg-bg text-text border border-border rounded-ui px-2"
                 data-testid="chat-doc-mode"
               >
                 {(['ask', 'auto', 'off'] as const).map((mode) => (
@@ -935,7 +935,7 @@ export function ChatCard({
         ))}
         {needsApproval && (
           <div
-            className="flex flex-col gap-4 p-8 bg-chat-permission border-2 border-status-permission"
+            className="flex flex-col gap-4 p-8 bg-chat-permission border border-status-permission"
             data-testid="chat-permission"
           >
             <span className="text-xs text-status-permission">Permission needed</span>
@@ -962,7 +962,7 @@ export function ChatCard({
             className="self-end flex flex-col items-end gap-2 max-w-[85%]"
             data-testid="chat-queued"
           >
-            <div className="px-8 py-4 border-2 border-dashed border-accent-bright font-reading text-read leading-snug text-text-muted whitespace-pre-wrap break-words">
+            <div className="px-8 py-4 border border-dashed border-accent-bright font-reading text-read leading-snug text-text-muted whitespace-pre-wrap break-words">
               {message.text}
             </div>
             <div className="flex gap-8 text-2xs text-text-muted">
@@ -1076,7 +1076,7 @@ export function ChatCard({
               }}
               placeholder={`Message ${title} — Enter sends, Shift+Enter new line${onLoadSlashCommands ? ', / for commands' : ''}`}
               title={`Drop a pin${filesEnabled ? ' or files' : ''} here to attach`}
-              className={`w-full min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 rounded-none outline-none ${
+              className={`w-full min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border rounded-ui outline-none ${
                 isDropTarget ? 'border-dashed border-pin-note' : 'border-border focus:border-accent'
               }`}
               data-testid="chat-input"

@@ -124,7 +124,7 @@ export function ScreenQuestionCard({
       </div>
       {heading && <div className="text-lg leading-tight">{heading}</div>}
       {details.length > 0 && (
-        <pre className="m-0 px-6 py-4 bg-bg-dark border-2 border-bg-thumb text-code-sm whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
+        <pre className="m-0 px-6 py-4 bg-bg-dark border border-bg-thumb text-code-sm whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
           {details.join('\n')}
         </pre>
       )}
@@ -139,7 +139,7 @@ export function ScreenQuestionCard({
             onClick={() => pick(o.number, o.label)}
             data-testid="screen-question-option"
           >
-            <span className="shrink-0 w-16 text-center border-2 border-border text-xs">
+            <span className="shrink-0 w-16 text-center border border-border text-xs">
               {o.number}
             </span>
             <span>{sent === o.number ? `${o.label} …` : o.label}</span>
@@ -165,7 +165,7 @@ export function ScreenQuestionCard({
               if (e.key === 'Escape') setTelling(null);
             }}
             placeholder="What should it do instead?"
-            className="flex-1 min-w-0 bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text"
+            className="flex-1 min-w-0 bg-bg-dark border border-accent px-6 py-2 text-sm text-text"
             data-testid="screen-question-text"
           />
           <Button size="sm" variant="accent" type="submit">

@@ -473,7 +473,7 @@ function FocusBanner({
               if (e.key === 'Escape') setReplying(false);
             }}
             placeholder={`Answer ${agent}`}
-            className="flex-1 min-w-0 bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text"
+            className="flex-1 min-w-0 bg-bg-dark border border-accent px-6 py-2 text-sm text-text"
             data-testid="doc-focus-reply"
           />
           <Button variant="accent" size="sm" type="submit">
@@ -860,7 +860,7 @@ export function DocViewer({
                   <button
                     key={request.requestId}
                     onClick={() => onSelectRequest?.(request.requestId)}
-                    className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-xs text-text ${
+                    className={`text-left px-6 py-4 border rounded-ui cursor-pointer text-xs text-text ${
                       request.requestId === focus?.requestId
                         ? 'bg-active-bg border-accent'
                         : 'bg-btn-bg border-transparent'
@@ -886,7 +886,7 @@ export function DocViewer({
               <button
                 key={p.id}
                 onClick={() => onSelect(p.id)}
-                className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-xs text-text overflow-hidden text-ellipsis whitespace-nowrap ${
+                className={`text-left px-6 py-4 border rounded-ui cursor-pointer text-xs text-text overflow-hidden text-ellipsis whitespace-nowrap ${
                   samePath(file.path, p.value)
                     ? 'bg-active-bg border-accent'
                     : 'bg-btn-bg border-transparent'
@@ -1006,7 +1006,7 @@ export function DocViewer({
                   role="tab"
                   aria-selected={wordView === v}
                   onClick={() => setWordView(v)}
-                  className={`px-12 py-4 border-0 border-b-4 rounded-none cursor-pointer ${
+                  className={`px-12 py-4 border-0 border-b-4 rounded-ui cursor-pointer ${
                     wordView === v
                       ? 'bg-bg text-text border-accent'
                       : 'bg-bg-dark text-text-muted border-transparent'
@@ -1103,7 +1103,7 @@ export function DocViewer({
               onKeyDown={(e) => e.stopPropagation()}
               aria-label={`Edit ${file.title}`}
               spellCheck={false}
-              className="flex-1 min-h-0 m-0 p-16 bg-board text-board-ink font-mono text-code border-0 rounded-none outline-none resize-none"
+              className="flex-1 min-h-0 m-0 p-16 bg-board text-board-ink font-mono text-code border-0 rounded-ui outline-none resize-none"
               data-testid="doc-text-editor"
             />
           )}
@@ -1145,7 +1145,7 @@ export function DocViewer({
                     }}
                     aria-label={`Value of ${editCell.ref}`}
                     placeholder="value, or =formula"
-                    className="flex-1 min-w-0 bg-bg border-2 border-accent px-6 py-2 font-mono text-code text-text"
+                    className="flex-1 min-w-0 bg-bg border border-accent px-6 py-2 font-mono text-code text-text"
                     data-testid="doc-cell-input"
                   />
                 </div>
@@ -1158,7 +1158,7 @@ export function DocViewer({
                       role="tab"
                       aria-selected={i === sheetIndex}
                       onClick={() => setSheetIndex(i)}
-                      className={`px-12 py-6 text-sm border-0 border-b-4 rounded-none cursor-pointer ${
+                      className={`px-12 py-6 text-sm border-0 border-b-4 rounded-ui cursor-pointer ${
                         i === sheetIndex
                           ? 'bg-bg text-text border-accent'
                           : 'bg-bg-dark text-text-muted border-transparent'
@@ -1266,7 +1266,7 @@ export function DocViewer({
                     onChange={(e) => setPdfPage(e.target.value.replace(/\D/g, ''))}
                     onKeyDown={(e) => e.stopPropagation()}
                     placeholder="page"
-                    className="w-60 bg-bg border-2 border-border px-4 py-1 text-xs text-text"
+                    className="w-60 bg-bg border border-border px-4 py-1 text-xs text-text"
                   />
                 )}
                 <span className="flex-1" />
@@ -1302,7 +1302,7 @@ export function DocViewer({
                   {refs.map((r, i) => (
                     <span
                       key={`${refText(r)}-${i}`}
-                      className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-code-sm font-mono"
+                      className="flex items-center gap-4 px-6 py-1 bg-active-bg border border-accent text-code-sm font-mono"
                     >
                       {refLabel(r)}
                       {onRemoveRef && (

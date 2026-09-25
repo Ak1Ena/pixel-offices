@@ -18,7 +18,7 @@ interface OpenFileDialogProps {
 }
 
 const fieldClass =
-  'flex-1 min-w-0 px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent';
+  'flex-1 min-w-0 px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent';
 
 /**
  * Open file: Word, PowerPoint, Excel, PDF, text and images, straight into the
@@ -106,7 +106,7 @@ export function OpenFileDialog({ isOpen, onClose, onOpenPath, onUpload }: OpenFi
               role="tab"
               aria-selected={tab === id}
               onClick={() => setTab(id)}
-              className={`px-12 py-4 border-0 border-b-4 rounded-none cursor-pointer ${
+              className={`px-12 py-4 border-0 border-b-4 rounded-ui cursor-pointer ${
                 tab === id
                   ? 'bg-bg text-text border-accent'
                   : 'bg-transparent text-text-muted border-transparent'
@@ -153,7 +153,7 @@ export function OpenFileDialog({ isOpen, onClose, onOpenPath, onUpload }: OpenFi
             </div>
 
             <div
-              className="h-260 overflow-y-auto bg-bg-dark border-2 border-border flex flex-col"
+              className="h-260 overflow-y-auto bg-bg-dark border border-border flex flex-col"
               data-testid="open-file-list"
             >
               {listing?.error ? (
@@ -163,7 +163,7 @@ export function OpenFileDialog({ isOpen, onClose, onOpenPath, onUpload }: OpenFi
                   {listing?.entries.map((entry) => (
                     <button
                       key={entry.path}
-                      className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-none cursor-pointer hover:bg-btn-hover"
+                      className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-ui cursor-pointer hover:bg-btn-hover"
                       onClick={() => browse(entry.path)}
                       title={entry.path}
                     >
@@ -174,7 +174,7 @@ export function OpenFileDialog({ isOpen, onClose, onOpenPath, onUpload }: OpenFi
                   {listing?.files?.map((file) => (
                     <button
                       key={file.path}
-                      className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-none cursor-pointer hover:bg-btn-hover"
+                      className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-ui cursor-pointer hover:bg-btn-hover"
                       onClick={() => open(file.path)}
                       title={file.path}
                       data-testid="open-file-item"
@@ -224,7 +224,7 @@ export function OpenFileDialog({ isOpen, onClose, onOpenPath, onUpload }: OpenFi
 
         {tab === 'upload' && (
           <div
-            className={`flex flex-col items-center gap-8 p-16 border-2 border-dashed ${
+            className={`flex flex-col items-center gap-8 p-16 border border-dashed ${
               dragOver ? 'border-accent bg-active-bg' : 'border-border'
             }`}
             onDragOver={(e) => {

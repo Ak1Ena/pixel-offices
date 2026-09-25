@@ -369,7 +369,7 @@ export function RoomToolOverlay({
           >
             {box.label}
           </span>
-          <span className="absolute -bottom-24 left-1/2 -translate-x-1/2 px-6 text-2xs bg-bg border-2 border-border whitespace-nowrap">
+          <span className="absolute -bottom-24 left-1/2 -translate-x-1/2 px-6 text-2xs bg-bg border border-border whitespace-nowrap">
             {box.rect.w} × {box.rect.h} tiles
             {box.valid
               ? ` · fits ${desksThatFit(box.rect)} desk${desksThatFit(box.rect) === 1 ? '' : 's'}`
@@ -388,7 +388,7 @@ export function RoomToolOverlay({
             height: selectedBounds.h * tilePx,
           }}
         >
-          <span className="absolute -bottom-24 left-0 px-6 text-2xs bg-bg border-2 border-border whitespace-nowrap">
+          <span className="absolute -bottom-24 left-0 px-6 text-2xs bg-bg border border-border whitespace-nowrap">
             {selectedBounds.w} × {selectedBounds.h} · drag edges to grow · drag inside to move ·
             right-click for more
           </span>
@@ -400,7 +400,7 @@ export function RoomToolOverlay({
         (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as Handle[]).map((h) => (
           <span
             key={h}
-            className="absolute z-7 w-12 h-12 bg-white border-2 border-bg-dark"
+            className="absolute z-7 w-12 h-12 bg-white border border-bg-dark"
             style={{ ...handleStyle(h, selectedBounds), cursor: `${h}-resize` }}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -414,7 +414,7 @@ export function RoomToolOverlay({
         ))}
       {selectedArea?.door && !preview && (drag === null || drag.kind === 'door') && (
         <span
-          className="absolute z-7 px-4 text-2xs bg-status-permission text-board-ink border-2 border-bg-dark cursor-grab whitespace-nowrap"
+          className="absolute z-7 px-4 text-2xs bg-status-permission text-board-ink border border-bg-dark cursor-grab whitespace-nowrap"
           style={{
             left:
               left(
@@ -462,7 +462,7 @@ export function RoomToolOverlay({
               setMode(m);
               setPortalA(null);
             }}
-            className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-text ${mode === m ? 'bg-active-bg border-accent' : 'bg-transparent border-transparent hover:bg-bg-thumb'}`}
+            className={`text-left px-6 py-4 border rounded-ui cursor-pointer text-text ${mode === m ? 'bg-active-bg border-accent' : 'bg-transparent border-transparent hover:bg-bg-thumb'}`}
           >
             <span className="block">{name}</span>
             <span className="block text-2xs text-text-muted">{hint}</span>
@@ -470,7 +470,7 @@ export function RoomToolOverlay({
         ))}
         <button
           onClick={onPaintCustom}
-          className="text-left px-6 py-4 border-2 border-transparent rounded-none cursor-pointer bg-transparent text-text hover:bg-bg-thumb"
+          className="text-left px-6 py-4 border border-transparent rounded-ui cursor-pointer bg-transparent text-text hover:bg-bg-thumb"
         >
           <span className="block">Paint a custom shape</span>
           <span className="block text-2xs text-text-muted">Tile by tile, with the Areas tool</span>
@@ -481,7 +481,7 @@ export function RoomToolOverlay({
               <button
                 key={t.id}
                 onClick={() => setTemplate(t)}
-                className={`text-left px-6 py-4 border-2 rounded-none cursor-pointer text-xs text-text ${template.id === t.id ? 'bg-active-bg border-accent' : 'bg-bg-dark border-border'}`}
+                className={`text-left px-6 py-4 border rounded-ui cursor-pointer text-xs text-text ${template.id === t.id ? 'bg-active-bg border-accent' : 'bg-bg-dark border-border'}`}
               >
                 {t.name}
                 <span className="block text-2xs text-text-muted">
@@ -553,7 +553,7 @@ export function RoomToolOverlay({
                 autoFocus
                 defaultValue={menu.label}
                 onKeyDown={(e) => e.stopPropagation()}
-                className="w-full bg-bg-dark border-2 border-accent px-6 py-2 text-sm text-text"
+                className="w-full bg-bg-dark border border-accent px-6 py-2 text-sm text-text"
               />
             </form>
           ) : (
@@ -629,7 +629,7 @@ export function RoomToolOverlay({
           {FILL_PRESETS.map((p: FillPreset) => (
             <button
               key={p.id}
-              className="text-left px-8 py-6 bg-bg-dark border-2 border-border text-text cursor-pointer hover:border-accent"
+              className="text-left px-8 py-6 bg-bg-dark border border-border text-text cursor-pointer hover:border-accent"
               onClick={() => {
                 if (preview) officeState.rebuildFromLayout(preview.before);
                 const base = preview ? preview.before : layout;

@@ -72,7 +72,7 @@ export function ChatPeekBubbles({
           <button
             key={id}
             onClick={() => onOpen(id)}
-            className="absolute z-40 -translate-x-1/2 -translate-y-full max-w-2xs px-6 py-2 font-reading text-read-sm text-left bg-board text-board-ink border-2 border-board-ink rounded-none shadow-pixel cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+            className="absolute z-40 -translate-x-1/2 -translate-y-full max-w-2xs px-6 py-2 font-reading text-read-sm text-left bg-board text-board-ink border border-board-ink rounded-ui shadow-pixel cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
             style={{
               left: at.x,
               top: at.y,

@@ -56,13 +56,13 @@ function Row({ entry }: { entry: ChatEntry }) {
   }
   if (entry.role === 'user') {
     return (
-      <div className="self-end max-w-[90%] px-8 py-4 bg-active-bg border-2 border-accent font-reading text-read-sm whitespace-pre-wrap break-words">
+      <div className="self-end max-w-[90%] px-8 py-4 bg-active-bg border border-accent font-reading text-read-sm whitespace-pre-wrap break-words">
         <MessageText text={entry.text} />
       </div>
     );
   }
   return (
-    <div className="max-w-full px-8 py-4 bg-bg border-2 border-border font-reading text-read-sm break-words">
+    <div className="max-w-full px-8 py-4 bg-bg border border-border font-reading text-read-sm break-words">
       <Markdown blocks={parseMarkdown(entry.text)} />
     </div>
   );
@@ -187,7 +187,7 @@ export function DocChatPanel({
             setTarget(id);
             if (id !== NEW_AGENT) saveDocChatAgent(filePath, id);
           }}
-          className="flex-1 min-w-0 bg-bg text-text text-sm border-2 border-border rounded-none px-4 py-2"
+          className="flex-1 min-w-0 bg-bg text-text text-sm border border-border rounded-ui px-4 py-2"
           data-testid="doc-chat-agent"
         >
           {target === null && <option value="">No agent</option>}
@@ -259,7 +259,7 @@ export function DocChatPanel({
             {refs.map((ref, i) => (
               <span
                 key={`${refLabel(ref)}-${i}`}
-                className="px-6 py-1 bg-active-bg border-2 border-accent text-code-sm font-mono"
+                className="px-6 py-1 bg-active-bg border border-accent text-code-sm font-mono"
               >
                 {refLabel(ref)}
               </span>
@@ -282,7 +282,7 @@ export function DocChatPanel({
               : `Message about ${fileBaseName(filePath)} — Enter sends`
           }
           aria-label="Message"
-          className="w-full resize-none p-6 bg-bg text-text font-reading text-read border-2 border-border focus:border-accent rounded-none outline-none"
+          className="w-full resize-none p-6 bg-bg text-text font-reading text-read border border-border focus:border-accent rounded-ui outline-none"
           data-testid="doc-chat-input"
         />
         <div className="flex items-center gap-6">

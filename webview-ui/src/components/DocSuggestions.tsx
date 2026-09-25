@@ -85,7 +85,7 @@ export function SuggestionCard({
   const decided = hunk.decision !== 'pending';
   return (
     <div
-      className={`flex flex-col gap-4 px-8 py-4 border-2 border-dashed font-reading text-read-sm ${
+      className={`flex flex-col gap-4 px-8 py-4 border border-dashed font-reading text-read-sm ${
         hunk.decision === 'accepted'
           ? 'border-solid border-status-success bg-diff-add'
           : hunk.decision === 'rejected'

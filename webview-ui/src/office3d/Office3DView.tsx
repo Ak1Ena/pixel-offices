@@ -58,6 +58,8 @@ export interface Office3DViewProps {
   onPinDrop?: (agentId: number, pinId: string) => void;
   onWorkflowDrop?: (agentId: number, workflowId: string) => void;
   onCardDrop?: (agentId: number, taskId: string) => void;
+  /** Name tag for an agent (name, what it is doing, status); null = no tag. */
+  tagOf?: (id: number) => { name: string; activity: string; status: TagStatus } | null;
   /** The layout editor, driven from the 3D view while edit mode is on. */
   edit?: Edit3DProps & {
     onRotateSelected: () => void;
@@ -76,14 +78,19 @@ export default function Office3DView({
   onWorkflowDrop,
   onCardDrop,
   edit,
+  tagOf,
 }: Office3DViewProps) {
   const editRef = useRef(edit);
   editRef.current = edit;
+  const tagOfRef = useRef(tagOf);
+  tagOfRef.current = tagOf;
   const editUiRef = useRef<EditUi>({ sel: null, grow: [] });
   const hostRef = useRef<HTMLDivElement>(null);
   const pickRef = useRef<(clientX: number, clientY: number) => number | null>(() => null);
   const dropRef = useRef({ onPinDrop, onWorkflowDrop, onCardDrop, onClick });
   const overlayRef = useRef<OverlayItem[]>([]);
+  /** Seconds to the next stand-up, or the meeting on now (for the clock). */
+  const nextMeetRef = useRef<{ now: string | null; inSec: number }>({ now: null, inSec: 0 });
   const [nightMode, setNightMode] = useState<NightMode>(() => {
     try {
       const v = localStorage.getItem(OFFICE3D_NIGHT_KEY);
@@ -153,7 +160,7 @@ export default function Office3DView({
       scene.add(office.group);
       const lit = buildLamps(office, office.group);
       night.lamps = lit.lamps;
-      night.bulbs = lit.bulbs;
+      night.bulbs = [...lit.bulbs, ...office.outdoorBulbs];
       director.end();
       const b = office.bounds;
       const cx = (b.x0 + b.x1) / 2,
@@ -428,6 +435,7 @@ export default function Office3DView({
     let raf = 0;
     let last = 0;
     let time = 0;
+    const scrPos = new THREE.Vector3();
     const screenOn = new THREE.MeshBasicMaterial({ color: C.screenOn });
     const screenOff = new THREE.MeshBasicMaterial({ color: C.screen });
     const frame = (now: number) => {
@@ -459,6 +467,7 @@ export default function Office3DView({
         if (!stepLeaver(leavers[i], office?.door ?? null, dt, time, scene)) leavers.splice(i, 1);
       }
       director.update(dt, office, officeState.leavingIds);
+      nextMeetRef.current = { now: director.meeting?.title ?? null, inSec: director.nextIn() };
 
       const want = nightWanted(nightRef.current) ? 1 : 0;
       const k =
@@ -500,12 +509,25 @@ export default function Office3DView({
               : mt?.speaker === ch.id
                 ? 'talk'
                 : null;
-        if (kind)
+        const above = at(r.g.position.x, r.height + 0.3, r.g.position.z);
+        // Name tags for everyone, except whoever the tool panel is showing.
+        const tag =
+          ch.id !== officeState.selectedAgentId &&
+          ch.id !== officeState.hoveredAgentId &&
+          !ch.matrixEffect
+            ? tagOfRef.current?.(ch.id)
+            : null;
+        if (tag) {
           items.push({
-            key: `b${ch.id}`,
-            kind,
-            ...at(r.g.position.x, r.height + 0.35, r.g.position.z),
+            key: `t${ch.id}`,
+            kind: 'tag',
+            text: tag.name,
+            sub: tag.activity,
+            status: tag.status,
+            ...above,
           });
+        }
+        if (kind) items.push({ key: `b${ch.id}`, kind, ...above, y: above.y - (tag ? 30 : 0) });
       }
       for (const L of leavers) {
         if (L.say)
@@ -547,18 +569,13 @@ export default function Office3DView({
 
       // Screens light up in front of whoever is typing.
       if (office) {
-        for (const [key, scr] of office.screens) {
-          const [c, rw] = key.split(',').map(Number);
-          const on = officeState
-            .getCharacters()
-            .some(
-              (ch) =>
-                ch.state === CharacterState.TYPE &&
-                Math.hypot(
-                  ch.x / OFFICE3D_PX_PER_M - (c + 0.5),
-                  ch.y / OFFICE3D_PX_PER_M - (rw + 0.5),
-                ) < 1.8,
-            );
+        const typing = officeState
+          .getCharacters()
+          .filter((ch) => ch.state === CharacterState.TYPE)
+          .map((ch) => [ch.x / OFFICE3D_PX_PER_M, ch.y / OFFICE3D_PX_PER_M]);
+        for (const scr of office.screens.values()) {
+          scr.getWorldPosition(scrPos);
+          const on = typing.some(([x, z]) => Math.hypot(x - scrPos.x, z - scrPos.z) < 1.4);
           scr.material = on ? screenOn : screenOff;
         }
       }
@@ -660,26 +677,58 @@ export default function Office3DView({
       />
       <Overlay3D itemsRef={overlayRef} />
       {edit?.isEditMode && <EditButtons3D uiRef={editUiRef} edit={edit} />}
-      <div className="absolute top-8 left-8 z-10">
-        <Button
-          type="button"
-          size="sm"
-          onClick={cycleNight}
-          title="Day, night, or follow the clock"
-          data-testid="office3d-night"
-        >
-          {nightMode === 'auto'
-            ? 'Time: clock'
-            : nightMode === 'night'
-              ? 'Time: night'
-              : 'Time: day'}
-        </Button>
-      </div>
+      {!edit?.isEditMode && (
+        <ClockPanel nightMode={nightMode} onCycle={cycleNight} nextMeetRef={nextMeetRef} />
+      )}
     </>
   );
 }
 
 type NightMode = 'auto' | 'day' | 'night';
+
+/** Bottom-left clock: time, day or night (click to switch), the next stand-up. */
+function ClockPanel({
+  nightMode,
+  onCycle,
+  nextMeetRef,
+}: {
+  nightMode: NightMode;
+  onCycle: () => void;
+  nextMeetRef: React.RefObject<{ now: string | null; inSec: number }>;
+}) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const night = nightWanted(nightMode);
+  const meet = nextMeetRef.current;
+  const mins = Math.floor(meet.inSec / 60),
+    secs = Math.floor(meet.inSec % 60);
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      title="Switch day / night / follow the clock"
+      data-testid="office3d-night"
+      className="absolute bottom-12 left-12 z-20 flex flex-col items-start gap-2 px-14 py-10 pixel-panel cursor-pointer text-left"
+    >
+      <span className="font-display text-xl font-medium text-text">
+        {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+      </span>
+      <span className="text-2xs text-text-muted">
+        {night ? 'Night' : 'Day'}
+        {nightMode === 'auto' ? ' · follows the clock' : ' · set by you'} ·{' '}
+        {now.toLocaleDateString([], { weekday: 'long' })}
+      </span>
+      <span className="text-2xs text-accent">
+        {meet.now
+          ? `Now: ${meet.now}`
+          : `Next stand-up in ${mins}:${String(secs).padStart(2, '0')}`}
+      </span>
+    </button>
+  );
+}
 
 interface EditUi {
   sel: { x: number; y: number } | null;
@@ -750,7 +799,7 @@ function EditButtons3D({
           </Button>
         </div>
       ))}
-      <div className="absolute top-64 left-1/2 -translate-x-1/2 px-8 py-2 text-2xs bg-bg-dark text-text-muted border-2 border-border">
+      <div className="absolute top-64 left-1/2 -translate-x-1/2 px-8 py-2 text-2xs bg-bg-dark text-text-muted border border-border">
         Shift-drag or middle-drag turns the view · right-drag erases (paint tools) or pans
       </div>
     </div>
@@ -763,20 +812,31 @@ function nightWanted(mode: NightMode): boolean {
   return h >= OFFICE3D_NIGHT_FROM_HOUR || h < OFFICE3D_NIGHT_TO_HOUR;
 }
 
+type TagStatus = 'work' | 'perm' | 'done' | 'idle';
+
 interface OverlayItem {
   key: string;
-  kind: 'ask' | 'done' | 'talk' | 'say' | 'meet';
+  kind: 'ask' | 'done' | 'talk' | 'say' | 'meet' | 'tag';
   text?: string;
+  sub?: string;
+  status?: TagStatus;
   x: number;
   y: number;
 }
 
-const BUBBLE_CLASS: Record<OverlayItem['kind'], string> = {
-  ask: 'bg-status-permission text-bg-dark px-6 font-bold',
-  done: 'bg-status-success text-bg-dark px-6 font-bold',
-  talk: 'bg-board text-board-ink px-6',
-  say: 'bg-board text-board-ink px-8',
-  meet: 'bg-bg-dark text-text px-8 border-accent',
+const BUBBLE_CLASS: Record<Exclude<OverlayItem['kind'], 'tag'>, string> = {
+  ask: 'bg-status-permission text-accent-ink px-8 font-bold rounded-full',
+  done: 'bg-status-success text-accent-ink px-8 font-bold rounded-full',
+  talk: 'bg-board text-board-ink px-10 rounded-panel border-accent',
+  say: 'bg-board text-board-ink px-12 rounded-panel border-accent',
+  meet: 'bg-bg text-text px-12 rounded-full border-accent',
+};
+
+const TAG_DOT: Record<TagStatus, string> = {
+  work: 'bg-status-active',
+  perm: 'bg-status-permission animate-pulse',
+  done: 'bg-status-success',
+  idle: 'bg-text-muted',
 };
 
 /** Bubbles and labels over the 3D office, redrawn every frame from the scene. */
@@ -793,22 +853,41 @@ function Overlay3D({ itemsRef }: { itemsRef: React.RefObject<OverlayItem[]> }) {
   }, []);
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {itemsRef.current.map((it) => (
-        <div
-          key={it.key}
-          className={`absolute -translate-x-1/2 -translate-y-full py-1 text-sm whitespace-nowrap border-2 border-border shadow-pixel ${BUBBLE_CLASS[it.kind]}`}
-          style={{ left: it.x, top: it.y }}
-          data-testid={`office3d-${it.kind}`}
-        >
-          {it.kind === 'ask'
-            ? '…'
-            : it.kind === 'done'
-              ? '✓'
-              : it.kind === 'talk'
-                ? '···'
-                : it.text}
-        </div>
-      ))}
+      {itemsRef.current.map((it) =>
+        it.kind === 'tag' ? (
+          <div
+            key={it.key}
+            className={`absolute -translate-x-1/2 -translate-y-full flex items-center gap-6 pl-6 pr-10 py-3 rounded-full text-board-ink text-2xs font-semibold whitespace-nowrap shadow-pixel ${
+              it.status === 'perm' ? 'bg-status-permission' : 'bg-board'
+            }`}
+            style={{ left: it.x, top: it.y }}
+            data-testid="office3d-tag"
+          >
+            <span className={`w-8 h-8 rounded-full ${TAG_DOT[it.status ?? 'idle']}`} />
+            {it.text}
+            {it.sub && it.status !== 'idle' && (
+              <span className="font-mono font-normal text-board-ink-muted max-w-160 truncate">
+                {it.status === 'perm' ? 'Needs you' : it.sub}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div
+            key={it.key}
+            className={`absolute -translate-x-1/2 -translate-y-full py-3 text-sm whitespace-nowrap border shadow-pixel ${BUBBLE_CLASS[it.kind]}`}
+            style={{ left: it.x, top: it.y }}
+            data-testid={`office3d-${it.kind}`}
+          >
+            {it.kind === 'ask'
+              ? '…'
+              : it.kind === 'done'
+                ? '✓'
+                : it.kind === 'talk'
+                  ? '···'
+                  : it.text}
+          </div>
+        ),
+      )}
     </div>
   );
 }

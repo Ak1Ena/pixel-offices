@@ -318,7 +318,7 @@ export function IntroBubble({
               The office watches your Claude Code sessions and brings them to life in here. New to
               Claude Code? Download it first:
             </p>
-            <div className="text-sm bg-btn-bg border-2 border-border py-4 px-8 mb-8 select-all">
+            <div className="text-sm bg-btn-bg border border-border py-4 px-8 mb-8 select-all">
               {CLAUDE_CODE_INSTALL_COMMAND}
             </div>
             <p className="text-sm m-0 mb-8">

@@ -94,11 +94,11 @@ function ChatFileCard({ name }: { name: string }) {
   const ext = shown.includes('.') ? shown.split('.').pop()!.toUpperCase() : 'FILE';
   return (
     <span
-      className="inline-flex items-center gap-6 self-start max-w-full px-6 py-4 bg-bg-dark border-2 border-border text-sm"
+      className="inline-flex items-center gap-6 self-start max-w-full px-6 py-4 bg-bg-dark border border-border text-sm"
       title={shown}
       data-testid="chat-file-card"
     >
-      <span className="shrink-0 px-4 border-2 border-border text-2xs font-pixel">
+      <span className="shrink-0 px-4 border border-border text-2xs font-pixel">
         {ext.slice(0, 5)}
       </span>
       <span className="overflow-hidden text-ellipsis whitespace-nowrap">{shown}</span>

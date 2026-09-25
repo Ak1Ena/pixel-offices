@@ -149,7 +149,7 @@ export function GroupChatPanel({
                 setChannelId(c.id);
                 setPicked({});
               }}
-              className={`px-10 py-6 text-sm whitespace-nowrap border-0 border-b-4 rounded-none cursor-pointer ${
+              className={`px-10 py-6 text-sm whitespace-nowrap border-0 border-b-4 rounded-ui cursor-pointer ${
                 c.id === channel.id
                   ? 'bg-bg text-text border-accent'
                   : 'bg-bg-dark text-text-muted border-transparent'
@@ -216,7 +216,7 @@ export function GroupChatPanel({
                 </button>
               </div>
               <div
-                className={`px-8 py-4 border-2 font-reading text-read leading-snug whitespace-pre-wrap break-words ${
+                className={`px-8 py-4 border font-reading text-read leading-snug whitespace-pre-wrap break-words ${
                   mine ? 'bg-chat-office border-accent' : 'bg-bg-dark border-bg-thumb'
                 }`}
               >
@@ -288,7 +288,7 @@ export function GroupChatPanel({
                     key={id}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => pickMention(id)}
-                    className="px-6 py-2 text-2xs bg-bg border-2 border-border text-text cursor-pointer rounded-none hover:border-accent"
+                    className="px-6 py-2 text-2xs bg-bg border border-border text-text cursor-pointer rounded-ui hover:border-accent"
                   >
                     @{mentionHandle(labelOf(id))}
                   </button>
@@ -325,7 +325,7 @@ export function GroupChatPanel({
                     void send();
                   }
                 }}
-                className="flex-1 min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border-2 border-border rounded-none outline-none focus:border-accent"
+                className="flex-1 min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border border-border rounded-ui outline-none focus:border-accent"
                 data-testid="group-input"
               />
               {filesEnabled && <AttachFileButton attachments={attachments} />}

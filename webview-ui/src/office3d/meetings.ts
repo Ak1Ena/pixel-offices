@@ -164,6 +164,11 @@ export class MeetingDirector {
     }
   }
 
+  /** Seconds until the next stand-up is due. */
+  nextIn(): number {
+    return Math.max(0, this.nextStandup - this.time);
+  }
+
   /** e2e: hold a stand-up at the next tick. */
   standupNow(): void {
     this.nextStandup = 0;

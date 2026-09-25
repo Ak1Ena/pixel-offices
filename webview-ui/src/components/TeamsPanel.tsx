@@ -42,7 +42,7 @@ function newRequestId(): string {
 
 function Crew({ members }: { members: Array<{ palette?: number; name: string }> }) {
   return (
-    <div className="flex gap-4 items-end min-h-52 px-8 py-4 bg-bg-thumb border-2 border-border overflow-hidden">
+    <div className="flex gap-4 items-end min-h-52 px-8 py-4 bg-bg-thumb border border-border overflow-hidden">
       {members.map((m, i) => (
         <CharacterPortrait key={i} palette={m.palette ?? i} title={m.name} />
       ))}
@@ -69,7 +69,7 @@ function MemberEditor({
   const looks = Math.max(1, getLoadedCharacterCount());
   return (
     <div
-      className={`flex flex-col gap-6 p-8 border-2 ${open ? 'bg-active-bg border-accent' : 'bg-bg-thumb border-border'}`}
+      className={`flex flex-col gap-6 p-8 border ${open ? 'bg-active-bg border-accent' : 'bg-bg-thumb border-border'}`}
       data-testid="team-member"
     >
       <div className="flex items-center gap-8">
@@ -80,9 +80,7 @@ function MemberEditor({
         >
           <span className="text-sm">{member.name || 'New member'}</span>
           {member.lead && (
-            <span className="ml-6 px-4 text-2xs border-2 border-pin-note text-pin-note">
-              ★ lead
-            </span>
+            <span className="ml-6 px-4 text-2xs border border-pin-note text-pin-note">★ lead</span>
           )}
           <span className="block text-code-sm text-text-muted font-mono overflow-hidden text-ellipsis whitespace-nowrap">
             {member.command || 'claude'} · {member.role || 'no role yet'}
@@ -104,7 +102,7 @@ function MemberEditor({
             <input
               value={member.name}
               onChange={(e) => onChange({ name: e.target.value.replace(/\s+/g, '-') })}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
+              className="bg-bg-dark border border-border px-6 py-2 text-sm text-text"
             />
           </label>
           <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -112,7 +110,7 @@ function MemberEditor({
             <input
               value={member.role}
               onChange={(e) => onChange({ role: e.target.value })}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
+              className="bg-bg-dark border border-border px-6 py-2 text-sm text-text"
             />
           </label>
           <label className="col-span-2 max-sm:col-span-1 flex flex-col gap-2 text-2xs text-text-muted">
@@ -121,7 +119,7 @@ function MemberEditor({
               value={member.instructions}
               onChange={(e) => onChange({ instructions: e.target.value })}
               rows={3}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading resize-y"
+              className="bg-bg-dark border border-border px-6 py-2 text-read text-text font-reading resize-y"
             />
           </label>
           <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -130,7 +128,7 @@ function MemberEditor({
               value={member.command}
               onChange={(e) => onChange({ command: e.target.value })}
               placeholder="claude --model claude-sonnet-5"
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-code text-text font-mono"
+              className="bg-bg-dark border border-border px-6 py-2 text-code text-text font-mono"
             />
           </label>
           <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -138,7 +136,7 @@ function MemberEditor({
             <select
               value={member.workflowId ?? ''}
               onChange={(e) => onChange({ workflowId: e.target.value || undefined })}
-              className="bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
+              className="bg-bg-dark border border-border px-6 py-2 text-sm text-text"
             >
               <option value="">None</option>
               {workflows.map((w) => (
@@ -155,7 +153,7 @@ function MemberEditor({
                 <button
                   key={p}
                   onClick={() => onChange({ palette: p })}
-                  className={`p-2 border-2 cursor-pointer bg-bg-dark ${member.palette === p ? 'border-white' : 'border-transparent'}`}
+                  className={`p-2 border cursor-pointer bg-bg-dark ${member.palette === p ? 'border-white' : 'border-transparent'}`}
                   aria-label={`Look ${p + 1}`}
                 >
                   <CharacterPortrait palette={p} zoom={1} />
@@ -235,7 +233,7 @@ function TeamEditor({
           <input
             value={team.description ?? ''}
             onChange={(e) => setTeam((t) => ({ ...t, description: e.target.value }))}
-            className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading"
+            className="bg-bg-dark border border-border px-6 py-2 text-read text-text font-reading"
           />
         </label>
         <label className="flex flex-col gap-2 text-2xs text-text-muted">
@@ -245,7 +243,7 @@ function TeamEditor({
             onChange={(e) => setTeam((t) => ({ ...t, goalTemplate: e.target.value }))}
             rows={2}
             placeholder="Build this feature: {goal}. Split the work, keep the plan on the board, and tell me when it's ready."
-            className="bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading resize-y"
+            className="bg-bg-dark border border-border px-6 py-2 text-read text-text font-reading resize-y"
           />
         </label>
         <div className="flex flex-col gap-6">
@@ -358,7 +356,7 @@ function StartDialog({
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             rows={3}
-            className="bg-bg-dark border-2 border-accent px-6 py-2 text-read text-text font-reading resize-y"
+            className="bg-bg-dark border border-accent px-6 py-2 text-read text-text font-reading resize-y"
             data-testid="team-goal"
           />
         </label>
@@ -443,13 +441,13 @@ function ExportDialog({
           Start commands
         </label>
         {!includeCommands && (
-          <div className="p-6 border-2 border-status-permission bg-chat-permission text-2xs">
+          <div className="p-6 border border-status-permission bg-chat-permission text-2xs">
             Start commands are left out: they can hold your own aliases and folder paths. Whoever
             imports the team picks their own.
           </div>
         )}
         <span className="text-2xs text-text-muted">Share code</span>
-        <div className="p-6 bg-bg-dark border-2 border-border text-code-sm font-mono break-all max-h-80 overflow-y-auto">
+        <div className="p-6 bg-bg-dark border border-border text-code-sm font-mono break-all max-h-80 overflow-y-auto">
           {encodeShareCode(bundle)}
         </div>
       </div>
@@ -514,7 +512,7 @@ function ImportDialog({
       <div className="px-12 py-8 border-b-2 border-border text-lg">Import a team</div>
       <div className="p-12 flex flex-col gap-10">
         <label
-          className="p-16 border-2 border-dashed border-accent text-center text-sm text-text-muted cursor-pointer"
+          className="p-16 border border-dashed border-accent text-center text-sm text-text-muted cursor-pointer"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -543,7 +541,7 @@ function ImportDialog({
           onKeyDown={(e) => e.stopPropagation()}
           rows={3}
           placeholder="…or paste a share code (PXT1-…)"
-          className="bg-bg-dark border-2 border-border px-6 py-2 text-code-sm text-text font-mono"
+          className="bg-bg-dark border border-border px-6 py-2 text-code-sm text-text font-mono"
         />
         {error && <span className="text-2xs text-danger">{error}</span>}
         {text.trim() && !bundle && !error && (
@@ -586,7 +584,7 @@ function ImportDialog({
                 ))}
               </>
             )}
-            <div className="p-6 border-2 border-status-permission bg-chat-permission text-2xs">
+            <div className="p-6 border border-status-permission bg-chat-permission text-2xs">
               Read the instructions before you start this team — they are what the agents are told
               to do. Importing only saves it; nothing starts until you press Start.
             </div>
@@ -683,7 +681,7 @@ function AiDialog({
               onKeyDown={(e) => e.stopPropagation()}
               rows={5}
               placeholder="A team that turns a screenshot into a React page, checks it on mobile, and asks me before merging."
-              className="bg-bg-dark border-2 border-accent px-6 py-2 text-read text-text font-reading resize-y"
+              className="bg-bg-dark border border-accent px-6 py-2 text-read text-text font-reading resize-y"
               data-testid="team-ai-description"
             />
           </label>
@@ -759,7 +757,7 @@ function AiDialog({
               {current.team.members.map((m, i) => (
                 <div
                   key={m.name}
-                  className="flex gap-8 items-start p-6 border-2 border-border bg-bg-thumb"
+                  className="flex gap-8 items-start p-6 border border-border bg-bg-thumb"
                 >
                   <CharacterPortrait palette={m.palette ?? i} />
                   <div className="min-w-0 flex flex-col gap-2">
@@ -809,7 +807,7 @@ function AiDialog({
                 onChange={(e) => setChange(e.target.value)}
                 onKeyDown={(e) => e.stopPropagation()}
                 placeholder='Ask for changes, e.g. "add a copywriter"'
-                className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-2 text-read text-text font-reading"
+                className="flex-1 min-w-0 bg-bg-dark border border-border px-6 py-2 text-read text-text font-reading"
               />
               <Button size="sm" variant="accent" type="submit" disabled={busy}>
                 Send
@@ -841,7 +839,7 @@ function RunningTeams({
       {running.map((c) => (
         <div
           key={c.crewId}
-          className="p-8 border-2 border-border bg-bg-dark flex flex-col gap-4"
+          className="p-8 border border-border bg-bg-dark flex flex-col gap-4"
           data-testid="team-running"
         >
           <div className="flex items-center gap-8">
@@ -861,7 +859,7 @@ function RunningTeams({
                 key={m.name}
                 disabled={m.agentId === undefined}
                 onClick={() => m.agentId !== undefined && onOpenAgent(m.agentId)}
-                className="flex items-center gap-4 px-6 py-2 bg-bg border-2 border-border text-xs text-text cursor-pointer disabled:cursor-default"
+                className="flex items-center gap-4 px-6 py-2 bg-bg border border-border text-xs text-text cursor-pointer disabled:cursor-default"
                 title={
                   m.error ??
                   (m.benched ? 'Not started yet: starts when the lead calls @' + m.name : undefined)
@@ -941,7 +939,7 @@ export function TeamsPanel({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search teams…"
-              className="w-200 max-sm:w-full bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
+              className="w-200 max-sm:w-full bg-bg-dark border border-border px-6 py-2 text-sm text-text"
             />
             {canEdit && (
               <>
@@ -980,7 +978,7 @@ export function TeamsPanel({
       </div>
       {teams.notice && (
         <div
-          className={`flex gap-8 items-start mx-16 mt-8 p-6 border-2 text-xs ${
+          className={`flex gap-8 items-start mx-16 mt-8 p-6 border text-xs ${
             teams.notice.error
               ? 'border-status-permission bg-chat-permission'
               : 'border-status-success bg-bg-dark'
@@ -1003,7 +1001,7 @@ export function TeamsPanel({
             {shown.map((t) => (
               <div
                 key={t.id}
-                className="flex flex-col gap-8 p-10 bg-bg-dark border-2 border-border shadow-pixel"
+                className="flex flex-col gap-8 p-10 bg-bg-dark border border-border shadow-pixel"
                 data-testid="team-card"
               >
                 <div className="flex items-center gap-6">
@@ -1020,7 +1018,7 @@ export function TeamsPanel({
                   {t.members.map((m) => (
                     <span
                       key={m.name}
-                      className={`px-4 text-2xs border-2 ${m.lead ? 'border-pin-note text-pin-note' : 'border-border'}`}
+                      className={`px-4 text-2xs border ${m.lead ? 'border-pin-note text-pin-note' : 'border-border'}`}
                     >
                       {m.lead ? '★ ' : ''}
                       {m.role}
@@ -1066,7 +1064,7 @@ export function TeamsPanel({
                 onClick={() =>
                   setView({ kind: 'edit', team: { id: '', title: '', relay: true, members: [] } })
                 }
-                className="min-h-200 flex flex-col items-center justify-center gap-4 border-2 border-dashed border-border bg-transparent text-text-muted cursor-pointer"
+                className="min-h-200 flex flex-col items-center justify-center gap-4 border border-dashed border-border bg-transparent text-text-muted cursor-pointer"
               >
                 <span className="text-3xl text-accent-bright">+</span>
                 <span className="text-sm text-text">New team</span>

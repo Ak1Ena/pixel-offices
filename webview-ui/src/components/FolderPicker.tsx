@@ -13,7 +13,7 @@ interface FolderPickerProps {
 }
 
 const fieldClass =
-  'flex-1 min-w-0 px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent';
+  'flex-1 min-w-0 px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent';
 
 /** Last path segment for the recent-folder chips. */
 function baseName(p: string): string {
@@ -137,7 +137,7 @@ export function FolderPicker({ value, onChange, recentFolders }: FolderPickerPro
       </div>
 
       <div
-        className="max-h-160 overflow-y-auto bg-bg-dark border-2 border-border flex flex-col"
+        className="max-h-160 overflow-y-auto bg-bg-dark border border-border flex flex-col"
         data-testid="folder-list"
       >
         {listing?.error ? (
@@ -149,7 +149,7 @@ export function FolderPicker({ value, onChange, recentFolders }: FolderPickerPro
             <button
               key={entry.path}
               type="button"
-              className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-none cursor-pointer hover:bg-btn-hover"
+              className="flex items-center gap-6 px-8 py-2 text-left text-sm bg-transparent border-0 rounded-ui cursor-pointer hover:bg-btn-hover"
               onClick={() => browse(entry.path)}
               onDoubleClick={() => onChange(entry.path)}
               title={entry.path}

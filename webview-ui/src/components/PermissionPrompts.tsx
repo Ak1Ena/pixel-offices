@@ -260,7 +260,7 @@ export function PermissionPrompts({
               )}
             </div>
             {ask.detail && (
-              <pre className="m-0 px-6 py-4 bg-bg-dark border-2 border-bg-thumb text-code-sm whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
+              <pre className="m-0 px-6 py-4 bg-bg-dark border border-bg-thumb text-code-sm whitespace-pre-wrap break-all max-h-120 overflow-y-auto">
                 {ask.detail}
               </pre>
             )}

@@ -100,9 +100,9 @@ const KINDS: DeskTaskKind[] = ['task', 'issue', 'feature'];
 const KIND_TAG: Record<DeskTaskKind, string> = { task: 'T', issue: '!', feature: '+' };
 
 const fieldClass =
-  'w-full px-8 py-4 bg-bg-dark text-text text-base border-2 border-border rounded-none outline-none focus:border-accent';
+  'w-full px-8 py-4 bg-bg-dark text-text text-base border border-border rounded-ui outline-none focus:border-accent';
 const sectionTitle = 'text-xs text-text-muted uppercase tracking-wider';
-const chip = 'px-4 text-2xs border-2 leading-tight';
+const chip = 'px-4 text-2xs border leading-tight';
 
 // ── Add a card ───────────────────────────────────────────────
 
@@ -464,7 +464,7 @@ function StartAgentHere({ folder }: { folder: string }) {
   const full = command.trim() || 'claude';
   return (
     <div
-      className="flex flex-col gap-6 p-8 border-2 border-warning bg-bg-dark"
+      className="flex flex-col gap-6 p-8 border border-warning bg-bg-dark"
       onKeyDown={(e) => e.stopPropagation()}
     >
       <span className="text-sm">Start an agent in this folder</span>
@@ -835,7 +835,7 @@ function CardDetail({
                   </Button>
                   {deskWorkflows.list.length > 0 && (
                     <select
-                      className="bg-bg-dark text-text text-sm border-2 border-border rounded-none px-4"
+                      className="bg-bg-dark text-text text-sm border border-border rounded-ui px-4"
                       value=""
                       aria-label="Load steps from a workflow"
                       onChange={(e) => {
@@ -1012,7 +1012,7 @@ function Card({
       : null;
   return (
     <div
-      className={`flex flex-col border-2 shadow-pixel ${
+      className={`flex flex-col border shadow-pixel ${
         isOpen && !inline ? 'bg-active-bg border-accent' : 'bg-bg'
       } ${isOpen && !inline ? '' : yours ? 'border-status-permission' : 'border-border'}`}
       data-testid={`desk-card-${task.num}`}
@@ -1232,7 +1232,7 @@ function DeskPanel({
       <button
         onClick={onToggle}
         aria-label={`Open task desk, ${waiting} waiting on you`}
-        className={`absolute left-0 top-1/2 -translate-y-1/2 z-30 px-4 py-16 text-xs border-2 border-l-0 rounded-none cursor-pointer bg-bg shadow-pixel ${
+        className={`absolute left-0 top-1/2 -translate-y-1/2 z-30 px-4 py-16 text-xs border border-l-0 rounded-ui cursor-pointer bg-bg shadow-pixel ${
           waiting > 0
             ? 'border-status-permission text-status-permission'
             : 'border-border text-text'
@@ -1397,7 +1397,7 @@ function DeskPanel({
                 return (
                   <div
                     key={column.key}
-                    className={`flex flex-col border-2 bg-bg-dark max-h-full ${
+                    className={`flex flex-col border bg-bg-dark max-h-full ${
                       canDrop
                         ? overColumn === column.key
                           ? 'border-accent bg-active-bg'

@@ -63,7 +63,7 @@ function GrowingText({
       aria-label={label}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => e.stopPropagation()}
-      className="w-full resize-none bg-board text-board-ink font-reading text-read border-2 border-accent rounded-none outline-none px-6 py-2"
+      className="w-full resize-none bg-board text-board-ink font-reading text-read border border-accent rounded-ui outline-none px-6 py-2"
     />
   );
 }
@@ -278,7 +278,7 @@ export function SlidesView({
                 onIndex(i);
                 onPickShape(null);
               }}
-              className={`aspect-video flex flex-col justify-between p-4 text-left rounded-none cursor-pointer bg-board text-board-ink border-2 ${
+              className={`aspect-video flex flex-col justify-between p-4 text-left rounded-ui cursor-pointer bg-board text-board-ink border ${
                 i === index
                   ? 'border-accent'
                   : s.n === markSlide
@@ -300,7 +300,7 @@ export function SlidesView({
       </nav>
       <div className="flex-1 min-w-0 overflow-auto p-16 flex">
         <div
-          className="m-auto w-full max-w-[960px] aspect-video bg-board text-board-ink border-2 border-board-edge p-24 flex flex-col gap-10 overflow-auto"
+          className="m-auto w-full max-w-[960px] aspect-video bg-board text-board-ink border border-board-edge p-24 flex flex-col gap-10 overflow-auto"
           data-testid="doc-slide"
         >
           {slide.shapes.length === 0 && (
@@ -314,7 +314,7 @@ export function SlidesView({
               <div
                 key={shape.name}
                 onClick={() => onPickShape(isPicked && !editing ? null : shape.name)}
-                className={`flex flex-col gap-2 border-2 px-8 py-4 cursor-pointer ${
+                className={`flex flex-col gap-2 border px-8 py-4 cursor-pointer ${
                   isPicked
                     ? 'bg-doc-pick border-status-active'
                     : staged(shape.name) !== undefined

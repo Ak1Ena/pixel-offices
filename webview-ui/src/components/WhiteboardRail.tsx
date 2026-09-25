@@ -53,10 +53,10 @@ async function uploadAll(
 }
 
 const boardButton =
-  'border-2 border-board-ink rounded-none cursor-pointer text-board-ink bg-board shadow-pixel';
+  'border border-board-ink rounded-ui cursor-pointer text-board-ink bg-board shadow-pixel';
 
 const detailInputClass =
-  'p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none resize-none';
+  'p-4 text-xs bg-board text-board-ink border border-board-ink rounded-ui outline-none resize-none';
 
 /** A pin's detail: shown folded when long, and edited in place. */
 function PinDetail({ pin, onSave }: { pin: BoardPin; onSave: (pin: BoardPin) => void }) {
@@ -99,7 +99,7 @@ function PinDetail({ pin, onSave }: { pin: BoardPin; onSave: (pin: BoardPin) => 
           </button>
           <button
             onClick={save}
-            className="px-6 text-2xs border-2 border-board-ink rounded-none cursor-pointer bg-board-ink text-board shadow-pixel"
+            className="px-6 text-2xs border border-board-ink rounded-ui cursor-pointer bg-board-ink text-board shadow-pixel"
             data-testid="pin-detail-save"
           >
             Save
@@ -185,7 +185,7 @@ function PinForm({
     <form
       aria-label={initial ? `Edit pin ${initial.title}` : 'New pin'}
       className={`flex flex-col gap-6 p-10 ${
-        initial ? 'border-2 border-board-ink bg-board shadow-pixel' : 'border-b-2 border-board-edge'
+        initial ? 'border border-board-ink bg-board shadow-pixel' : 'border-b-2 border-board-edge'
       }`}
       data-testid={initial ? 'pin-edit-form' : undefined}
       onSubmit={(e) => {
@@ -223,7 +223,7 @@ function PinForm({
             role="radio"
             aria-checked={kind === k}
             onClick={() => setKind(k)}
-            className={`py-2 text-2xs border-2 border-board-ink rounded-none cursor-pointer ${
+            className={`py-2 text-2xs border border-board-ink rounded-ui cursor-pointer ${
               kind === k ? 'bg-board-ink text-board' : 'bg-board text-board-ink'
             }`}
           >
@@ -238,7 +238,7 @@ function PinForm({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={200}
-          className="p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none"
+          className="p-4 text-xs bg-board text-board-ink border border-board-ink rounded-ui outline-none"
           data-testid="pin-title"
         />
       </label>
@@ -250,7 +250,7 @@ function PinForm({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             maxLength={8000}
-            className="p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none resize-none"
+            className="p-4 text-xs bg-board text-board-ink border border-board-ink rounded-ui outline-none resize-none"
             data-testid="pin-value"
           />
         ) : (
@@ -258,7 +258,7 @@ function PinForm({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             maxLength={8000}
-            className="p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none"
+            className="p-4 text-xs bg-board text-board-ink border border-board-ink rounded-ui outline-none"
             data-testid="pin-value"
           />
         )}
@@ -276,7 +276,7 @@ function PinForm({
       </label>
       {kind === 'file' && onUpload && !initial && (
         <div
-          className={`flex flex-col items-center gap-4 p-10 text-2xs text-center border-2 border-dashed ${
+          className={`flex flex-col items-center gap-4 p-10 text-2xs text-center border border-dashed ${
             dropping ? 'border-board-ink bg-board-ink text-board' : 'border-board-ink'
           }`}
           onDragOver={(e) => {
@@ -350,7 +350,7 @@ function PinForm({
         <button
           type="submit"
           disabled={!canSave}
-          className={`flex-1 py-2 text-xs border-2 border-board-ink rounded-none bg-board-ink text-board shadow-pixel ${
+          className={`flex-1 py-2 text-xs border border-board-ink rounded-ui bg-board-ink text-board shadow-pixel ${
             canSave ? 'cursor-pointer' : 'cursor-default opacity-[var(--btn-disabled-opacity)]'
           }`}
           data-testid="pin-save"
@@ -487,7 +487,7 @@ export function WhiteboardRail({
             }}
             placeholder="Search pins…"
             aria-label="Search pins"
-            className={`flex-1 min-w-0 p-4 text-xs bg-board text-board-ink border-2 border-board-ink rounded-none outline-none ${
+            className={`flex-1 min-w-0 p-4 text-xs bg-board text-board-ink border border-board-ink rounded-ui outline-none ${
               full ? 'max-w-480' : ''
             }`}
             data-testid="board-search"
@@ -565,7 +565,7 @@ export function WhiteboardRail({
                 e.dataTransfer.setData(PIN_DRAG_MIME, pin.id);
                 e.dataTransfer.effectAllowed = 'copy';
               }}
-              className={`flex flex-col gap-2 p-8 border-2 border-board-ink shadow-pixel cursor-grab ${PIN_KIND_PAPER[pin.kind]}`}
+              className={`flex flex-col gap-2 p-8 border border-board-ink shadow-pixel cursor-grab ${PIN_KIND_PAPER[pin.kind]}`}
               data-testid="board-pin"
             >
               <div className="flex justify-between gap-6 text-2xs">
@@ -661,7 +661,7 @@ export function WhiteboardRail({
         <div className={`p-10 border-t-2 border-board-edge ${full ? 'flex justify-center' : ''}`}>
           <button
             onClick={() => setIsAdding(true)}
-            className={`py-4 text-sm border-2 border-board-ink rounded-none cursor-pointer bg-board-ink text-board shadow-pixel ${
+            className={`py-4 text-sm border border-board-ink rounded-ui cursor-pointer bg-board-ink text-board shadow-pixel ${
               full ? 'w-full max-w-560' : 'w-full'
             }`}
             data-testid="board-add"

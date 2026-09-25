@@ -144,13 +144,13 @@ function Editor({
           {steps.map((step, i) => (
             <div
               key={i}
-              className={`grid grid-cols-[28px_1fr_auto] gap-8 items-start p-8 border-2 ${
+              className={`grid grid-cols-[28px_1fr_auto] gap-8 items-start p-8 border ${
                 guessed.has(i) ? 'border-dashed border-pin-note ' : ''
               }${i === focusIndex ? 'bg-active-bg border-accent' : 'bg-bg-thumb border-border'}`}
               onFocus={() => setFocusIndex(i)}
               data-testid="workflow-step"
             >
-              <span className="w-24 h-24 text-center text-xs border-2 border-border bg-bg-dark leading-5">
+              <span className="w-24 h-24 text-center text-xs border border-border bg-bg-dark leading-5">
                 {i + 1}
               </span>
               <div className="flex flex-col gap-4 min-w-0">
@@ -182,7 +182,7 @@ function Editor({
                         ? 'What should it show you?'
                         : 'What should the agent do?'
                   }
-                  className="w-full bg-bg-dark border-2 border-border px-6 py-2 text-sm text-text"
+                  className="w-full bg-bg-dark border border-border px-6 py-2 text-sm text-text"
                 />
                 {guessed.has(i) && (
                   <span className="text-2xs text-pin-note">
@@ -197,7 +197,7 @@ function Editor({
                           key={k.kind}
                           title={k.hint}
                           onClick={() => setStep(i, { kind: k.kind })}
-                          className={`px-6 text-2xs border-2 bg-transparent cursor-pointer ${k.color} ${
+                          className={`px-6 text-2xs border bg-transparent cursor-pointer ${k.color} ${
                             step.kind === k.kind ? '' : 'opacity-40'
                           }`}
                         >
@@ -213,7 +213,7 @@ function Editor({
                         value={step.show ?? ''}
                         onChange={(e) => setStep(i, { show: e.target.value })}
                         placeholder="File to show, e.g. ~/code/app/CHANGELOG.md --lines 1-40"
-                        className="w-full bg-bg-dark border-2 border-border px-6 py-1 text-code-sm text-text font-mono"
+                        className="w-full bg-bg-dark border border-border px-6 py-1 text-code-sm text-text font-mono"
                       />
                     )}
                     {(step.refs ?? []).map((ref, r) => (
@@ -226,7 +226,7 @@ function Editor({
                             })
                           }
                           placeholder="File for this step (a path)"
-                          className="flex-1 min-w-0 bg-bg-dark border-2 border-border px-6 py-1 text-code-sm text-text font-mono"
+                          className="flex-1 min-w-0 bg-bg-dark border border-border px-6 py-1 text-code-sm text-text font-mono"
                         />
                         <Button
                           size="sm"
@@ -252,9 +252,7 @@ function Editor({
                 )}
               </div>
               <div className="flex flex-col gap-2 items-end">
-                <span className={`px-6 text-2xs border-2 ${kindClass(step.kind)}`}>
-                  {step.kind}
-                </span>
+                <span className={`px-6 text-2xs border ${kindClass(step.kind)}`}>{step.kind}</span>
                 <span className="flex gap-2">
                   <Button
                     size="sm"
@@ -300,11 +298,11 @@ function Editor({
       </div>
       <aside className="hidden md:flex flex-col gap-8 w-320 shrink-0 p-12 bg-bg-dark border-l-2 border-border overflow-y-auto">
         <span className="text-2xs text-text-muted uppercase">The file</span>
-        <pre className="m-0 p-8 bg-bg border-2 border-border text-code-sm font-mono whitespace-pre-wrap">
+        <pre className="m-0 p-8 bg-bg border border-border text-code-sm font-mono whitespace-pre-wrap">
           {previewMarkdown(title, cleaned)}
         </pre>
         <span className="text-2xs text-text-muted uppercase">What the agent receives</span>
-        <pre className="m-0 p-8 bg-chat-office border-2 border-accent text-code-sm font-mono whitespace-pre-wrap">
+        <pre className="m-0 p-8 bg-chat-office border border-accent text-code-sm font-mono whitespace-pre-wrap">
           {`Follow the workflow in @${initial.path ?? '~/.pixel-agents/workflows/…'} (run w…). Read it first.\n…how to mark steps and wait at gates`}
         </pre>
         <span className="text-2xs text-text-muted">
@@ -413,7 +411,7 @@ export function WorkflowRail({
             )}
             {onImport && (
               <label
-                className="px-8 py-1 text-sm whitespace-nowrap bg-btn-bg border-2 border-transparent hover:bg-btn-hover cursor-pointer"
+                className="px-8 py-1 text-sm whitespace-nowrap bg-btn-bg border border-transparent hover:bg-btn-hover cursor-pointer"
                 title="Import a workflow .md file"
               >
                 Import
@@ -432,7 +430,7 @@ export function WorkflowRail({
           </div>
         </div>
         {notice && (
-          <div className="flex gap-6 items-start m-12 p-6 border-2 border-status-permission bg-chat-permission text-2xs">
+          <div className="flex gap-6 items-start m-12 p-6 border border-status-permission bg-chat-permission text-2xs">
             <span className="flex-1">{notice}</span>
             <button
               className="bg-transparent border-0 text-text-muted cursor-pointer"
@@ -445,7 +443,7 @@ export function WorkflowRail({
         )}
         {aiOpen && onDraft && (
           <div
-            className={`flex flex-col gap-6 m-12 p-10 border-2 border-accent bg-bg-dark ${full ? 'max-w-640' : ''}`}
+            className={`flex flex-col gap-6 m-12 p-10 border border-accent bg-bg-dark ${full ? 'max-w-640' : ''}`}
             data-testid="workflow-ai-panel"
           >
             <span className="text-sm">
@@ -457,7 +455,7 @@ export function WorkflowRail({
               onKeyDown={(e) => e.stopPropagation()}
               rows={3}
               placeholder="How we ship a hotfix: branch off the release tag, fix, test, get my OK, then tag and deploy."
-              className="bg-bg border-2 border-border px-6 py-2 text-read-sm text-text font-reading resize-y"
+              className="bg-bg border border-border px-6 py-2 text-read-sm text-text font-reading resize-y"
             />
             <div className="flex flex-col gap-2 text-2xs text-text-muted">
               Project folder (optional)
@@ -526,7 +524,7 @@ export function WorkflowRail({
                   e.dataTransfer.setData(WORKFLOW_DRAG_MIME, w.id);
                   e.dataTransfer.effectAllowed = 'copy';
                 }}
-                className="flex flex-col gap-8 p-10 bg-bg-dark border-2 border-border hover:border-accent shadow-pixel cursor-grab"
+                className="flex flex-col gap-8 p-10 bg-bg-dark border border-border hover:border-accent shadow-pixel cursor-grab"
                 data-testid="workflow-card"
               >
                 <div className="flex items-start gap-6">
@@ -540,11 +538,11 @@ export function WorkflowRail({
                   )}
                 </div>
                 <div className="flex gap-4 flex-wrap text-2xs">
-                  <span className="px-4 border-2 border-border text-text-muted">
+                  <span className="px-4 border border-border text-text-muted">
                     {w.steps.length} steps
                   </span>
                   {counts.map((k) => (
-                    <span key={k.kind} className={`px-4 border-2 ${k.color}`}>
+                    <span key={k.kind} className={`px-4 border ${k.color}`}>
                       {k.count} {k.label}
                     </span>
                   ))}
@@ -644,7 +642,7 @@ export function WorkflowRail({
                 return (
                   <div
                     key={r.runId}
-                    className="flex flex-col gap-2 p-6 border-2 border-border bg-bg-dark text-xs"
+                    className="flex flex-col gap-2 p-6 border border-border bg-bg-dark text-xs"
                     data-testid="workflow-run"
                   >
                     <span>

@@ -60,7 +60,7 @@ export function FolderField({ value, onChange, folders, canBrowse, optional }: F
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => e.stopPropagation()}
         placeholder="~/code/my-project"
-        className="bg-bg-dark border-2 border-border px-6 py-2 text-code text-text font-mono"
+        className="bg-bg-dark border border-border px-6 py-2 text-code text-text font-mono"
       />
       {folders.length > 0 && (
         <span className="flex gap-4 flex-wrap">

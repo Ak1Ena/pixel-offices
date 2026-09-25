@@ -60,7 +60,7 @@ export function ColorPicker({
   const isColorize = colorize || !!value.colorize;
 
   return (
-    <div className="flex flex-col py-8 px-10 bg-bg-dark border-2 border-border rounded-none">
+    <div className="flex flex-col py-8 px-10 bg-bg-dark border border-border rounded-ui">
       <ColorSlider
         label="Hue"
         value={value.h}
@@ -103,7 +103,7 @@ export function ColorPicker({
             >
               <span className="text-sm text-text-muted w-64 shrink-0">Colorize</span>
               <span
-                className={`w-18 h-18 border-2 border-border inline-flex items-center justify-center text-2xs leading-none text-text shrink-0 ${
+                className={`w-18 h-18 border border-border inline-flex items-center justify-center text-2xs leading-none text-text shrink-0 ${
                   value.colorize ? 'bg-accent' : 'bg-bg'
                 }`}
               >

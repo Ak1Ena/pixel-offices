@@ -24,7 +24,7 @@ export interface TextPrefs {
 export const DEFAULT_TEXT_PREFS: TextPrefs = {
   size: 'normal',
   readingFont: 'sans',
-  uiFont: 'pixel',
+  uiFont: 'system',
 };
 
 export const TEXT_SIZES: ReadonlyArray<{ id: TextSize; label: string; short: string }> = [
@@ -42,8 +42,8 @@ export const READING_FONTS: ReadonlyArray<{ id: ReadingFont; label: string }> = 
 ];
 
 export const UI_FONTS: ReadonlyArray<{ id: UiFont; label: string }> = [
+  { id: 'system', label: 'Modern' },
   { id: 'pixel', label: 'Pixel' },
-  { id: 'system', label: 'System' },
 ];
 
 /**
@@ -54,7 +54,7 @@ export const UI_FONTS: ReadonlyArray<{ id: UiFont; label: string }> = [
  */
 const UI_FACE: Record<UiFont, { stack: string; k: number }> = {
   pixel: { stack: 'var(--font-stack-pixel)', k: 1 },
-  system: { stack: 'var(--font-stack-sans)', k: 0.75 },
+  system: { stack: 'var(--font-stack-sans)', k: 0.66 },
 };
 
 const READING_FACE: Record<ReadingFont, { stack: string; k: number }> = {

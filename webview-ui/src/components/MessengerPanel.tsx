@@ -193,11 +193,11 @@ function CodeBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="relative">
-      <pre className="m-0 p-10 bg-bg-dark border-2 border-bg-thumb overflow-x-auto font-mono text-code leading-snug">
+      <pre className="m-0 p-10 bg-bg-dark border border-bg-thumb overflow-x-auto font-mono text-code leading-snug">
         {text}
       </pre>
       <button
-        className="absolute right-4 top-4 px-4 text-2xs bg-bg border-2 border-border text-text-muted cursor-pointer"
+        className="absolute right-4 top-4 px-4 text-2xs bg-bg border border-border text-text-muted cursor-pointer"
         onClick={() => {
           void navigator.clipboard?.writeText(text).then(() => setCopied(true));
           setTimeout(() => setCopied(false), 1_500);
@@ -266,7 +266,7 @@ function EditCard({ entry }: { entry: ChatEntry }) {
   const counts = useMemo(() => editCounts(edit.hunks), [edit]);
   const shown = showAll ? rows : rows.slice(0, tunable('messengerEditPreviewRows'));
   return (
-    <details open className="border-2 border-bg-thumb bg-chat-tool" data-testid="messenger-edit">
+    <details open className="border border-bg-thumb bg-chat-tool" data-testid="messenger-edit">
       <summary className="flex items-center gap-8 px-8 py-2 text-xs cursor-pointer select-none">
         <span className={entry.toolDone ? 'text-status-success' : 'text-status-active'}>
           {entry.toolDone ? '✓' : '▶'}
@@ -322,7 +322,7 @@ function Steps({ entries, open }: { entries: ChatEntry[]; open: boolean }) {
   return (
     <details
       open={open}
-      className="border-2 border-bg-thumb bg-chat-tool"
+      className="border border-bg-thumb bg-chat-tool"
       data-testid="messenger-steps"
     >
       <summary className="flex items-center gap-8 px-8 py-2 text-xs text-text-muted cursor-pointer select-none">
@@ -332,7 +332,7 @@ function Steps({ entries, open }: { entries: ChatEntry[]; open: boolean }) {
         {entries.length} {entries.length === 1 ? 'step' : 'steps'}
         <span className="ml-auto flex gap-4 flex-wrap justify-end">
           {stepCounts(entries).map(({ tool, count }) => (
-            <span key={tool} className="px-4 border-2 border-border text-2xs">
+            <span key={tool} className="px-4 border border-border text-2xs">
               {tool}
               {count > 1 ? ` ×${count}` : ''}
             </span>
@@ -506,7 +506,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
         onChange={(e) => setSearch(e.target.value)}
         onKeyDown={(e) => e.stopPropagation()}
         placeholder="Search all chats…"
-        className="m-8 px-6 py-2 bg-bg border-2 border-border text-sm text-text"
+        className="m-8 px-6 py-2 bg-bg border border-border text-sm text-text"
         data-testid="messenger-search"
       />
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col px-4 pb-8">
@@ -519,7 +519,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
               setListOnPhone(false);
               setAtBottom(true);
             }}
-            className={`grid grid-cols-[14px_1fr_auto] gap-8 items-center text-left px-6 py-4 border-2 rounded-none cursor-pointer text-text ${
+            className={`grid grid-cols-[14px_1fr_auto] gap-8 items-center text-left px-6 py-4 border rounded-ui cursor-pointer text-text ${
               a.id === selectedId
                 ? 'bg-active-bg border-accent'
                 : 'bg-transparent border-transparent hover:bg-bg-thumb'
@@ -547,7 +547,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
           <button
             key={r.id}
             onClick={() => props.onOpenRoom(r.id)}
-            className="flex gap-8 items-center text-left px-6 py-4 border-2 border-transparent rounded-none cursor-pointer bg-transparent text-text text-sm hover:bg-bg-thumb"
+            className="flex gap-8 items-center text-left px-6 py-4 border border-transparent rounded-ui cursor-pointer bg-transparent text-text text-sm hover:bg-bg-thumb"
           >
             <span className="text-text-muted">#</span>
             <span className="flex-1 min-w-0 truncate">{r.name}</span>
@@ -731,7 +731,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                             {e.usage && <span>{formatTokens(e.usage.output)} tokens out</span>}
                           </div>
                           {isUser ? (
-                            <div className="px-10 py-6 bg-chat-office border-2 border-accent whitespace-pre-wrap break-words">
+                            <div className="px-10 py-6 bg-chat-office border border-accent whitespace-pre-wrap break-words">
                               <MessageText text={e.text} />
                             </div>
                           ) : (
@@ -743,7 +743,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                     {queued.map((q) => (
                       <div
                         key={q.queueId}
-                        className="self-end max-w-[80%] px-10 py-6 border-2 border-dashed border-accent text-text-muted whitespace-pre-wrap"
+                        className="self-end max-w-[80%] px-10 py-6 border border-dashed border-accent text-text-muted whitespace-pre-wrap"
                       >
                         {q.text}
                         <div className="flex gap-8 mt-4 text-2xs font-pixel">
@@ -761,7 +761,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                 </div>
                 {!atBottom && (
                   <button
-                    className="absolute left-1/2 -translate-x-1/2 bottom-10 px-10 py-2 bg-accent border-2 border-accent-bright text-sm text-white cursor-pointer"
+                    className="absolute left-1/2 -translate-x-1/2 bottom-10 px-10 py-2 bg-accent border border-accent-bright text-sm text-white cursor-pointer"
                     onClick={() => {
                       const el = readRef.current;
                       if (el) el.scrollTop = el.scrollHeight;
@@ -793,7 +793,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
               >
                 {isFileDropTarget && (
                   <div
-                    className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border-2 border-dashed border-accent text-sm pointer-events-none"
+                    className="absolute inset-0 z-10 flex items-center justify-center bg-bg-dark border border-dashed border-accent text-sm pointer-events-none"
                     data-testid="messenger-file-drop"
                   >
                     Drop files to send them to {agent.label}
@@ -820,7 +820,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                           {props.attachedPins(agent.id).map((pin) => (
                             <span
                               key={pin.id}
-                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-2xs"
+                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border border-accent text-2xs"
                             >
                               <PinKindTag kind={pin.kind} />
                               {pin.title}
@@ -840,7 +840,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                           {props.docRefs(agent.id).map((ref, i) => (
                             <span
                               key={`${refLabel(ref)}-${i}`}
-                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border-2 border-accent text-code-sm font-mono"
+                              className="flex items-center gap-4 px-6 py-1 bg-active-bg border border-accent text-code-sm font-mono"
                             >
                               {refLabel(ref)}
                               <button
@@ -877,7 +877,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                           }}
                           rows={3}
                           placeholder={`Message ${agent.label}…`}
-                          className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border-2 border-border font-reading text-read text-text"
+                          className="w-full resize-y min-h-60 max-h-240 px-10 py-6 bg-bg-dark border border-border font-reading text-read text-text"
                           data-testid="messenger-input"
                         />
                       </div>
@@ -940,7 +940,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
               <span className="text-2xs text-text-muted uppercase">Context</span>
               {ctx ? (
                 <>
-                  <div className="h-10 bg-bg-thumb border-2 border-border relative">
+                  <div className="h-10 bg-bg-thumb border border-border relative">
                     <div
                       className="absolute inset-y-0 left-0 bg-status-active"
                       style={{
@@ -1018,7 +1018,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
                     key={r.requestId}
                     disabled={!props.onOpenRequest}
                     onClick={() => props.onOpenRequest?.(r)}
-                    className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border-2 border-board-ink cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
+                    className="self-start max-w-full px-6 py-1 bg-pin-file text-board-ink text-2xs border border-board-ink cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
                   >
                     {fileBaseName(r.path)}
                     {spotLabel(r) ? ` · ${spotLabel(r)}` : ''}
