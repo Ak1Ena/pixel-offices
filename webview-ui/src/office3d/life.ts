@@ -8,14 +8,15 @@ import * as THREE from 'three';
 import {
   OFFICE3D_COLORS as C,
   OFFICE3D_HEMI_INTENSITY,
+  OFFICE3D_PET_COLORS,
   OFFICE3D_PX_PER_M,
   OFFICE3D_SUN_INTENSITY,
   WALK_SPEED_PX_PER_SEC,
 } from '../constants.js';
 import { findPath } from '../office/layout/tileMap.js';
-import type { Character, TileType as TileTypeVal } from '../office/types.js';
-import { CharacterState } from '../office/types.js';
-import type { OfficeMeshes } from './build.js';
+import type { Character, Pet, TileType as TileTypeVal } from '../office/types.js';
+import { CharacterState, Direction, PetState } from '../office/types.js';
+import { type OfficeMeshes, rbox } from './build.js';
 import { disposeRig, poseRig, type Rig } from './characters3d.js';
 
 const WALK_M_PER_SEC = WALK_SPEED_PX_PER_SEC / OFFICE3D_PX_PER_M;
@@ -235,4 +236,52 @@ export function buildLamps(
     bulbs.push(b);
   }
   return { lamps, bulbs };
+}
+
+// ── Pets ────────────────────────────────────────────────────────────
+
+export interface PetRig {
+  g: THREE.Group;
+  body: THREE.Group;
+  tail: THREE.Mesh;
+  phase: number;
+}
+
+/** A small four-legged office pet in the soft toy style. */
+export function buildPet(petType: number): PetRig {
+  const coat = OFFICE3D_PET_COLORS[petType % OFFICE3D_PET_COLORS.length];
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+  rbox(0.34, 0.2, 0.2, coat, 0, 0.12, 0, body);
+  rbox(0.2, 0.18, 0.2, coat, 0.2, 0.22, 0, body);
+  for (const sz of [-0.06, 0.06]) rbox(0.05, 0.07, 0.04, coat, 0.2, 0.4, sz, body);
+  rbox(0.03, 0.03, 0.02, C.eyes, 0.3, 0.3, 0.05, body);
+  rbox(0.03, 0.03, 0.02, C.eyes, 0.3, 0.3, -0.05, body);
+  for (const [lx, lz] of [
+    [-0.11, -0.07],
+    [-0.11, 0.07],
+    [0.11, -0.07],
+    [0.11, 0.07],
+  ]) {
+    rbox(0.05, 0.12, 0.05, coat, lx, 0, lz, body);
+  }
+  const tail = rbox(0.18, 0.04, 0.04, coat, -0.24, 0.24, 0, body);
+  return { g, body, tail, phase: Math.random() * 6 };
+}
+
+const PET_YAW: Record<number, number> = {
+  [Direction.DOWN]: -Math.PI / 2,
+  [Direction.UP]: Math.PI / 2,
+  [Direction.RIGHT]: 0,
+  [Direction.LEFT]: Math.PI,
+};
+
+export function posePet(r: PetRig, pet: Pet, dt: number, t: number): void {
+  r.g.position.set(pet.x / OFFICE3D_PX_PER_M, 0, pet.y / OFFICE3D_PX_PER_M);
+  r.g.rotation.y = PET_YAW[pet.dir] ?? 0;
+  const walking = pet.state !== PetState.IDLE;
+  if (walking) r.phase += dt * 12;
+  r.body.position.y = walking ? Math.abs(Math.sin(r.phase)) * 0.03 : 0;
+  r.tail.rotation.y = Math.sin(t * (walking ? 10 : 3)) * 0.5;
 }

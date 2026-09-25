@@ -45,8 +45,11 @@ import { type Edit3DProps, Editor3D, isPaintTool } from './editor3d.js';
 import {
   applyNight,
   buildLamps,
+  buildPet,
   type Leaver,
   type NightRig,
+  type PetRig,
+  posePet,
   startLeaving,
   stepLeaver,
   updateBurn,
@@ -149,7 +152,7 @@ export default function Office3DView({
     scene.add(ring);
 
     let office: OfficeMeshes | null = null;
-    let fitted = false;
+    let fitted: { span: number; cx: number; cz: number } | null = null;
     let builtLayout: OfficeLayout | null = null;
     const rebuild = () => {
       const layout = officeState.getLayout();
@@ -169,12 +172,18 @@ export default function Office3DView({
       const cx = (b.x0 + b.x1) / 2,
         cz = (b.z0 + b.z1) / 2,
         span = Math.max(b.x1 - b.x0, b.z1 - b.z0);
-      // Frame the office once; later rebuilds (editing) keep the camera where it is.
-      if (!fitted) {
-        fitted = true;
+      // Frame the office when it first shows and whenever it changes shape a lot
+      // (a new layout); a painted tile or a moved chair keeps the camera put.
+      const moved =
+        !fitted ||
+        Math.abs(span - fitted.span) > 3 ||
+        Math.hypot(cx - fitted.cx, cz - fitted.cz) > 3;
+      if (moved) {
+        fitted = { span, cx, cz };
         cam.goal.set(cx, 0, cz);
         cam.target.copy(cam.goal);
         cam.dist = span * OFFICE3D_CAMERA_SPAN_K + 6;
+        cam.zoom = 1;
       }
       const R = Math.hypot(b.x1 - b.x0, b.z1 - b.z0) / 2 + 4;
       sun.target.position.set(cx, 0, cz);
@@ -199,6 +208,7 @@ export default function Office3DView({
     const left = new Set<number>();
 
     const rigs = new Map<number, Rig>();
+    const petRigs = new Map<string, PetRig>();
     const syncRigs = () => {
       const seen = new Set<number>();
       for (const ch of officeState.getCharacters()) {
@@ -481,6 +491,25 @@ export default function Office3DView({
       if (k !== nightK) {
         nightK = k;
         applyNight(scene, night, k);
+      }
+
+      // Pets wander the office too.
+      const petSeen = new Set<string>();
+      for (const pet of officeState.getPets()) {
+        petSeen.add(pet.id);
+        let pr = petRigs.get(pet.id);
+        if (!pr) {
+          pr = buildPet(pet.petType);
+          petRigs.set(pet.id, pr);
+          scene.add(pr.g);
+        }
+        posePet(pr, pet, dt, time);
+      }
+      for (const [id, pr] of petRigs) {
+        if (petSeen.has(id)) continue;
+        scene.remove(pr.g);
+        disposeGroup(pr.g);
+        petRigs.delete(id);
       }
 
       for (const ch of officeState.getCharacters()) {

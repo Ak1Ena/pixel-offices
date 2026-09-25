@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 
-import { OFFICE3D_ROOM_COLORS } from '../constants.js';
+import { AREA_DEFAULT_COLORS, OFFICE3D_ROOM_COLORS } from '../constants.js';
 import type { EditorActions } from '../hooks/useEditorActions.js';
 import { canPlaceFurniture, type ExpandDirection } from '../office/editor/editorActions.js';
 import type { EditorState } from '../office/editor/editorState.js';
@@ -23,9 +23,11 @@ import {
   ROOM_TEMPLATES,
   type RoomTemplate,
 } from '../office/layout/rooms.js';
+import { getPetCount, getPetName } from '../office/sprites/petSpriteData.js';
 import type { ColorValue, OfficeLayout } from '../office/types.js';
 import { EditTool, TileType } from '../office/types.js';
 import { Button } from './ui/Button.js';
+import { Checkbox } from './ui/Checkbox.js';
 
 interface BuildPanelProps {
   officeState: OfficeState;
@@ -34,8 +36,26 @@ interface BuildPanelProps {
   /** Ready-made offices (Settings has the same choices). */
   presets: Array<{ id: string; name: string; hint: string; layout: () => OfficeLayout }>;
   onDone: () => void;
-  /** Tools that still use the classic editor panel (carpets, folder areas, pets). */
-  onAdvanced: (tool: 'carpet' | 'area' | 'pets') => void;
+  /** Workspace folders that can be tied to a folder area. */
+  areaFolders: Array<{ name: string; path: string }>;
+  /** Folder name → the areas its agents sit in. */
+  areaMappings: Record<string, string[]>;
+  onAreaMappingChange: (folderName: string, areaLabel: string, action: 'add' | 'remove') => void;
+}
+
+/** Rug colours for the Rugs tool (Colorize values). */
+const RUG_COLORS: Array<{ name: string; color: ColorValue }> = [
+  { name: 'Coral', color: { h: 10, s: 55, b: 0, c: 0, colorize: true } },
+  { name: 'Sand', color: { h: 38, s: 45, b: 5, c: 0, colorize: true } },
+  { name: 'Sea', color: { h: 190, s: 45, b: -5, c: 0, colorize: true } },
+  { name: 'Lilac', color: { h: 270, s: 35, b: 5, c: 0, colorize: true } },
+  { name: 'Moss', color: { h: 110, s: 35, b: -5, c: 0, colorize: true } },
+  { name: 'Slate', color: { h: 220, s: 12, b: -15, c: 0, colorize: true } },
+];
+
+/** Rug swatch as the 3D view draws it (Colorize: fixed hue and saturation, lightness 0.5 + b/200). */
+function rugCss(c: ColorValue): string {
+  return hslHex(c.h / 360, c.s / 100, 0.5 + c.b / 200);
 }
 
 /** Floor finishes offered by "Add floor" (Colorize values: hue, saturation, brightness). */
@@ -48,11 +68,7 @@ const FLOOR_FINISHES: Array<{ name: string; color: ColorValue }> = [
   { name: 'Stone', color: { h: 220, s: 6, b: 18, c: 0, colorize: true } },
 ];
 
-/** The swatch colour a finish shows (the same mapping the 3D floor uses), as #rrggbb. */
-function finishCss(c: ColorValue): string {
-  const h = c.h / 360,
-    sat = Math.min(0.55, 0.15 + c.s / 100),
-    l = Math.min(0.86, Math.max(0.6, 0.76 + c.b / 500));
+function hslHex(h: number, sat: number, l: number): string {
   const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat,
     p = 2 * l - q;
   const ch = (t: number) => {
@@ -70,6 +86,15 @@ function finishCss(c: ColorValue): string {
       .padStart(2, '0');
   };
   return '#' + ch(h + 1 / 3) + ch(h) + ch(h - 1 / 3);
+}
+
+/** The swatch colour a floor finish shows (the same mapping the 3D floor uses). */
+function finishCss(c: ColorValue): string {
+  return hslHex(
+    c.h / 360,
+    Math.min(0.55, 0.15 + c.s / 100),
+    Math.min(0.86, Math.max(0.6, 0.76 + c.b / 500)),
+  );
 }
 
 const TOOLS: Array<{ tool: (typeof EditTool)[keyof typeof EditTool]; label: string }> = [
@@ -128,8 +153,11 @@ export function BuildPanel({
   editor,
   presets,
   onDone,
-  onAdvanced,
+  areaFolders,
+  areaMappings,
+  onAreaMappingChange,
 }: BuildPanelProps) {
+  const [areaDraft, setAreaDraft] = useState('');
   const [cat, setCat] = useState<(typeof FURNITURE_CATEGORIES)[number]['id']>('desks');
   const [note, setNote] = useState<string | null>(null);
   const tool = editorState.activeTool;
@@ -387,18 +415,163 @@ export function BuildPanel({
           ))}
         </div>
 
+        <div className="flex flex-col gap-8">
+          <span className={h3}>Rugs</span>
+          <div className="flex items-center gap-6 flex-wrap" role="group" aria-label="Rug colour">
+            {RUG_COLORS.map((r) => {
+              const on =
+                tool === EditTool.CARPET_PAINT &&
+                editor.carpetColor.h === r.color.h &&
+                editor.carpetColor.s === r.color.s;
+              return (
+                <button
+                  key={r.name}
+                  type="button"
+                  title={`${r.name} rug`}
+                  aria-label={`${r.name} rug`}
+                  aria-pressed={on}
+                  onClick={() => {
+                    if (editorState.activeTool !== EditTool.CARPET_PAINT) {
+                      editor.handleToolChange(EditTool.CARPET_PAINT);
+                    }
+                    editor.handleCarpetVariantChange(0);
+                    editor.handleCarpetColorChange(r.color);
+                  }}
+                  className={`w-28 h-28 rounded-ui cursor-pointer border-2 ${on ? 'border-accent' : 'border-border'}`}
+                  style={{ background: rugCss(r.color) }}
+                />
+              );
+            })}
+            <span className="text-2xs text-text-muted">
+              Paint rugs on the floor; right-drag lifts them.
+            </span>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-8">
+          <span className={h3}>Folder areas</span>
+          <span className="text-2xs text-text-muted">
+            Paint an area, then tie folders to it: agents from those folders sit there.
+          </span>
+          {(layout.areas ?? [])
+            .filter((a) => !a.teamRoom)
+            .map((a) => {
+              const on = tool === EditTool.AREA_PAINT && editor.selectedAreaLabel === a.label;
+              const folders = Object.keys(areaMappings).filter((f) =>
+                areaMappings[f].includes(a.label),
+              );
+              return (
+                <div
+                  key={a.label}
+                  className={`flex flex-col gap-6 p-10 border rounded-ui ${on ? 'border-accent bg-active-bg' : 'border-border'}`}
+                >
+                  <div className="flex items-center gap-8">
+                    <span
+                      className="w-12 h-12 rounded-full shrink-0"
+                      style={{ background: a.color }}
+                    />
+                    <b className="flex-1 min-w-0 truncate">{a.label}</b>
+                    <Button
+                      size="sm"
+                      variant={on ? 'active' : 'default'}
+                      onClick={() => {
+                        if (editorState.activeTool !== EditTool.AREA_PAINT) {
+                          editor.handleToolChange(EditTool.AREA_PAINT);
+                        }
+                        editor.handleSelectArea(a.label);
+                      }}
+                    >
+                      {on ? 'Painting…' : 'Paint'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => editor.handleRemoveArea(a.label)}
+                      aria-label={`Remove ${a.label}`}
+                    >
+                      ×
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-4">
+                    {folders.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => onAreaMappingChange(f, a.label, 'remove')}
+                        title="Untie this folder"
+                        className="text-2xs px-8 py-2 rounded-full bg-bg-thumb border-0 text-text cursor-pointer"
+                      >
+                        {f} ×
+                      </button>
+                    ))}
+                    {areaFolders.some((f) => !folders.includes(f.name)) && (
+                      <select
+                        value=""
+                        onChange={(e) =>
+                          e.target.value && onAreaMappingChange(e.target.value, a.label, 'add')
+                        }
+                        className="text-2xs py-2 px-6 bg-bg-dark border border-border rounded-ui text-text"
+                        aria-label={`Tie a folder to ${a.label}`}
+                      >
+                        <option value="">+ folder…</option>
+                        {areaFolders
+                          .filter((f) => !folders.includes(f.name))
+                          .map((f) => (
+                            <option key={f.path} value={f.name}>
+                              {f.name}
+                            </option>
+                          ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          <form
+            className="flex gap-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const name = areaDraft.trim();
+              const areas = layout.areas ?? [];
+              if (!name || areas.some((a) => a.label === name)) return;
+              editor.handleAddArea(
+                name,
+                AREA_DEFAULT_COLORS[areas.length % AREA_DEFAULT_COLORS.length],
+              );
+              setAreaDraft('');
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <input
+              value={areaDraft}
+              onChange={(e) => setAreaDraft(e.target.value)}
+              placeholder="New area name…"
+              aria-label="New area name"
+              className="flex-1 min-w-0 h-32 px-10 bg-bg-dark border border-border rounded-ui text-text text-sm"
+            />
+            <Button type="submit" size="sm">
+              Add area
+            </Button>
+          </form>
+        </div>
+
         <div className="flex flex-col gap-8 pb-4">
-          <span className={h3}>More</span>
-          <div className="flex flex-wrap gap-4">
-            <Button size="sm" onClick={() => onAdvanced('carpet')}>
-              Carpets
-            </Button>
-            <Button size="sm" onClick={() => onAdvanced('area')}>
-              Folder areas
-            </Button>
-            <Button size="sm" onClick={() => onAdvanced('pets')}>
-              Pets
-            </Button>
+          <span className={h3}>Pets</span>
+          <div className="flex flex-col gap-4">
+            {getPetCount() === 0 && (
+              <span className="text-2xs text-text-muted">No pets are installed.</span>
+            )}
+            {Array.from({ length: getPetCount() }, (_, i) => {
+              const on = officeState.getActivePetTypes().includes(i);
+              return (
+                <Checkbox
+                  key={i}
+                  label={getPetName(i)}
+                  checked={on}
+                  onChange={() => editor.handlePetToggle(i, !on)}
+                />
+              );
+            })}
           </div>
         </div>
       </div>

@@ -293,7 +293,7 @@ export function BottomToolbar({
       title={item.title}
       data-testid={item.testId}
       aria-pressed={item.active ? true : undefined}
-      className={`${DOCK_BTN} ${item.active ? 'bg-active-bg text-text' : 'text-text-muted'} ${item.className ?? ''}`}
+      className={`${DOCK_BTN} ${item.active ? 'bg-active-bg text-text' : `${DOCK_PLAIN} text-text-muted`} ${item.className ?? ''}`}
     >
       <DockIcon name={item.key} />
       {withBadge(item.label, item.badge)}
@@ -376,7 +376,7 @@ export function BottomToolbar({
             className={`${DOCK_BTN} ${
               isMoreOpen || moreItems.some((item) => item.active)
                 ? 'bg-active-bg text-text'
-                : 'text-text-muted'
+                : `${DOCK_PLAIN} text-text-muted`
             }`}
           >
             <DockIcon name="more" />
@@ -404,7 +404,7 @@ export function BottomToolbar({
         type="button"
         onClick={onToggleSettings}
         title="Settings"
-        className={`${DOCK_BTN} ${isSettingsOpen ? 'bg-active-bg text-text' : 'text-text-muted'}`}
+        className={`${DOCK_BTN} ${isSettingsOpen ? 'bg-active-bg text-text' : `${DOCK_PLAIN} text-text-muted`}`}
       >
         <DockIcon name="settings" />
         Settings
@@ -414,7 +414,9 @@ export function BottomToolbar({
 }
 
 const DOCK_BTN =
-  'flex flex-col items-center justify-center gap-3 min-w-60 px-8 pt-7 pb-5 border-0 rounded-ui cursor-pointer bg-transparent text-2xs font-medium hover:bg-btn-hover hover:text-text transition-colors';
+  'flex flex-col items-center justify-center gap-3 min-w-60 px-8 pt-7 pb-5 border-0 rounded-ui cursor-pointer text-2xs font-medium transition-colors';
+/** Plain dock buttons (+ Agent brings its own accent background). */
+const DOCK_PLAIN = 'bg-transparent hover:bg-btn-hover hover:text-text';
 
 /** Line icons for the dock (24-unit grid, drawn with currentColor). */
 const DOCK_ICONS: Record<string, ReactNode> = {

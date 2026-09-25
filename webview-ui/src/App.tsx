@@ -816,15 +816,9 @@ function App() {
               editorState={editorState}
               editor={editor}
               onDone={editor.handleToggleEditMode}
-              onAdvanced={(t) =>
-                editor.handleToolChange(
-                  t === 'carpet'
-                    ? EditTool.CARPET_PAINT
-                    : t === 'area'
-                      ? EditTool.AREA_PAINT
-                      : EditTool.PETS,
-                )
-              }
+              areaFolders={areaFolders}
+              areaMappings={areaMappings}
+              onAreaMappingChange={handleAreaMappingChange}
               presets={[
                 {
                   id: 'soft',
@@ -863,13 +857,8 @@ function App() {
           )}
 
           {editor.isEditMode &&
-            // In 3D the Build panel has the tools; the classic panel stays for
-            // carpets, folder areas and pets.
-            (!show3D ||
-              editorState.activeTool === EditTool.CARPET_PAINT ||
-              editorState.activeTool === EditTool.CARPET_PICK ||
-              editorState.activeTool === EditTool.AREA_PAINT ||
-              editorState.activeTool === EditTool.PETS) &&
+            // In 3D the Build panel has every tool; the classic panel is the pixel view's.
+            !show3D &&
             (() => {
               const selUid = editorState.selectedFurnitureUid;
               const selColor = selUid
@@ -1486,14 +1475,7 @@ function App() {
       <BottomToolbar
         isEditMode={editor.isEditMode}
         layoutLabel={show3D ? 'Build' : 'Layout'}
-        dockRight={
-          editor.isEditMode &&
-          (!show3D ||
-            editorState.activeTool === EditTool.CARPET_PAINT ||
-            editorState.activeTool === EditTool.CARPET_PICK ||
-            editorState.activeTool === EditTool.AREA_PAINT ||
-            editorState.activeTool === EditTool.PETS)
-        }
+        dockRight={editor.isEditMode && !show3D}
         onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
         isSettingsOpen={isSettingsOpen}

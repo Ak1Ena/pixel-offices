@@ -107,6 +107,9 @@ export class Editor3D {
   private roomStart: { col: number; row: number } | null = null;
   private roomRect: RoomRect | null = null;
   private readonly roomBox: THREE.Mesh;
+  /** Folder areas drawn on the floor while building (rebuilt when the layout changes). */
+  private areaMesh: THREE.InstancedMesh | null = null;
+  private areaLayout: OfficeLayout | null = null;
 
   constructor(scene: THREE.Scene, os: OfficeState) {
     this.scene = scene;
@@ -271,6 +274,7 @@ export class Editor3D {
     const es = p.editorState;
     const L = this.os.getLayout();
     this.syncGrid(L, GROW_TOOLS.has(es.activeTool));
+    this.syncAreas(L);
 
     // Hovered tile (painting tools) — out-of-map tiles show where the map would grow.
     const showHover =
@@ -359,6 +363,40 @@ export class Editor3D {
     this.ghost = buildFurnitureItem(g.item, deskTilesOf(g.layout));
     ghostify(this.ghost, g.ok);
     this.root.add(this.ghost);
+  }
+
+  /** Folder-area tiles (not team rooms, which have glass walls) as tinted floor. */
+  private syncAreas(L: OfficeLayout): void {
+    if (L === this.areaLayout) return;
+    this.areaLayout = L;
+    if (this.areaMesh) {
+      this.root.remove(this.areaMesh);
+      this.areaMesh.geometry.dispose();
+      (this.areaMesh.material as THREE.Material).dispose();
+      this.areaMesh = null;
+    }
+    const colors = new Map<string, THREE.Color>();
+    for (const a of L.areas ?? []) if (!a.teamRoom) colors.set(a.label, new THREE.Color(a.color));
+    const cells: Array<[number, number, THREE.Color]> = [];
+    (L.areaTiles ?? []).forEach((label, i) => {
+      const c = label ? colors.get(label) : undefined;
+      if (c) cells.push([i % L.cols, Math.floor(i / L.cols), c]);
+    });
+    if (!cells.length) return;
+    const m = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(0.96, 0.96),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false }),
+      cells.length,
+    );
+    const mtx = new THREE.Matrix4();
+    const rot = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
+    cells.forEach(([c, r, col], k) => {
+      mtx.makeTranslation(c + 0.5, 0.025, r + 0.5).multiply(rot);
+      m.setMatrixAt(k, mtx);
+      m.setColorAt(k, col);
+    });
+    this.areaMesh = m;
+    this.root.add(m);
   }
 
   /** Tile lines over the whole map, plus a dashed ring one tile out where painting grows it. */

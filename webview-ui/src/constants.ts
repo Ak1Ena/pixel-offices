@@ -706,3 +706,12 @@ export const OFFICE3D_ART_COLORS = [
 ];
 /** Team room colours the Build panel hands out, in order. */
 export const OFFICE3D_ROOM_COLORS = ['#5aa2f0', '#6cc98a', '#b08cf0', '#f0b429', '#e8927c'];
+/** 3D pet coat colours, by pet type. */
+export const OFFICE3D_PET_COLORS = [
+  '#E8A35A',
+  '#6B6B72',
+  '#F4F1EA',
+  '#3A3D42',
+  '#C98A5E',
+  '#B8B8B8',
+];
