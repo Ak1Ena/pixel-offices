@@ -109,10 +109,12 @@ function tileColor(layout: OfficeLayout, i: number, col: number, row: number): T
   const base = new THREE.Color((col + row) % 2 ? C.floorA : C.floorB);
   if (!cv) return base;
   // Floor colours are always Colorize: keep the hue, soften toward the toy palette.
+  // Lightness sits in the toy palette's band (the design's warm beige is ~80%),
+  // with a visible checker so the floor reads as tiles.
   const c = new THREE.Color().setHSL(
     cv.h / 360,
-    Math.min(0.45, cv.s / 100),
-    0.72 + cv.b / 400 + ((col + row) % 2 ? 0.02 : 0),
+    Math.min(0.55, 0.15 + cv.s / 100),
+    Math.min(0.86, Math.max(0.6, 0.76 + cv.b / 500)) + ((col + row) % 2 ? 0.035 : 0),
   );
   return c;
 }
@@ -456,7 +458,7 @@ function buildTeamRooms(layout: OfficeLayout, g: THREE.Group): void {
       );
       m.position.set(x, hG / 2, z);
       g.add(m);
-      rbox(alongX ? 1 : 0.06, 0.05, alongX ? 0.06 : 1, C.frames, x, hG, z, g);
+      rbox(alongX ? 1 : 0.06, 0.05, alongX ? 0.06 : 1, C.glassFrame, x, hG, z, g);
     };
     for (let c = rc.col; c < rc.col + rc.w; c++) {
       if (!isDoor(c, rc.row, 'N')) pane(c + 0.5, rc.row, true);

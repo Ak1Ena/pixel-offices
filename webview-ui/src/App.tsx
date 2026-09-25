@@ -72,6 +72,7 @@ import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import cityOfficeLayout from './office/layout/presets/cityOffice.json';
+import softOfficeLayout from './office/layout/presets/softOffice.json';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout } from './office/types.js';
 import {
@@ -1639,6 +1640,9 @@ function App() {
         onShowIntro={() => setIntroReplay(true)}
         onUseCityOffice={() =>
           editor.applyPresetLayout(migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout))
+        }
+        onUseSoftOffice={() =>
+          editor.applyPresetLayout(migrateLayoutColors(softOfficeLayout as unknown as OfficeLayout))
         }
         onUseOriginalOffice={() =>
           editor.applyPresetLayout(

@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { AgentLook } from '../../../core/src/agentLook.js';
 import type { ModelOption, PastSession } from '../../../core/src/messages.js';
 import { randomLook } from '../lookOptions.js';
+import { LookStudioLazy } from '../office3d/lookStudioLazy.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
 import { ModelSelect } from './ModelSelect.js';
@@ -18,8 +19,6 @@ interface AddAgentModalProps {
   /** The 3D office is on: design the new agent's look here too. */
   show3D?: boolean;
 }
-
-const LookStudio = lazy(() => import('../office3d/LookStudio.js'));
 
 const fieldClass =
   'w-full px-8 py-4 bg-bg-dark text-text text-sm border border-border rounded-ui outline-none focus:border-accent';
@@ -97,12 +96,15 @@ export function AddAgentModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Add agent"
+      title={show3D ? 'New agent' : 'Add agent'}
       zIndex={54}
-      className="w-480 max-w-[94vw]"
+      className={show3D ? '' : 'w-480 max-w-[94vw]'}
+      side={show3D}
     >
       <form
-        className="flex flex-col gap-8 px-10 pb-8 max-h-[85vh] overflow-y-auto"
+        className={`flex flex-col gap-8 overflow-y-auto ${
+          show3D ? 'flex-1 min-h-0 px-14 py-12' : 'px-10 pb-8 max-h-[85vh]'
+        }`}
         onKeyDown={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
@@ -122,6 +124,14 @@ export function AddAgentModal({
           });
         }}
       >
+        {show3D && (
+          <LookStudioLazy
+            look={look}
+            onChange={setLook}
+            part="preview"
+            fallback={<div className="h-200 rounded-ui border border-border" />}
+          />
+        )}
         <label className="flex flex-col gap-2 text-sm">
           Name
           <input
@@ -200,9 +210,12 @@ export function AddAgentModal({
         {show3D && (
           <div className="flex flex-col gap-4 text-sm">
             Look
-            <Suspense fallback={<span className="text-2xs text-text-muted">Loading…</span>}>
-              <LookStudio look={look} onChange={setLook} />
-            </Suspense>
+            <LookStudioLazy
+              look={look}
+              onChange={setLook}
+              part="options"
+              fallback={<span className="text-2xs text-text-muted">Loading…</span>}
+            />
           </div>
         )}
         <label className="flex items-center gap-6 text-sm">

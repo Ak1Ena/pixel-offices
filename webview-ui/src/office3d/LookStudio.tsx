@@ -29,9 +29,11 @@ import { buildLookRig, disposeRig, type Rig } from './characters3d.js';
 export interface LookStudioProps {
   look: AgentLook;
   onChange: (look: AgentLook) => void;
+  /** Draw only the turning preview, only the pickers, or both (default). */
+  part?: 'preview' | 'options' | 'all';
 }
 
-export default function LookStudio({ look, onChange }: LookStudioProps) {
+export default function LookStudio({ look, onChange, part = 'all' }: LookStudioProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const setLookRef = useRef<(l: AgentLook) => void>(() => {});
 
@@ -182,67 +184,76 @@ export default function LookStudio({ look, onChange }: LookStudioProps) {
 
   return (
     <div className="flex flex-col gap-8 text-sm" data-testid="look-studio">
-      <div className="relative h-180 border border-border cursor-grab" ref={hostRef}>
-        <span className="absolute right-4 bottom-2 text-2xs text-text-muted pointer-events-none">
-          Drag to turn
-        </span>
-      </div>
-      <div className="flex flex-col gap-2">
-        Skin
-        {swatches('skin', 'Skin')}
-      </div>
-      <div className="flex flex-col gap-2">
-        Hair
-        {chips(
-          HAIR_OPTIONS,
-          (k) => look.hair === k,
-          (k) => onChange({ ...look, hair: k }),
-          'look-hair',
-        )}
-        {swatches('hairColor', 'Hair colour')}
-      </div>
-      <div className="flex flex-col gap-2">
-        Top
-        {chips(
-          TOP_OPTIONS,
-          (k) => look.top === k,
-          (k) => onChange({ ...look, top: k }),
-          'look-top',
-        )}
-        {swatches('shirt', 'Top colour')}
-      </div>
-      <div className="flex flex-col gap-2">
-        Trousers
-        {swatches('pants', 'Trousers colour')}
-      </div>
-      <div className="flex flex-col gap-2">
-        Height
-        {chips(
-          HEIGHT_OPTIONS,
-          (k) => look.height === k,
-          (k) => onChange({ ...look, height: k }),
-          'look-height',
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        Extras
-        {chips(
-          EXTRA_OPTIONS,
-          (k) => look.extras.includes(k),
-          (k) => onChange(toggleExtra(look, k)),
-          'look-extras',
-        )}
-      </div>
-      <div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => onChange(randomLook())}
-          data-testid="look-random"
+      {part !== 'options' && (
+        <div
+          className="relative h-200 rounded-ui border border-border cursor-grab overflow-hidden"
+          ref={hostRef}
         >
-          Surprise me
-        </Button>
-      </div>
+          <span className="absolute right-8 bottom-6 text-2xs text-text-muted pointer-events-none">
+            Drag to turn
+          </span>
+        </div>
+      )}
+      {part !== 'preview' && (
+        <>
+          <div className="flex flex-col gap-2">
+            Skin
+            {swatches('skin', 'Skin')}
+          </div>
+          <div className="flex flex-col gap-2">
+            Hair
+            {chips(
+              HAIR_OPTIONS,
+              (k) => look.hair === k,
+              (k) => onChange({ ...look, hair: k }),
+              'look-hair',
+            )}
+            {swatches('hairColor', 'Hair colour')}
+          </div>
+          <div className="flex flex-col gap-2">
+            Top
+            {chips(
+              TOP_OPTIONS,
+              (k) => look.top === k,
+              (k) => onChange({ ...look, top: k }),
+              'look-top',
+            )}
+            {swatches('shirt', 'Top colour')}
+          </div>
+          <div className="flex flex-col gap-2">
+            Trousers
+            {swatches('pants', 'Trousers colour')}
+          </div>
+          <div className="flex flex-col gap-2">
+            Height
+            {chips(
+              HEIGHT_OPTIONS,
+              (k) => look.height === k,
+              (k) => onChange({ ...look, height: k }),
+              'look-height',
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            Extras
+            {chips(
+              EXTRA_OPTIONS,
+              (k) => look.extras.includes(k),
+              (k) => onChange(toggleExtra(look, k)),
+              'look-extras',
+            )}
+          </div>
+          <div>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onChange(randomLook())}
+              data-testid="look-random"
+            >
+              Surprise me
+            </Button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

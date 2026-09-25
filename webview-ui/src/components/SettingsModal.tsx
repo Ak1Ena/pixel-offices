@@ -44,6 +44,8 @@ interface SettingsModalProps {
   onImportLayout: (file: File) => void;
   /** Switch to the bundled City Office layout (an undoable edit). */
   onUseCityOffice: () => void;
+  /** The Soft Dollhouse office from the design (the default for new offices). */
+  onUseSoftOffice?: () => void;
   /** Switch back to the office the app ships with (an undoable edit). */
   onUseOriginalOffice: () => void;
   /** Replay the welcome tour (it shows by itself only once). */
@@ -75,6 +77,7 @@ export function SettingsModal({
   onExportLayout,
   onImportLayout,
   onUseCityOffice,
+  onUseSoftOffice,
   onUseOriginalOffice,
   onShowIntro,
   docEditDefault,
@@ -127,6 +130,16 @@ export function SettingsModal({
       >
         Import Layout
       </MenuItem>
+      {onUseSoftOffice && (
+        <MenuItem
+          onClick={() => {
+            onUseSoftOffice();
+            onClose();
+          }}
+        >
+          Use Soft Dollhouse Office
+        </MenuItem>
+      )}
       <MenuItem
         onClick={() => {
           onUseCityOffice();

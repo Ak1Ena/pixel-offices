@@ -1,11 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { AgentLook } from '../../../core/src/agentLook.js';
 import { randomLook } from '../lookOptions.js';
+import { LookStudioLazy } from '../office3d/lookStudioLazy.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
-
-const LookStudio = lazy(() => import('../office3d/LookStudio.js'));
 
 interface LookModalProps {
   /** Whose look is being changed; null = closed. */
@@ -30,12 +29,14 @@ export function LookModal({ agentName, current, onSave, onClose }: LookModalProp
       onClose={onClose}
       title={`${agentName ?? ''}'s look`}
       zIndex={54}
-      className="w-420 max-w-[94vw]"
+      side
     >
-      <div className="flex flex-col gap-8 px-10 pb-8 max-h-[85vh] overflow-y-auto">
-        <Suspense fallback={<span className="text-2xs text-text-muted">Loading…</span>}>
-          <LookStudio look={look} onChange={setLook} />
-        </Suspense>
+      <div className="flex-1 min-h-0 flex flex-col gap-8 px-14 py-12 overflow-y-auto">
+        <LookStudioLazy
+          look={look}
+          onChange={setLook}
+          fallback={<span className="text-2xs text-text-muted">Loading…</span>}
+        />
         <div className="flex gap-8 justify-end">
           {current && (
             <Button type="button" size="md" onClick={() => onSave(undefined)}>

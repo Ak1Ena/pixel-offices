@@ -573,6 +573,7 @@ export const OFFICE3D_COLORS = {
   exitSign: '#2FB36B',
   mat: '#B98A5E',
   glass: '#BFD9E8',
+  glassFrame: '#E8EEF2',
   tagBg: '#FFF6EA',
   tagInk: '#2A2638',
   skyNight: '#221F37',
@@ -607,8 +608,8 @@ export const OFFICE3D_PALETTES: ReadonlyArray<{
  *  32 px is the top of a standing sprite, the top of a 3D head is ~1.3 m. */
 export const OFFICE3D_RISE_M_PER_PX = 1.3 / 32;
 /** Light strength (three.js physical units) and how far the camera starts from the office. */
-export const OFFICE3D_HEMI_INTENSITY = 2.6;
-export const OFFICE3D_SUN_INTENSITY = 2.4;
+export const OFFICE3D_HEMI_INTENSITY = 1.9;
+export const OFFICE3D_SUN_INTENSITY = 2.1;
 export const OFFICE3D_CAMERA_SPAN_K = 1.2;
 /** Character studio colour choices. */
 export const OFFICE3D_SWATCHES = {

@@ -8,6 +8,7 @@ import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
+import { agentColor } from '../agentStatus.js';
 import { Button } from '../components/ui/Button.js';
 import {
   DESK_CARD_DRAG_MIME,
@@ -50,7 +51,7 @@ import {
   stepLeaver,
   updateBurn,
 } from './life.js';
-import { MeetingDirector } from './meetings.js';
+import { MEETING_LENGTH_SEC, MeetingDirector } from './meetings.js';
 
 export interface Office3DViewProps {
   officeState: OfficeState;
@@ -84,6 +85,8 @@ export default function Office3DView({
   editRef.current = edit;
   const tagOfRef = useRef(tagOf);
   tagOfRef.current = tagOf;
+  const directorRef = useRef<MeetingDirector | null>(null);
+  const [meetOpen, setMeetOpen] = useState(false);
   const editUiRef = useRef<EditUi>({ sel: null, grow: [] });
   const hostRef = useRef<HTMLDivElement>(null);
   const pickRef = useRef<(clientX: number, clientY: number) => number | null>(() => null);
@@ -189,6 +192,7 @@ export default function Office3DView({
     const night: NightRig = { hemi, sun, lamps: [], bulbs: [] };
     let nightK = -1;
     const director = new MeetingDirector(officeState);
+    directorRef.current = director;
     const editor = new Editor3D(scene, officeState);
     const leavers: Leaver[] = [];
     /** Characters whose rig became a leaver: never re-created while they despawn. */
@@ -678,6 +682,21 @@ export default function Office3DView({
       <Overlay3D itemsRef={overlayRef} />
       {edit?.isEditMode && <EditButtons3D uiRef={editUiRef} edit={edit} />}
       {!edit?.isEditMode && (
+        <MeetingButton
+          directorRef={directorRef}
+          open={meetOpen}
+          onToggle={() => setMeetOpen((v) => !v)}
+        />
+      )}
+      {meetOpen && !edit?.isEditMode && (
+        <MeetingPanel
+          directorRef={directorRef}
+          officeState={officeState}
+          tagOf={tagOf}
+          onClose={() => setMeetOpen(false)}
+        />
+      )}
+      {!edit?.isEditMode && (
         <ClockPanel nightMode={nightMode} onCycle={cycleNight} nextMeetRef={nextMeetRef} />
       )}
     </>
@@ -685,6 +704,223 @@ export default function Office3DView({
 }
 
 type NightMode = 'auto' | 'day' | 'night';
+
+/** Re-render every half second (panels that read the meeting as it goes). */
+function useTick(ms = 500): void {
+  const [, set] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => set((n) => (n + 1) % 1_000_000), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+}
+
+function MeetingButton({
+  directorRef,
+  open,
+  onToggle,
+}: {
+  directorRef: React.RefObject<MeetingDirector | null>;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  useTick();
+  const live = !!directorRef.current?.meeting;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={open}
+      data-testid="office3d-meeting-button"
+      className={`absolute top-12 right-12 z-20 flex items-center gap-8 h-36 px-14 pixel-panel cursor-pointer text-sm font-semibold ${
+        open ? 'text-accent' : 'text-text'
+      }`}
+    >
+      {live && <span className="w-8 h-8 rounded-full bg-accent animate-pulse" />}
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <path d="M3 11h18v3H3zM6 14v6M18 14v6" />
+        <circle cx="8" cy="6" r="2" />
+        <circle cx="16" cy="6" r="2" />
+      </svg>
+      {live ? 'Meeting on' : 'Meeting'}
+    </button>
+  );
+}
+
+const MEETING_KINDS = ['Stand-up', 'Planning', 'Review'] as const;
+
+/** Right panel: the meeting on now (who, who is talking, time left), or start one. */
+function MeetingPanel({
+  directorRef,
+  officeState,
+  tagOf,
+  onClose,
+}: {
+  directorRef: React.RefObject<MeetingDirector | null>;
+  officeState: OfficeState;
+  tagOf: Office3DViewProps['tagOf'];
+  onClose: () => void;
+}) {
+  useTick();
+  const [kind, setKind] = useState<(typeof MEETING_KINDS)[number]>('Stand-up');
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const d = directorRef.current;
+  const m = d?.meeting ?? null;
+  const people = [...officeState.characters.values()]
+    .filter((c) => !c.isSubagent && !c.isGreeter)
+    .map((c) => ({
+      id: c.id,
+      tag: tagOf?.(c.id) ?? null,
+      busy: c.isActive || c.bubbleType === 'permission',
+    }));
+  const name = (id: number) => people.find((p) => p.id === id)?.tag?.name ?? `Agent ${id}`;
+
+  return (
+    <section
+      className="absolute right-12 top-56 z-20 w-340 max-h-[calc(100%-170px)] flex flex-col pixel-panel overflow-hidden"
+      aria-label="Meeting"
+      data-testid="office3d-meeting-panel"
+    >
+      <div className="flex items-center justify-between gap-8 px-14 pt-12 pb-8 border-b border-border">
+        <span className="font-display text-lg font-medium">{m ? m.title : 'Start a meeting'}</span>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+          ×
+        </Button>
+      </div>
+      <div className="flex flex-col gap-10 px-14 py-12 overflow-y-auto text-sm">
+        {m ? (
+          <>
+            <div className="flex flex-col gap-4">
+              <div className="flex justify-between text-2xs text-text-muted">
+                <span>{m.kind === 'team' ? 'Team catch-up' : 'Meeting'} · at the table</span>
+                <span>{Math.max(0, Math.ceil(MEETING_LENGTH_SEC - m.t))} s left</span>
+              </div>
+              <div className="h-6 rounded-full bg-bg-thumb overflow-hidden">
+                <div
+                  className="h-full bg-accent rounded-full"
+                  style={{ width: `${Math.min(100, (m.t / MEETING_LENGTH_SEC) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className="text-2xs uppercase tracking-wider text-text-muted">At the table</div>
+            <div className="flex flex-col gap-2">
+              {m.ids.map((id) => (
+                <div key={id} className="flex items-center gap-10 py-4">
+                  <span
+                    className="w-26 h-26 rounded-ui grid place-items-center text-xs font-semibold text-white"
+                    style={{ background: agentColor(officeState, id) }}
+                  >
+                    {name(id).slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="flex-1 font-semibold">{name(id)}</span>
+                  {m.speaker === id && (
+                    <span className="text-2xs px-8 py-2 rounded-full bg-accent text-accent-ink font-semibold">
+                      Speaking
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="m-0 text-2xs text-text-muted">
+              Anyone who gets work goes straight back to their desk. Nothing is sent to the agents.
+            </p>
+            <Button
+              type="button"
+              size="md"
+              onClick={() => d?.end()}
+              data-testid="office3d-meeting-end"
+            >
+              End meeting
+            </Button>
+          </>
+        ) : (
+          <>
+            <div className="flex gap-4">
+              {MEETING_KINDS.map((k) => (
+                <Button
+                  key={k}
+                  type="button"
+                  size="sm"
+                  variant={k === kind ? 'active' : 'default'}
+                  onClick={() => setKind(k)}
+                >
+                  {k}
+                </Button>
+              ))}
+            </div>
+            <div className="text-2xs uppercase tracking-wider text-text-muted">Who comes</div>
+            <div className="flex flex-col gap-4">
+              {people.length === 0 && (
+                <span className="text-2xs text-text-muted">Nobody here yet.</span>
+              )}
+              {people.map((p) => (
+                <label
+                  key={p.id}
+                  className={`flex items-center gap-10 px-8 py-6 rounded-ui border border-border ${
+                    p.busy ? 'opacity-50' : 'cursor-pointer hover:bg-btn-bg'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={p.busy}
+                    checked={picked.has(p.id) && !p.busy}
+                    onChange={(e) => {
+                      const next = new Set(picked);
+                      if (e.target.checked) next.add(p.id);
+                      else next.delete(p.id);
+                      setPicked(next);
+                    }}
+                  />
+                  <span
+                    className="w-24 h-24 rounded-ui grid place-items-center text-2xs font-semibold text-white"
+                    style={{ background: agentColor(officeState, p.id) }}
+                  >
+                    {(p.tag?.name ?? '?').slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block font-semibold truncate">
+                      {p.tag?.name ?? `Agent ${p.id}`}
+                    </span>
+                    <span className="block text-2xs text-text-muted">
+                      {p.busy ? 'Working — joins when free' : 'Free'}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {error && <p className="m-0 text-2xs text-danger">{error}</p>}
+            <Button
+              type="button"
+              size="md"
+              variant="accent"
+              data-testid="office3d-meeting-start"
+              onClick={() => {
+                const why = d?.startWith(kind, [...picked]) ?? 'The office is still loading.';
+                setError(why);
+                if (!why) setPicked(new Set());
+              }}
+            >
+              Start {kind.toLowerCase()}
+            </Button>
+            <p className="m-0 text-2xs text-text-muted">
+              Free agents walk to a table and take turns talking. It is a picture of the team
+              pausing: nothing is sent to the agents.
+            </p>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
 
 /** Bottom-left clock: time, day or night (click to switch), the next stand-up. */
 function ClockPanel({

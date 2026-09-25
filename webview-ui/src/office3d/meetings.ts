@@ -23,6 +23,8 @@ import type { Character } from '../office/types.js';
 import { CharacterState, Direction } from '../office/types.js';
 import type { OfficeMeshes } from './build.js';
 
+export const MEETING_LENGTH_SEC = OFFICE3D_MEET_LENGTH_SEC;
+
 export interface Meeting {
   kind: 'team' | 'standup';
   title: string;
@@ -56,8 +58,27 @@ export class MeetingDirector {
     this.os = os;
   }
 
+  private office: OfficeMeshes | null = null;
+
+  /** Start a meeting now with these agents (the free ones walk to a table).
+   *  Returns why it could not start, or null. */
+  startWith(title: string, ids: number[]): string | null {
+    if (this.meeting) return 'A meeting is already on.';
+    const tables = this.office?.tables ?? [];
+    if (!tables.length) return 'There is no table big enough to meet at. Add a 2×2 desk or table.';
+    const who = ids
+      .map((id) => this.os.characters.get(id))
+      .filter((c): c is Character => !!c && free(c));
+    if (who.length < 2) return 'Pick at least two agents who are free right now.';
+    const room = this.os.getTeamRoom(who[0].leadAgentId ?? who[0].id);
+    const table =
+      tables.find((t) => t.room && t.room === room) ?? tables.find((t) => t.room) ?? tables[0];
+    return this.start('standup', title, table, who) ? null : 'Nobody could reach the table.';
+  }
+
   update(dt: number, office: OfficeMeshes | null, leaving: Set<number>): void {
     this.time += dt;
+    this.office = office;
     const m = this.meeting;
     if (m) {
       this.run(m, dt, leaving);
@@ -121,11 +142,14 @@ export class MeetingDirector {
     );
     const ids: number[] = [];
     for (const ch of who) {
-      const s = open.shift();
-      if (!s) break;
-      if (this.os.walkToTile(ch.id, s.col, s.row)) {
-        ids.push(ch.id);
-        this.facing.set(ch.id, s.dir);
+      // Try spots until one is reachable (some sit behind the table or in a closed corner).
+      while (open.length) {
+        const s = open.shift()!;
+        if (this.os.walkToTile(ch.id, s.col, s.row)) {
+          ids.push(ch.id);
+          this.facing.set(ch.id, s.dir);
+          break;
+        }
       }
     }
     if (ids.length < 2) {
