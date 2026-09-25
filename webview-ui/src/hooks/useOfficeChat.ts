@@ -72,7 +72,8 @@ export interface OfficeChatState {
   answerClearRequest: (agentId: number, allow: boolean) => void;
   renameAgent: (agentId: number, name: string) => void;
   pins: BoardPin[];
-  sendMessage: (agentId: number, text: string) => void;
+  /** `interrupt`: stop the agent's current turn first ("Send now"). */
+  sendMessage: (agentId: number, text: string, interrupt?: boolean) => void;
   cancelMessage: (agentId: number, queueId: string) => void;
   markRead: (agentId: number) => void;
   savePin: (pin: BoardPin) => void;
@@ -195,9 +196,14 @@ export function useOfficeChat(openChatAgentId: number | null): OfficeChatState {
     }
   }, [openChatAgentId, unread]);
 
-  const sendMessage = useCallback((agentId: number, text: string) => {
+  const sendMessage = useCallback((agentId: number, text: string, interrupt?: boolean) => {
     setQueues((prev) => ({ ...prev, [agentId]: { queued: prev[agentId]?.queued ?? [] } }));
-    transport.send({ type: 'sendChatMessage', id: agentId, text });
+    transport.send({
+      type: 'sendChatMessage',
+      id: agentId,
+      text,
+      ...(interrupt ? { interrupt: true } : {}),
+    });
   }, []);
 
   const cancelMessage = useCallback((agentId: number, queueId: string) => {

@@ -13,7 +13,7 @@ import {
   userPromptText,
 } from '../src/chatLog.js';
 import { ChatSender } from '../src/chatSender.js';
-import { CHAT_EDIT_MAX_CHARS } from '../src/constants.js';
+import { CHAT_EDIT_MAX_CHARS, CHAT_INTERRUPT_SEND_WAIT_MS } from '../src/constants.js';
 import { describeEdit } from '../src/providers/hook/claude/claude.js';
 import type { AgentState } from '../src/types.js';
 
@@ -364,6 +364,77 @@ describe('ChatSender.interrupt (Stop)', () => {
     expect(sender.interrupt(1)).toBe(false);
     expect(sender.interrupt(99)).toBe(false);
     expect(pressed).toEqual([]);
+  });
+});
+
+describe('ChatSender "Send now" (sendChatMessage.interrupt)', () => {
+  let store: AgentStateStore;
+  let sender: ChatSender;
+  let pressed: number[];
+  let written: string[];
+
+  beforeEach(() => {
+    store = new AgentStateStore();
+    sender = new ChatSender(store);
+    pressed = [];
+    written = [];
+    sender.addWriter({
+      canWrite: (a) => !a.isExternal,
+      write: (_a, text) => written.push(text),
+      interrupt: (a) => pressed.push(a.id),
+    });
+  });
+
+  afterEach(() => {
+    sender.dispose();
+    vi.useRealTimers();
+  });
+
+  it('stops the turn, then types the message once the stopped turn has ended', () => {
+    store.set(1, createTestAgent({ isWaiting: false }));
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'active' });
+    sender.send(1, 'do this instead', { midTurn: true, interrupt: true });
+    expect(pressed).toEqual([1]);
+    expect(written).toEqual([]);
+    store.get(1)!.isWaiting = true;
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'waiting' });
+    expect(written).toEqual(['do this instead']);
+  });
+
+  it('goes ahead of messages already waiting in the queue', () => {
+    store.set(1, createTestAgent({ isWaiting: false, permissionSent: true }));
+    sender.send(1, 'queued earlier', { midTurn: true });
+    sender.send(1, 'urgent', { midTurn: true, interrupt: true });
+    expect(pressed).toEqual([1]);
+    store.get(1)!.permissionSent = false;
+    store.get(1)!.isWaiting = true;
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'waiting' });
+    expect(written).toEqual(['urgent', 'queued earlier']);
+  });
+
+  it('types it anyway when the stopped turn never reports its end', () => {
+    // The queue's backstop tick must run on the fake clock: start a fresh sender under it.
+    sender.dispose();
+    vi.useFakeTimers();
+    sender = new ChatSender(store);
+    sender.addWriter({
+      canWrite: (a) => !a.isExternal,
+      write: (_a, text) => written.push(text),
+      interrupt: (a) => pressed.push(a.id),
+    });
+    store.set(1, createTestAgent({ isWaiting: false }));
+    store.broadcast({ type: 'agentStatus', id: 1, status: 'active' });
+    sender.send(1, 'hello', { midTurn: true, interrupt: true });
+    expect(written).toEqual([]);
+    vi.advanceTimersByTime(CHAT_INTERRUPT_SEND_WAIT_MS + 2_500);
+    expect(written).toEqual(['hello']);
+  });
+
+  it('just sends to an idle agent (nothing to stop; Esc would open the rewind menu)', () => {
+    store.set(1, createTestAgent({ isWaiting: true }));
+    sender.send(1, 'hi', { midTurn: true, interrupt: true });
+    expect(pressed).toEqual([]);
+    expect(written).toEqual(['hi']);
   });
 });
 

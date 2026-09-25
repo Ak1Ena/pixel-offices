@@ -1172,6 +1172,7 @@ export interface SendChatMessage {
   type: 'sendChatMessage';
   id: number;
   text: string;
+  interrupt?: boolean;
 }
 
 export interface CancelChatMessage {

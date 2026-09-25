@@ -1916,8 +1916,11 @@ components:
       description: |
         Type `text` into the agent's terminal as a prompt. Privileged: it drives
         a shell on the machine. Only agents the host owns a terminal for can
-        receive it; while the agent is mid-turn the message is queued (see
-        `agentChatQueue`) and typed in when the turn ends.
+        receive it. By default the message is typed in at once, even mid-turn
+        (Claude reads it when it can) — the current work carries on. With
+        `interrupt`, the agent's current turn is stopped first (Esc) and the
+        message is typed once that turn has ended. A permission prompt always
+        holds messages (see `agentChatQueue`).
       type: object
       additionalProperties: false
       required: [type, id, text]
@@ -1928,6 +1931,9 @@ components:
           type: integer
         text:
           type: string
+        interrupt:
+          type: boolean
+          description: Stop the current turn first, then send ("Send now").
 
     CancelChatMessage:
       description: Drop a queued office message before it is typed in.

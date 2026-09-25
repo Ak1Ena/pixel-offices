@@ -983,10 +983,10 @@ function App() {
                   attachedPins={attached}
                   onAttachPin={(pinId) => attachPin(id, pinId)}
                   onDetachPin={(pinId) => detachPin(id, pinId)}
-                  onSend={(text) => {
+                  onSend={(text, interrupt) => {
                     const message = withRefs(composeMessage(text, attached), docRefsFor[id] ?? []);
                     if (!message) return;
-                    chat.sendMessage(id, message);
+                    chat.sendMessage(id, message, interrupt);
                     setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
                     setDocRefsFor((prev) => ({ ...prev, [id]: [] }));
                   }}
@@ -1189,13 +1189,17 @@ function App() {
                   : null;
               }}
               readOnlyReason={(id) => chatReadOnlyReason(id, chat.sendable[id] === true)}
-              onSend={(id, text) => {
+              isWorking={(id) => {
+                const c = officeState.characters.get(id);
+                return !!c && (c.isActive || c.bubbleType === 'permission');
+              }}
+              onSend={(id, text, interrupt) => {
                 const attached = (attachedPinIds[id] ?? [])
                   .map((pinId) => chat.pins.find((p) => p.id === pinId))
                   .filter((p): p is NonNullable<typeof p> => p !== undefined);
                 const message = withRefs(composeMessage(text, attached), docRefsFor[id] ?? []);
                 if (!message) return;
-                chat.sendMessage(id, message);
+                chat.sendMessage(id, message, interrupt);
                 setAttachedPinIds((prev) => ({ ...prev, [id]: [] }));
                 setDocRefsFor((prev) => ({ ...prev, [id]: [] }));
               }}

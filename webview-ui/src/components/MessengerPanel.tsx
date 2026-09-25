@@ -70,7 +70,10 @@ interface MessengerPanelProps {
   usage: Record<number, AgentTokenUsage | undefined>;
   contextOf: (agentId: number) => { tokens: number; max: number } | null;
   readOnlyReason: (agentId: number) => string | null;
-  onSend: (agentId: number, text: string) => void;
+  /** `interrupt`: stop the agent's current turn first ("Send now"). */
+  onSend: (agentId: number, text: string, interrupt?: boolean) => void;
+  /** Mid-turn or asking permission: Send queues, "Send now" stops it first. */
+  isWorking?: (agentId: number) => boolean;
   onCancel: (agentId: number, queueId: string) => void;
   /** Board pins the user can attach, and the ones attached per agent. */
   pinsFor: (agentId: number) => BoardPin[];
@@ -458,7 +461,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
     return '';
   };
 
-  const send = async () => {
+  const send = async (interrupt = false) => {
     if (selectedId === null || attachments.uploading) return;
     const agentId = selectedId;
     const text = (draft[agentId] ?? '').trim();
@@ -469,7 +472,7 @@ export function MessengerPanel(props: MessengerPanelProps) {
     if (!text && !hasExtras) return;
     const paths = await attachments.upload();
     if (!paths) return; // error shown; draft and files kept
-    props.onSend(agentId, withFileMentions(paths, text));
+    props.onSend(agentId, withFileMentions(paths, text), interrupt);
     setDraft((d) => ({ ...d, [agentId]: d[agentId]?.trim() === text ? '' : (d[agentId] ?? '') }));
     setAtBottom(true);
   };
@@ -872,7 +875,8 @@ export function MessengerPanel(props: MessengerPanelProps) {
                             if (slash.onKeyDown(e)) return;
                             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                               e.preventDefault();
-                              void send();
+                              // Cmd/Ctrl+Enter while it works: stop it and send this now.
+                              void send((e.metaKey || e.ctrlKey) && !!props.isWorking?.(agent.id));
                             }
                           }}
                           rows={3}
@@ -911,17 +915,40 @@ export function MessengerPanel(props: MessengerPanelProps) {
                           </div>
                         )}
                         <span className="flex-1 text-2xs text-text-muted max-sm:hidden">
-                          Enter sends · Shift+Enter new line
+                          {props.isWorking?.(agent.id)
+                            ? 'Enter queues · ⌘/Ctrl+Enter stops it and sends now'
+                            : 'Enter sends'}{' '}
+                          · Shift+Enter new line
                           {filesEnabled ? ' · paste or drop files' : ''}
                         </span>
+                        {props.isWorking?.(agent.id) && (
+                          <Button
+                            size="sm"
+                            disabled={attachments.uploading}
+                            onClick={() => void send(true)}
+                            title="Stop what the agent is doing and send this now"
+                            data-testid="messenger-send-now"
+                          >
+                            Send now
+                          </Button>
+                        )}
                         <Button
                           variant="accent"
                           size="sm"
                           disabled={attachments.uploading}
                           onClick={() => void send()}
+                          title={
+                            props.isWorking?.(agent.id)
+                              ? 'Send without stopping: the agent reads it when it can'
+                              : 'Send to the agent'
+                          }
                           data-testid="messenger-send"
                         >
-                          {attachments.uploading ? 'Uploading' : 'Send'}
+                          {attachments.uploading
+                            ? 'Uploading'
+                            : props.isWorking?.(agent.id)
+                              ? 'Queue'
+                              : 'Send'}
                         </Button>
                       </div>
                     </>

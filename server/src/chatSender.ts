@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { QueuedChatMessage } from '../../core/src/messages.js';
 import type { AgentStateStore } from './agentStateStore.js';
-import { CHAT_QUEUE_LIMIT, CHAT_SEND_MAX_CHARS } from './constants.js';
+import { CHAT_INTERRUPT_SEND_WAIT_MS, CHAT_QUEUE_LIMIT, CHAT_SEND_MAX_CHARS } from './constants.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -34,7 +34,12 @@ const PENDING_OFFICE_TEXTS_LIMIT = 20;
  *  intro, a relayed mention) keeps the idle-only rule, so a card prompt can
  *  never land in the same turn as the human's text. A permission prompt holds
  *  both: the Enter would answer the prompt. */
-type PendingMessage = QueuedChatMessage & { midTurn?: boolean };
+type PendingMessage = QueuedChatMessage & {
+  midTurn?: boolean;
+  /** "Send now": the turn was stopped for this message; it waits for that
+   *  turn to end, but never past this time (ms since epoch). */
+  afterInterruptUntil?: number;
+};
 
 /**
  * Messages sent from the office chat. The human's own messages (`midTurn`) are
@@ -102,7 +107,7 @@ export class ChatSender {
     return [...this.store.keys()].filter((id) => this.canSend(id));
   }
 
-  send(agentId: number, rawText: unknown, opts?: { midTurn?: boolean }): void {
+  send(agentId: number, rawText: unknown, opts?: { midTurn?: boolean; interrupt?: boolean }): void {
     const agent = this.store.get(agentId);
     const text = typeof rawText === 'string' ? rawText.replace(CONTROL_CHARS_RE, '').trim() : '';
     if (!agent) return;
@@ -122,6 +127,27 @@ export class ChatSender {
     if (queue.length >= CHAT_QUEUE_LIMIT) {
       this.report(agentId, 'Too many queued messages. Wait for the agent to finish.');
       return;
+    }
+    // "Send now": stop what the agent is doing, then this message goes first.
+    // An idle agent has nothing to stop (and Esc at an idle prompt opens
+    // Claude's rewind menu), so it is simply sent.
+    const working = !agent.isWaiting || agent.permissionSent;
+    if (opts?.interrupt && working) {
+      if (this.interrupt(agentId)) {
+        queue.unshift({
+          queueId: randomUUID(),
+          text,
+          afterInterruptUntil: Date.now() + CHAT_INTERRUPT_SEND_WAIT_MS,
+        });
+        this.busy.add(agentId);
+        this.queues.set(agentId, queue);
+        this.report(agentId);
+        return;
+      }
+      this.report(
+        agentId,
+        "Couldn't stop this agent from here, so the message was queued instead.",
+      );
     }
     queue.push({ queueId: randomUUID(), text, ...(opts?.midTurn ? { midTurn: true } : {}) });
     this.queues.set(agentId, queue);
@@ -197,7 +223,13 @@ export class ChatSender {
       if (agent.permissionSent) break;
       // The human's own words go in mid-turn, one after another; an office
       // message starts a turn of its own and the next one waits for its end.
-      if ((sent || this.busy.has(agentId)) && !queue[0].midTurn) break;
+      const head = queue[0];
+      if (head.afterInterruptUntil !== undefined) {
+        // Wait for the stopped turn to end — but not forever: an interrupt
+        // that ends with no status change would hold the message otherwise.
+        const ended = !this.busy.has(agentId) || agent.isWaiting;
+        if (!ended && Date.now() < head.afterInterruptUntil) break;
+      } else if ((sent || this.busy.has(agentId)) && !head.midTurn) break;
       const writer = this.writerFor(agent);
       if (!writer) break;
       if (writer.ready && !writer.ready(agent)) break;

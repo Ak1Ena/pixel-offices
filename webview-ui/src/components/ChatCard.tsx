@@ -53,7 +53,8 @@ interface ChatCardProps {
   onRemoveDocRef?: (index: number) => void;
   onAttachPin: (pinId: string) => void;
   onDetachPin: (pinId: string) => void;
-  onSend: (text: string) => void;
+  /** `interrupt`: stop the agent's current turn first ("Send now"). */
+  onSend: (text: string, interrupt?: boolean) => void;
   onCancel: (queueId: string) => void;
   onClose: () => void;
   /** Present only where a terminal can be shown (VS Code). */
@@ -443,18 +444,20 @@ export function ChatCard({
   const showTail = !isSheet && left === rawLeft;
 
   const canSend = readOnlyReason === null;
+  /** Mid-turn or asking: Send queues, "Send now" stops the turn first. */
+  const working = ch.isActive || needsApproval;
   const filesEnabled = canSend && canSendChatFiles();
   const hasContent =
     draft.trim().length > 0 ||
     attachedPins.length > 0 ||
     docRefs.length > 0 ||
     attachments.files.length > 0;
-  const submit = async () => {
+  const submit = async (interrupt = false) => {
     if (!canSend || !hasContent || attachments.uploading) return;
     const text = draft;
     const paths = await attachments.upload();
     if (!paths) return; // error shown; draft and files kept
-    onSend(withFileMentions(paths, text));
+    onSend(withFileMentions(paths, text), interrupt);
     setDraft((current) => (current === text ? '' : current));
   };
   const acceptsFiles = (e: React.DragEvent) => filesEnabled && dragHasFiles(e);
@@ -1071,10 +1074,11 @@ export function ChatCard({
                 if (slash.onKeyDown(e)) return;
                 if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  void submit();
+                  // Cmd/Ctrl+Enter while it works: stop it and send this instead.
+                  void submit((e.metaKey || e.ctrlKey) && working && !!onStop);
                 }
               }}
-              placeholder={`Message ${title} — Enter sends, Shift+Enter new line${onLoadSlashCommands ? ', / for commands' : ''}`}
+              placeholder={`Message ${title} — Enter ${working ? 'queues' : 'sends'}${working && onStop ? ', ⌘/Ctrl+Enter stops it and sends now' : ''}, Shift+Enter new line${onLoadSlashCommands ? ', / for commands' : ''}`}
               title={`Drop a pin${filesEnabled ? ' or files' : ''} here to attach`}
               className={`w-full min-w-0 resize-none p-6 bg-bg text-text font-reading text-read border rounded-ui outline-none ${
                 isDropTarget ? 'border-dashed border-pin-note' : 'border-border focus:border-accent'
@@ -1117,11 +1121,28 @@ export function ChatCard({
                 </span>
               )}
               <span className="flex-1" />
+              {working && onStop && (
+                <Button
+                  variant={hasContent && !attachments.uploading ? 'default' : 'disabled'}
+                  size="sm"
+                  disabled={!hasContent || attachments.uploading}
+                  onClick={() => void submit(true)}
+                  title="Stop what the agent is doing and send this now (⌘/Ctrl+Enter)"
+                  data-testid="chat-send-now"
+                >
+                  Send now
+                </Button>
+              )}
               <Button
                 variant={hasContent && !attachments.uploading ? 'accent' : 'disabled'}
                 size="sm"
                 disabled={!hasContent || attachments.uploading}
                 onClick={() => void submit()}
+                title={
+                  working
+                    ? 'Send without stopping: the agent reads it when it can'
+                    : 'Send to the agent'
+                }
                 data-testid="chat-send"
               >
                 {attachments.uploading

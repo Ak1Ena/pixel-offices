@@ -444,3 +444,7 @@ export const DOC_OUTLINE_CELLS = 8;
 /** How often the Electron shell polls GET /api/health of a server it
  *  attached to (rather than owning). Two misses in a row -> "server stopped". */
 export const ELECTRON_HEALTH_POLL_MS = 5_000;
+
+/** "Send now" (sendChatMessage.interrupt): how long a message waits for the
+ *  stopped turn to end before it is typed anyway. */
+export const CHAT_INTERRUPT_SEND_WAIT_MS = 6_000;

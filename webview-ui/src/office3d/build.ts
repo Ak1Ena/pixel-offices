@@ -328,12 +328,17 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
     z1 = rows;
   }
 
-  // The island: grass slab and earth base under the whole lot.
+  // The island: grass and earth under the whole map (the land), plus a margin
+  // around the floor — growing the land in Build grows the island with it.
   const m = OFFICE3D_LAND_MARGIN;
-  const lw = x1 - x0 + m * 2,
-    ld = z1 - z0 + m * 2,
-    cx = (x0 + x1) / 2,
-    cz = (z0 + z1) / 2;
+  const lx0 = Math.min(0, x0 - m),
+    lx1 = Math.max(cols, x1 + m),
+    lz0 = Math.min(0, z0 - m),
+    lz1 = Math.max(rows, z1 + m);
+  const lw = lx1 - lx0,
+    ld = lz1 - lz0,
+    cx = (lx0 + lx1) / 2,
+    cz = (lz0 + lz1) / 2;
   const grass = new THREE.Mesh(new THREE.BoxGeometry(lw, 0.5, ld), mat(C.grass));
   grass.position.set(cx, -0.55, cz);
   grass.receiveShadow = true;
