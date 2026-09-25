@@ -7,6 +7,7 @@ import { isInFolder } from './askAgent.js';
 import { toMajorMinor } from './changelogData.js';
 import { AddAgentModal } from './components/AddAgentModal.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
+import { BuildPanel } from './components/BuildPanel.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { ChatCard } from './components/ChatCard.js';
 import { ChatPeekBubbles } from './components/ChatPeekBubbles.js';
@@ -713,8 +714,7 @@ function App() {
           }
         }
       : undefined;
-  // The Rooms tool draws its handles over the pixel canvas, so it keeps that view.
-  const show3D = is3DView && !(editor.isEditMode && editorState.activeTool === EditTool.ROOM);
+  const show3D = is3DView;
 
   if (!layoutReady) {
     return <div className="w-full h-full flex items-center justify-center ">Loading...</div>;
@@ -752,6 +752,7 @@ function App() {
               onEditorEraseAction: editor.handleEditorEraseAction,
               onEditorSelectionChange: editor.handleEditorSelectionChange,
               onDragMove: editor.handleDragMove,
+              onApplyLayout: editor.applyEdit,
               onRotateSelected: editor.handleRotateSelected,
               onDeleteSelected: editor.handleDeleteSelected,
               onGrow: (dir) => {
@@ -809,7 +810,46 @@ function App() {
             </div>
           )}
 
-          {editor.isEditMode && editorState.activeTool === EditTool.ROOM && (
+          {show3D && editor.isEditMode && (
+            <BuildPanel
+              officeState={officeState}
+              editorState={editorState}
+              editor={editor}
+              onDone={editor.handleToggleEditMode}
+              onAdvanced={(t) =>
+                editor.handleToolChange(
+                  t === 'carpet'
+                    ? EditTool.CARPET_PAINT
+                    : t === 'area'
+                      ? EditTool.AREA_PAINT
+                      : EditTool.PETS,
+                )
+              }
+              presets={[
+                {
+                  id: 'soft',
+                  name: 'Soft Dollhouse office',
+                  hint: 'Kitchen, two desk pods, a glass team room, a lounge.',
+                  layout: () => migrateLayoutColors(softOfficeLayout as unknown as OfficeLayout),
+                },
+                {
+                  id: 'city',
+                  name: 'City office',
+                  hint: 'A main floor and two team rooms.',
+                  layout: () => migrateLayoutColors(cityOfficeLayout as unknown as OfficeLayout),
+                },
+                {
+                  id: 'original',
+                  name: 'Original office',
+                  hint: 'The first Pixel Agents office.',
+                  layout: () =>
+                    migrateLayoutColors(originalOfficeLayout as unknown as OfficeLayout),
+                },
+              ]}
+            />
+          )}
+
+          {!show3D && editor.isEditMode && editorState.activeTool === EditTool.ROOM && (
             <RoomToolOverlay
               officeState={officeState}
               containerRef={containerRef}
@@ -823,6 +863,13 @@ function App() {
           )}
 
           {editor.isEditMode &&
+            // In 3D the Build panel has the tools; the classic panel stays for
+            // carpets, folder areas and pets.
+            (!show3D ||
+              editorState.activeTool === EditTool.CARPET_PAINT ||
+              editorState.activeTool === EditTool.CARPET_PICK ||
+              editorState.activeTool === EditTool.AREA_PAINT ||
+              editorState.activeTool === EditTool.PETS) &&
             (() => {
               const selUid = editorState.selectedFurnitureUid;
               const selColor = selUid
@@ -1438,6 +1485,15 @@ function App() {
 
       <BottomToolbar
         isEditMode={editor.isEditMode}
+        layoutLabel={show3D ? 'Build' : 'Layout'}
+        dockRight={
+          editor.isEditMode &&
+          (!show3D ||
+            editorState.activeTool === EditTool.CARPET_PAINT ||
+            editorState.activeTool === EditTool.CARPET_PICK ||
+            editorState.activeTool === EditTool.AREA_PAINT ||
+            editorState.activeTool === EditTool.PETS)
+        }
         onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
         isSettingsOpen={isSettingsOpen}

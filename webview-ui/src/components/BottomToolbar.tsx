@@ -30,6 +30,10 @@ function isNarrowWindow(): boolean {
 
 interface BottomToolbarProps {
   isEditMode: boolean;
+  /** "Layout" (pixel view) or "Build" (3D). */
+  layoutLabel?: string;
+  /** Move the dock to the right (the classic editor panel takes the bottom-left). */
+  dockRight?: boolean;
   onOpenClaude: () => void;
   onToggleEditMode: () => void;
   isSettingsOpen: boolean;
@@ -65,6 +69,8 @@ interface BottomToolbarProps {
 
 export function BottomToolbar({
   isEditMode,
+  layoutLabel = 'Layout',
+  dockRight = false,
   onOpenClaude,
   onToggleEditMode,
   isSettingsOpen,
@@ -258,7 +264,7 @@ export function BottomToolbar({
     [
       {
         key: 'layout',
-        label: 'Layout',
+        label: layoutLabel,
         title: 'Edit office layout',
         active: isEditMode,
         onClick: onToggleEditMode,
@@ -301,8 +307,7 @@ export function BottomToolbar({
   return (
     <div
       className={`absolute bottom-12 z-20 w-fit flex flex-wrap items-stretch justify-center gap-2 pixel-panel p-6 ${
-        // Editing: the editor's tool panel takes the bottom-left, so the dock moves right.
-        isEditMode ? 'right-12' : 'inset-x-0 mx-auto'
+        dockRight ? 'right-12' : 'inset-x-0 mx-auto'
       }`}
       style={{ maxWidth: 'calc(100% - 24px)' }}
     >

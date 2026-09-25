@@ -6,11 +6,18 @@
 
 import * as THREE from 'three';
 
-import { OFFICE3D_COLORS as C } from '../constants.js';
+import { OFFICE3D_COLORS as C, OFFICE3D_ROOM_COLORS } from '../constants.js';
 import { canPlaceFurniture, getWallPlacementRow } from '../office/editor/editorActions.js';
 import type { EditorState } from '../office/editor/editorState.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { getCatalogEntry } from '../office/layout/furnitureCatalog.js';
+import {
+  canPlaceRect,
+  createRectRoom,
+  nextRoomLabel,
+  normalizeRect,
+} from '../office/layout/rooms.js';
+import type { RoomRect } from '../office/types.js';
 import type { OfficeLayout, PlacedFurniture } from '../office/types.js';
 import { EditTool } from '../office/types.js';
 import { buildFurnitureItem, deskTilesOf } from './build.js';
@@ -22,6 +29,8 @@ export interface Edit3DProps {
   onEditorEraseAction: (col: number, row: number) => void;
   onEditorSelectionChange: () => void;
   onDragMove: (uid: string, newCol: number, newRow: number) => void;
+  /** Commit a whole new layout as one undoable edit (drawing a team room). */
+  onApplyLayout: (layout: OfficeLayout) => void;
 }
 
 const PAINT_TOOLS: ReadonlySet<string> = new Set([
@@ -67,7 +76,7 @@ function ghostify(g: THREE.Object3D, ok: boolean): void {
     mt.depthWrite = false;
     if ('emissive' in mt) {
       mt.emissive = tintC;
-      mt.emissiveIntensity = 0.35;
+      mt.emissiveIntensity = 0.7;
     }
     m.material = mt;
     m.castShadow = false;
@@ -94,6 +103,10 @@ export class Editor3D {
   private ghost: THREE.Group | null = null;
   private ghostKey = '';
   private eraseDrag = false;
+  /** Team room being drawn: where the drag started and the rectangle so far. */
+  private roomStart: { col: number; row: number } | null = null;
+  private roomRect: RoomRect | null = null;
+  private readonly roomBox: THREE.Mesh;
 
   constructor(scene: THREE.Scene, os: OfficeState) {
     this.scene = scene;
@@ -115,6 +128,17 @@ export class Editor3D {
       new THREE.LineBasicMaterial({ color: C.edgeLine }),
     );
     this.root.add(this.selBox);
+    this.roomBox = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1.1, 1),
+      new THREE.MeshBasicMaterial({
+        color: C.ghostOk,
+        transparent: true,
+        opacity: 0.18,
+        depthWrite: false,
+      }),
+    );
+    this.roomBox.visible = false;
+    this.root.add(this.roomBox);
     this.root.visible = false;
   }
 
@@ -130,6 +154,11 @@ export class Editor3D {
         this.eraseDrag = true;
         p.onEditorEraseAction(tile.col, tile.row);
       }
+      return;
+    }
+    if (es.activeTool === EditTool.ROOM) {
+      this.roomStart = tile;
+      this.roomRect = normalizeRect(tile, tile);
       return;
     }
     const actAsSelect =
@@ -166,6 +195,7 @@ export class Editor3D {
       es.isDragMoving = true;
     }
     if (!moved) return;
+    if (this.roomStart) this.roomRect = normalizeRect(this.roomStart, tile);
     if (es.isDragging && isPaintTool(es.activeTool) && !es.dragUid)
       p.onEditorTileAction(tile.col, tile.row);
     if (this.eraseDrag && isPaintTool(es.activeTool)) {
@@ -183,6 +213,17 @@ export class Editor3D {
       es.carpetStrokeInitialLayout = null;
       es.carpetDragErasing = null;
       es.areaDragErasing = null;
+      return;
+    }
+    if (this.roomStart) {
+      const rect = this.roomRect;
+      this.roomStart = null;
+      this.roomRect = null;
+      const L = this.os.getLayout();
+      if (rect && canPlaceRect(L, rect)) {
+        const color = OFFICE3D_ROOM_COLORS[(L.areas?.length ?? 0) % OFFICE3D_ROOM_COLORS.length];
+        p.onApplyLayout(createRectRoom(L, rect, nextRoomLabel(L), color));
+      }
       return;
     }
     if (es.dragUid) {
@@ -267,6 +308,17 @@ export class Editor3D {
     if (item)
       key = `${item.type}:${item.col}:${item.row}:${ok}:${JSON.stringify(item.color ?? null)}`;
     this.setGhost(key, item ? { item, ok, layout: L } : null);
+
+    // The team room being drawn: green where it fits, red where it doesn't.
+    const rr = this.roomRect;
+    this.roomBox.visible = !!rr;
+    if (rr) {
+      this.roomBox.scale.set(rr.w, 1, rr.h);
+      this.roomBox.position.set(rr.col + rr.w / 2, 0.55, rr.row + rr.h / 2);
+      (this.roomBox.material as THREE.MeshBasicMaterial).color.set(
+        canPlaceRect(L, rr) ? C.ghostOk : C.ghostBad,
+      );
+    }
 
     // Selection box around the selected item's footprint.
     const sel =

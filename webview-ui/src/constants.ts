@@ -704,3 +704,5 @@ export const OFFICE3D_ART_COLORS = [
   '#B08CF0',
   '#F2A7A0',
 ];
+/** Team room colours the Build panel hands out, in order. */
+export const OFFICE3D_ROOM_COLORS = ['#5aa2f0', '#6cc98a', '#b08cf0', '#f0b429', '#e8927c'];

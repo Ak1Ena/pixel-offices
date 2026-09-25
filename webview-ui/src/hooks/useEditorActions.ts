@@ -48,7 +48,7 @@ import { TileType } from '../office/types.js';
 import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
 
-interface EditorActions {
+export interface EditorActions {
   isEditMode: boolean;
   editorTick: number;
   isDirty: boolean;
