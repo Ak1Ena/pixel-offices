@@ -525,7 +525,13 @@ export const TASK_DESK_FIRST_MESSAGE =
 export const OFFICE_VIEW_KEY = 'pixel-agents.officeView';
 /** World px per metre: one tile is one metre in the 3D view. */
 export const OFFICE3D_PX_PER_M = 16;
-export const OFFICE3D_WALL_HEIGHT_M = 1.4;
+export const OFFICE3D_WALL_HEIGHT_M = 1.7;
+export const OFFICE3D_WALL_THICK_M = 0.4;
+/** Wall art, clocks and screens sit this much higher than the wall models draw them. */
+export const OFFICE3D_WALL_ITEM_LIFT_M = 0.3;
+export const OFFICE3D_DOOR_HEIGHT_M = 1.42;
+export const OFFICE3D_WINDOW_SILL_M = 0.75;
+export const OFFICE3D_WINDOW_TOP_M = 1.35;
 export const OFFICE3D_DESK_HEIGHT_M = 0.74;
 export const OFFICE3D_SEAT_HEIGHT_M = 0.47;
 /** Grass border around the office island, in tiles. */
@@ -533,6 +539,8 @@ export const OFFICE3D_LAND_MARGIN = 3;
 /** Camera: field of view (deg), tilt limits (rad), zoom limits. */
 export const OFFICE3D_FOV = 30;
 export const OFFICE3D_TILT_MIN = 0.45;
+/** Starting camera tilt (rad): low, like the design's dollhouse view. */
+export const OFFICE3D_TILT_START = 0.72;
 export const OFFICE3D_TILT_MAX = 1.35;
 export const OFFICE3D_ZOOM_MIN = 0.35;
 export const OFFICE3D_ZOOM_MAX = 2.5;
@@ -571,6 +579,8 @@ export const OFFICE3D_COLORS = {
   tie: '#C23B3B',
   tieKnot: '#A12F2F',
   exitSign: '#2FB36B',
+  doorFrame: '#FFF6EA',
+  doorLeaf: '#E9B872',
   mat: '#B98A5E',
   glass: '#BFD9E8',
   glassFrame: '#E8EEF2',
@@ -608,8 +618,8 @@ export const OFFICE3D_PALETTES: ReadonlyArray<{
  *  32 px is the top of a standing sprite, the top of a 3D head is ~1.3 m. */
 export const OFFICE3D_RISE_M_PER_PX = 1.3 / 32;
 /** Light strength (three.js physical units) and how far the camera starts from the office. */
-export const OFFICE3D_HEMI_INTENSITY = 1.9;
-export const OFFICE3D_SUN_INTENSITY = 2.1;
+export const OFFICE3D_HEMI_INTENSITY = 1.8;
+export const OFFICE3D_SUN_INTENSITY = 2.2;
 export const OFFICE3D_CAMERA_SPAN_K = 1.2;
 /** Character studio colour choices. */
 export const OFFICE3D_SWATCHES = {

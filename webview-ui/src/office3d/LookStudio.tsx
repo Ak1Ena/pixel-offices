@@ -25,6 +25,7 @@ import {
   TOP_OPTIONS,
 } from '../lookOptions.js';
 import { buildLookRig, disposeRig, type Rig } from './characters3d.js';
+import { applyDesignColors } from './colorMode.js';
 
 export interface LookStudioProps {
   look: AgentLook;
@@ -42,6 +43,7 @@ export default function LookStudio({ look, onChange, part = 'all' }: LookStudioP
     if (!host) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    applyDesignColors(renderer);
     renderer.domElement.style.display = 'block';
     renderer.domElement.dataset.testid = 'look-preview';
     host.appendChild(renderer.domElement);

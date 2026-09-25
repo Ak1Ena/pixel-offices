@@ -28,6 +28,7 @@ import {
   OFFICE3D_SUN_INTENSITY,
   OFFICE3D_TILT_MAX,
   OFFICE3D_TILT_MIN,
+  OFFICE3D_TILT_START,
   OFFICE3D_ZOOM_MAX,
   OFFICE3D_ZOOM_MIN,
   PIN_DRAG_MIME,
@@ -41,6 +42,7 @@ import { CharacterState } from '../office/types.js';
 import { isE2E } from '../runtime.js';
 import { buildOffice, disposeGroup, type OfficeMeshes } from './build.js';
 import { buildRig, disposeRig, lookKey, poseRig, type Rig } from './characters3d.js';
+import { applyDesignColors } from './colorMode.js';
 import { type Edit3DProps, Editor3D, isPaintTool } from './editor3d.js';
 import {
   applyNight,
@@ -115,6 +117,7 @@ export default function Office3DView({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    applyDesignColors(renderer);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.style.display = 'block';
@@ -135,7 +138,7 @@ export default function Office3DView({
     const camera = new THREE.PerspectiveCamera(OFFICE3D_FOV, 1, 0.1, 400);
     const cam = {
       az: Math.PI / 4,
-      el: 0.95,
+      el: OFFICE3D_TILT_START,
       zoom: 1,
       target: new THREE.Vector3(),
       goal: new THREE.Vector3(),

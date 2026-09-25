@@ -6,6 +6,8 @@
  * turns a layout into meshes, so the view can rebuild whenever the layout changes.
  */
 
+import './colorMode.js';
+
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
@@ -13,10 +15,15 @@ import type { ColorValue } from '../components/ui/types.js';
 import {
   OFFICE3D_COLORS as C,
   OFFICE3D_DESK_HEIGHT_M,
+  OFFICE3D_DOOR_HEIGHT_M,
   OFFICE3D_FURNITURE as F,
   OFFICE3D_LAND_MARGIN,
   OFFICE3D_SEAT_HEIGHT_M,
   OFFICE3D_WALL_HEIGHT_M,
+  OFFICE3D_WALL_ITEM_LIFT_M,
+  OFFICE3D_WALL_THICK_M,
+  OFFICE3D_WINDOW_SILL_M,
+  OFFICE3D_WINDOW_TOP_M,
 } from '../constants.js';
 import { getCatalogEntry } from '../office/layout/furnitureCatalog.js';
 import type { OfficeLayout, PlacedFurniture, SpriteData } from '../office/types.js';
@@ -167,9 +174,12 @@ function pickDoor(layout: OfficeLayout, x0: number, x1: number): DoorInfo {
   const consider = (c: number, r: number, frame: boolean, dc: number, dr: number, pref: number) => {
     // Toward the camera first (people leave where you can see them), then a
     // framed door over an open edge, then nearest the aim point.
-    const along = dr !== 0 ? c + 0.5 : r + 0.5;
+    // A framed door in a wall beats an open edge; then the wall facing the
+    // camera, then a side wall near the front (the design's door), north last.
     const score =
-      pref * 10_000 + (frame ? 0 : 1_000) + Math.abs(along - (dr !== 0 ? aim : rows / 2));
+      (frame ? 0 : 100_000) +
+      pref * 10_000 +
+      (dr !== 0 ? Math.abs(c + 0.5 - aim) : (rows - r) * 10);
     if (score >= bestScore) return;
     bestScore = score;
     const inside = frame ? { col: c - dc, row: r - dr } : { col: c, row: r };
@@ -365,29 +375,11 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
   floor.receiveShadow = true;
   group.add(floor);
 
-  // Walls: low dollhouse walls with a cap, so the room stays open to the camera.
-  const H = OFFICE3D_WALL_HEIGHT_M;
-  const walls = new THREE.InstancedMesh(
-    new RoundedBoxGeometry(1, H, 1, 2, 0.06),
-    mat(C.wall),
-    Math.max(1, wallCells.length),
-  );
-  const caps = new THREE.InstancedMesh(
-    new RoundedBoxGeometry(1.04, 0.1, 1.04, 2, 0.04),
-    mat(C.wallCap),
-    Math.max(1, wallCells.length),
-  );
+  // Walls: thin dollhouse walls hugging the room (the design's), with windows
+  // along long runs and a gap where the door is.
   const door = pickDoor(layout, x0, x1);
   const shownWalls = wallCells.filter(([c, r]) => !door?.frame || c !== door.col || r !== door.row);
-  shownWalls.forEach(([col, row], k) => {
-    mtx.makeTranslation(col + 0.5, H / 2 - 0.3, row + 0.5);
-    walls.setMatrixAt(k, mtx);
-    mtx.makeTranslation(col + 0.5, H - 0.25, row + 0.5);
-    caps.setMatrixAt(k, mtx);
-  });
-  walls.count = caps.count = shownWalls.length;
-  walls.castShadow = walls.receiveShadow = true;
-  group.add(walls, caps);
+  buildWalls(layout, shownWalls, group);
   if (door) buildDoor(door, group);
   buildTeamRooms(layout, group);
 
@@ -422,24 +414,130 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
 }
 
 function buildDoor(d: NonNullable<DoorInfo>, parent: THREE.Group): void {
-  // Built facing +z (out), then turned to face out of the office.
+  // Built facing +z (out), then turned to face out of the office. The wall
+  // hugs the room side of its tile, so the frame sits at local z ≈ -0.5 + T/2.
   const g = new THREE.Group();
   g.position.set(d.col + 0.5, 0, d.row + 0.5);
   g.rotation.y = d.yaw;
   parent.add(g);
   if (d.frame) {
-    const top = OFFICE3D_WALL_HEIGHT_M - 0.25;
-    for (const sx of [-0.45, 0.45]) rbox(0.1, top + 0.05, 1, C.wallCap, sx, -0.3, 0, g);
-    rbox(1, 0.12, 1, C.wallCap, 0, top - 0.05, 0, g);
+    const H = OFFICE3D_WALL_HEIGHT_M,
+      T = OFFICE3D_WALL_THICK_M,
+      zc = -0.5 + T / 2,
+      top = OFFICE3D_DOOR_HEIGHT_M;
+    // Wall above the opening, then the frame.
+    rbox(1, H - top, T, C.wall, 0, top, zc, g);
+    rbox(1.04, 0.08, T + 0.04, C.wallCap, 0, H, zc, g);
+    for (const sx of [-0.46, 0.46]) rbox(0.08, top, T + 0.06, C.doorFrame, sx, 0, zc, g);
+    rbox(1, 0.08, T + 0.06, C.doorFrame, 0, top - 0.04, zc, g);
+    // The door leaf, swung open into the room.
+    const leaf = new THREE.Group();
+    leaf.position.set(-0.42, 0, zc - T / 2);
+    leaf.rotation.y = -1.15;
+    g.add(leaf);
+    rbox(0.8, top - 0.06, 0.05, C.doorLeaf, 0.4, 0, 0, leaf);
+    rbox(0.05, 0.05, 0.06, C.frames, 0.72, top * 0.5, 0.03, leaf);
+    // Green exit sign over the door, on the room side.
     const sign = new THREE.Mesh(
-      new THREE.BoxGeometry(0.36, 0.1, 0.03),
+      new THREE.BoxGeometry(0.4, 0.12, 0.03),
       new THREE.MeshBasicMaterial({ color: C.exitSign }),
     );
-    sign.position.set(0, top + 0.18, 0.52);
+    sign.position.set(0, top + 0.14, zc - T / 2 - 0.02);
     g.add(sign);
   }
   // A doormat just outside, so the way out reads at a glance.
-  rbox(0.9, 0.03, 0.6, C.mat, 0, -0.02, d.frame ? 0.9 : 0.85, g);
+  rbox(0.9, 0.03, 0.6, C.mat, 0, -0.02, d.frame ? 0.55 : 0.85, g);
+}
+
+/**
+ * Walls as thin slabs on the room side of each wall tile: one slab per side
+ * that faces floor, a post where two runs meet, and a window in every third
+ * tile of a straight run. A wall with no floor next to it stays a full block.
+ */
+function buildWalls(layout: OfficeLayout, cells: Array<[number, number]>, g: THREE.Group): void {
+  const { cols, rows, tiles } = layout;
+  const at = (c: number, r: number) =>
+    c < 0 || r < 0 || c >= cols || r >= rows ? TileType.VOID : tiles[r * cols + c];
+  const floor = (c: number, r: number) => {
+    const t = at(c, r);
+    return t !== TileType.VOID && t !== TileType.WALL;
+  };
+  const wall = (c: number, r: number) => at(c, r) === TileType.WALL;
+  const H = OFFICE3D_WALL_HEIGHT_M,
+    T = OFFICE3D_WALL_THICK_M,
+    base = -0.3;
+  type Piece = { x: number; z: number; w: number; d: number; y0: number; y1: number };
+  const solid: Piece[] = [];
+  const glass: Piece[] = [];
+  const slab = (x: number, z: number, w: number, d: number, win: boolean) => {
+    if (!win) {
+      solid.push({ x, z, w, d, y0: base, y1: H });
+      return;
+    }
+    solid.push({ x, z, w, d, y0: base, y1: OFFICE3D_WINDOW_SILL_M });
+    solid.push({ x, z, w, d, y0: OFFICE3D_WINDOW_TOP_M, y1: H });
+    glass.push({ x, z, w, d: d * 0.3, y0: OFFICE3D_WINDOW_SILL_M, y1: OFFICE3D_WINDOW_TOP_M });
+  };
+  for (const [c, r] of cells) {
+    const S = floor(c, r + 1),
+      N = floor(c, r - 1),
+      E = floor(c + 1, r),
+      Wf = floor(c - 1, r);
+    const runX = wall(c - 1, r) && wall(c + 1, r);
+    const runZ = wall(c, r - 1) && wall(c, r + 1);
+    if (S) slab(c + 0.5, r + 1 - T / 2, 1, T, runX && c % 3 === 1);
+    if (N) slab(c + 0.5, r + T / 2, 1, T, runX && c % 3 === 1);
+    if (E) slab(c + 1 - T / 2, r + 0.5, T, 1, runZ && r % 3 === 1);
+    if (Wf) slab(c + T / 2, r + 0.5, T, 1, runZ && r % 3 === 1);
+    if (S || N || E || Wf) continue;
+    // A corner: a post in the corner that touches floor diagonally.
+    const diag: Array<[number, number, number, number]> = [
+      [1, 1, c + 1 - T / 2, r + 1 - T / 2],
+      [-1, 1, c + T / 2, r + 1 - T / 2],
+      [1, -1, c + 1 - T / 2, r + T / 2],
+      [-1, -1, c + T / 2, r + T / 2],
+    ];
+    const hit = diag.find(([dc, dr]) => floor(c + dc, r + dr));
+    if (hit) solid.push({ x: hit[2], z: hit[3], w: T, d: T, y0: base, y1: H });
+    else solid.push({ x: c + 0.5, z: r + 0.5, w: 1, d: 1, y0: base, y1: H });
+  }
+  const put = (list: Piece[], m: THREE.Material, capM: THREE.Material | null) => {
+    if (!list.length) return;
+    const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), m, list.length);
+    const caps = capM
+      ? new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), capM, list.length)
+      : null;
+    const mtx = new THREE.Matrix4(),
+      q = new THREE.Quaternion(),
+      pos = new THREE.Vector3(),
+      sc = new THREE.Vector3();
+    let capN = 0;
+    list.forEach((p, k) => {
+      mtx.compose(pos.set(p.x, (p.y0 + p.y1) / 2, p.z), q, sc.set(p.w, p.y1 - p.y0, p.d));
+      inst.setMatrixAt(k, mtx);
+      if (caps && p.y1 >= H - 0.001) {
+        mtx.compose(pos.set(p.x, H + 0.04, p.z), q, sc.set(p.w + 0.04, 0.08, p.d + 0.04));
+        caps.setMatrixAt(capN++, mtx);
+      }
+    });
+    inst.castShadow = inst.receiveShadow = true;
+    g.add(inst);
+    if (caps) {
+      caps.count = capN;
+      g.add(caps);
+    }
+  };
+  put(solid, mat(C.wall), mat(C.wallCap));
+  put(
+    glass,
+    new THREE.MeshStandardMaterial({
+      color: C.glass,
+      transparent: true,
+      opacity: 0.45,
+      roughness: 0.1,
+    }),
+    null,
+  );
 }
 
 /** Glass walls around each team room, open at its door, with the room's name. */
@@ -568,7 +666,9 @@ function buildFurniture(
   };
   if (e.canPlaceOnWalls) {
     const g = new THREE.Group();
-    g.position.set(x, 0, f.row + e.footprintH);
+    // Hung higher on the taller walls; bookshelves stand on the floor.
+    const hang = base.includes('BOOKSHELF') ? 0 : OFFICE3D_WALL_ITEM_LIFT_M;
+    g.position.set(x, hang, f.row + e.footprintH);
     parent.add(g);
     buildWallModel(base, kit, g, w, color, f.uid);
     return;
