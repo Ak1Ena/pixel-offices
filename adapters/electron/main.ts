@@ -312,6 +312,9 @@ function buildAppMenu(): void {
           { role: 'quit' },
         ],
       },
+      // macOS routes ⌘C/⌘V/⌘X/⌘A/⌘Z through menu roles only -- without
+      // this menu no text field in the office can copy or paste.
+      { role: 'editMenu' },
     ]),
   );
 }
