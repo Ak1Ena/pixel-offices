@@ -127,6 +127,7 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
       components/
         OfficeCanvas.tsx             Canvas, resize, DPR, mouse hit-testing, drag-to-move
         ToolOverlay.tsx              Activity label above hovered/selected character
+    office3d/                        3D view: Office3DView, build (layout → meshes), characters3d, life, meetings, editor3d, LookStudio
     officeChat.ts                    Pure chat/whiteboard helpers (pin → prompt text, entry upsert, preview)
     hooks/useOfficeChat.ts           Chat + queue + board state (own transport listener)
     components/ChatCard.tsx          Chat card anchored beside a character (click to open)
@@ -524,6 +525,17 @@ Custom ESLint rules (`eslint-rules/pixel-agents-rules.mjs`) enforce: `no-inline-
 **Sound notifications**: Ascending two-note chime (E5 → E6) via Web Audio API plays when waiting bubble appears (`agentStatus: 'waiting'`). `notificationSound.ts` manages AudioContext lifecycle; `unlockAudio()` on canvas mousedown resumes the context (webviews start suspended). Toggled via Settings modal. Persisted per-namespace in `~/.pixel-agents/config.json`.
 
 **Seats**: Derived from chair furniture. `layoutToSeats()` creates a seat at every footprint tile of every chair. Multi-tile chairs produce multiple seats keyed `uid` / `uid:1` / `uid:2`. Facing direction priority: 1) chair `orientation` from catalog (front→DOWN, back→UP, left→LEFT, right→RIGHT), 2) adjacent desk direction, 3) forward (DOWN). Click character → select (white outline) → click available seat → reassign.
+
+## 3D Office (Soft Dollhouse)
+
+The default office view (`webview-ui/src/office3d/`, Three.js, lazy-loaded so the pixel view never downloads it). Settings → 3D Office switches per viewer (`OFFICE_VIEW_KEY`); no WebGL or an e2e run (`isE2E`) keeps the pixel canvas. **OfficeState still simulates everything** — seats, paths, FSM, bubbles; the 3D view only draws it and calls `officeState.update(dt)` in its own rAF loop, as `OfficeCanvas` does.
+
+- **One tile = one metre**; world px ÷ `OFFICE3D_PX_PER_M`. `build.ts` turns the layout into meshes (instanced floor/walls, low dollhouse walls, furniture by catalog category coloured from its sprite's average colour, carpets, glass team rooms, the exit: a door in an outer wall or the open floor edge facing the camera). Rebuilt when the layout object changes; the camera is framed once.
+- **Characters** (`characters3d.ts`): one rig per `Character`, posed from `state`/`dir`/tool/bubble. `lookFor(ch)` = the agent's **look** (character studio) else one made from `palette`+`hueShift`. Looks: `core/src/agentLook.ts` (`sanitizeAgentLook` is the one gate), `setAgentLook` / `agentLook` messages, optional `look` on `startAgent` (applied at adoption), persisted with the agent; sub-agents wear their lead's. Studio UI: `LookStudio.tsx` in + Agent and the chat card's "Look" (`LookModal`).
+- **Overlays**: every per-character DOM overlay places itself with `OverlayProjection.toScreen(x, y, rise)`; the 3D view answers it via `setScreen3D` while mounted (perspective can't map x and y separately — never go back to `toScreenX/Y` for character overlays).
+- **Life** (`life.ts`, `meetings.ts`): an agent closed from the office (`officeState.markLeaving`) hands its rig to a leaver that walks to the exit and waves; burn level → smoke/flames; day/night (Time button: clock/night/day, `OFFICE3D_NIGHT_KEY`) with lamps over desk clusters; meetings move FREE agents only (not active, not asking) via `walkToTile`, hold them with `wanderTimer`, and end when anyone gets work — team catch-ups when a whole team is free, stand-ups otherwise. Nothing is sent to the agents.
+- **Editing** (`editor3d.ts`): drives the same `editorState` + `useEditorActions` handlers as the canvas (tile under the pointer = first office surface hit, else the ground plane, so painting past the edge grows the map). Shift/middle-drag turns, right-drag erases (paint tools) or pans; edge "+4" buttons = `handleGrowLayout`. The Rooms tool still shows the pixel canvas (its handles are pixel-projected).
+- e2e hooks (`isE2E` only): `screenOf3D(id)`, `screenOfTile3D(col,row,y)`, `standupNow3D()`, `meeting3D()`.
 
 ## Layout Editor
 

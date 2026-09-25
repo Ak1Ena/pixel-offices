@@ -41,6 +41,7 @@ import {
   DOC_UPLOAD_MAX_BYTES,
   INTRO_SEEN_KEY,
   OFFICE_VIEW_KEY,
+  OFFICE3D_GROW_STEP,
 } from './constants.js';
 import { isDocProposal, openProposalFor } from './docSuggestions.js';
 import type { DocRef } from './docViewer.js';
@@ -85,7 +86,29 @@ import { transport } from './transport/index.js';
 import { activeRun, openGates } from './workflows.js';
 
 // Game state lives outside React — updated imperatively by message handlers
-// Three.js only loads for viewers who switch the 3D view on.
+/** 3D is the office view unless this viewer chose pixel, the browser has no
+ *  WebGL, or an e2e run is driving the pixel canvas. */
+function defaultIs3DView(): boolean {
+  try {
+    const saved = localStorage.getItem(OFFICE_VIEW_KEY);
+    if (saved === '3d') return hasWebGL();
+    if (saved === 'pixel') return false;
+  } catch {
+    /* no storage: fall through to the default */
+  }
+  return !isE2E && hasWebGL();
+}
+
+function hasWebGL(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') ?? c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
+// Three.js only loads for viewers who use the 3D view.
 const Office3DView = lazy(() => import('./office3d/Office3DView.js'));
 
 const officeStateRef = { current: null as OfficeState | null };
@@ -314,13 +337,7 @@ function App() {
   const [isDebugMode, setIsDebugMode] = useState(false);
   /** The agent whose look the character studio is changing. */
   const [lookAgentId, setLookAgentId] = useState<number | null>(null);
-  const [is3DView, setIs3DView] = useState(() => {
-    try {
-      return localStorage.getItem(OFFICE_VIEW_KEY) === '3d';
-    } catch {
-      return false;
-    }
-  });
+  const [is3DView, setIs3DView] = useState(defaultIs3DView);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
@@ -692,8 +709,8 @@ function App() {
           }
         }
       : undefined;
-  // The layout editor still works on the pixel canvas (3D building is phase 4).
-  const show3D = is3DView && !editor.isEditMode;
+  // The Rooms tool draws its handles over the pixel canvas, so it keeps that view.
+  const show3D = is3DView && !(editor.isEditMode && editorState.activeTool === EditTool.ROOM);
 
   if (!layoutReady) {
     return <div className="w-full h-full flex items-center justify-center ">Loading...</div>;
@@ -709,6 +726,21 @@ function App() {
             onPinDrop={handlePinDrop}
             onWorkflowDrop={handleWorkflowDrop}
             onCardDrop={handleCardDrop}
+            edit={{
+              isEditMode: editor.isEditMode,
+              editorState,
+              onEditorTileAction: editor.handleEditorTileAction,
+              onEditorEraseAction: editor.handleEditorEraseAction,
+              onEditorSelectionChange: editor.handleEditorSelectionChange,
+              onDragMove: editor.handleDragMove,
+              onRotateSelected: editor.handleRotateSelected,
+              onDeleteSelected: editor.handleDeleteSelected,
+              onGrow: (dir) => {
+                if (!editor.handleGrowLayout(dir, OFFICE3D_GROW_STEP)) {
+                  console.warn('[Webview] The map is as big as it gets on that side.');
+                }
+              },
+            }}
           />
         </Suspense>
       ) : (

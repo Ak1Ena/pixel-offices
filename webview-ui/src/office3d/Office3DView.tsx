@@ -17,6 +17,7 @@ import {
   OFFICE3D_COLORS as C,
   OFFICE3D_DRAG_SLOP_PX,
   OFFICE3D_FOV,
+  OFFICE3D_GROW_STEP,
   OFFICE3D_HEMI_INTENSITY,
   OFFICE3D_NIGHT_FROM_HOUR,
   OFFICE3D_NIGHT_KEY,
@@ -31,6 +32,7 @@ import {
   PIN_DRAG_MIME,
   WORKFLOW_DRAG_MIME,
 } from '../constants.js';
+import type { ExpandDirection } from '../office/editor/editorActions.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { setScreen3D } from '../office/projection.js';
 import type { OfficeLayout } from '../office/types.js';
@@ -38,6 +40,7 @@ import { CharacterState } from '../office/types.js';
 import { isE2E } from '../runtime.js';
 import { buildOffice, disposeGroup, type OfficeMeshes } from './build.js';
 import { buildRig, disposeRig, lookKey, poseRig, type Rig } from './characters3d.js';
+import { type Edit3DProps, Editor3D, isPaintTool } from './editor3d.js';
 import {
   applyNight,
   buildLamps,
@@ -55,6 +58,13 @@ export interface Office3DViewProps {
   onPinDrop?: (agentId: number, pinId: string) => void;
   onWorkflowDrop?: (agentId: number, workflowId: string) => void;
   onCardDrop?: (agentId: number, taskId: string) => void;
+  /** The layout editor, driven from the 3D view while edit mode is on. */
+  edit?: Edit3DProps & {
+    onRotateSelected: () => void;
+    onDeleteSelected: () => void;
+    /** Grow the map by a few tiles on one side (new tiles are empty land). */
+    onGrow: (dir: ExpandDirection) => void;
+  };
 }
 
 type DragKind = 'pin' | 'workflow' | 'card';
@@ -65,7 +75,11 @@ export default function Office3DView({
   onPinDrop,
   onWorkflowDrop,
   onCardDrop,
+  edit,
 }: Office3DViewProps) {
+  const editRef = useRef(edit);
+  editRef.current = edit;
+  const editUiRef = useRef<EditUi>({ sel: null, grow: [] });
   const hostRef = useRef<HTMLDivElement>(null);
   const pickRef = useRef<(clientX: number, clientY: number) => number | null>(() => null);
   const dropRef = useRef({ onPinDrop, onWorkflowDrop, onCardDrop, onClick });
@@ -125,6 +139,7 @@ export default function Office3DView({
     scene.add(ring);
 
     let office: OfficeMeshes | null = null;
+    let fitted = false;
     let builtLayout: OfficeLayout | null = null;
     const rebuild = () => {
       const layout = officeState.getLayout();
@@ -144,9 +159,13 @@ export default function Office3DView({
       const cx = (b.x0 + b.x1) / 2,
         cz = (b.z0 + b.z1) / 2,
         span = Math.max(b.x1 - b.x0, b.z1 - b.z0);
-      cam.goal.set(cx, 0, cz);
-      cam.target.copy(cam.goal);
-      cam.dist = span * OFFICE3D_CAMERA_SPAN_K + 6;
+      // Frame the office once; later rebuilds (editing) keep the camera where it is.
+      if (!fitted) {
+        fitted = true;
+        cam.goal.set(cx, 0, cz);
+        cam.target.copy(cam.goal);
+        cam.dist = span * OFFICE3D_CAMERA_SPAN_K + 6;
+      }
       const R = Math.hypot(b.x1 - b.x0, b.z1 - b.z0) / 2 + 4;
       sun.target.position.set(cx, 0, cz);
       sun.position.set(cx + 7, 15, cz + 9);
@@ -163,6 +182,7 @@ export default function Office3DView({
     const night: NightRig = { hemi, sun, lamps: [], bulbs: [] };
     let nightK = -1;
     const director = new MeetingDirector(officeState);
+    const editor = new Editor3D(scene, officeState);
     const leavers: Leaver[] = [];
     /** Characters whose rig became a leaver: never re-created while they despawn. */
     const left = new Set<number>();
@@ -260,6 +280,14 @@ export default function Office3DView({
     if (isE2E) {
       const hooks = (window.__pixelAgentsTestHooks ??= {});
       hooks.standupNow3D = () => director.standupNow();
+      hooks.screenOfTile3D = (col, row, y = 0) => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        v.set(col + 0.5, y, row + 0.5).project(camera);
+        return {
+          x: rect.left + (v.x * 0.5 + 0.5) * rect.width,
+          y: rect.top + (-v.y * 0.5 + 0.5) * rect.height,
+        };
+      };
       hooks.meeting3D = () => director.meeting?.title ?? null;
       hooks.screenOf3D = (id) => {
         const r = rigs.get(id);
@@ -274,25 +302,73 @@ export default function Office3DView({
     }
 
     // Pointer: left-drag turns, right/middle-drag pans, wheel zooms, a still click picks.
-    let drag: { x: number; y: number; button: number; moved: boolean } | null = null;
+    // Which tile is under the pointer: the first office surface the ray hits
+    // (a wall top counts as the wall's tile), else the ground plane — so
+    // pointing past the edge of the map names a tile outside it.
+    const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const hitV = new THREE.Vector3();
+    const tileAt = (clientX: number, clientY: number): { col: number; row: number } | null => {
+      const rect = el.getBoundingClientRect();
+      ndc.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      ray.setFromCamera(ndc, camera);
+      const hits = office ? ray.intersectObject(office.group, true) : [];
+      const h = hits.find((x) => x.object.type !== 'Sprite');
+      if (h && h.point.y > -0.05 && h.face) {
+        const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+        const p = h.point.clone().addScaledVector(n, -0.01);
+        return { col: Math.floor(p.x), row: Math.floor(p.z) };
+      }
+      if (!ray.ray.intersectPlane(ground, hitV)) return null;
+      return { col: Math.floor(hitV.x), row: Math.floor(hitV.z) };
+    };
+
+    // Pointer: left-drag turns, right/middle-drag pans, wheel zooms, a still click picks.
+    // While editing: left = the tool, shift-left or middle turns, right erases (paint tools) or pans.
+    let drag: {
+      x: number;
+      y: number;
+      button: number;
+      moved: boolean;
+      mode: 'orbit' | 'pan' | 'edit' | 'pick';
+    } | null = null;
     const el = renderer.domElement;
     const onDown = (e: PointerEvent) => {
-      drag = { x: e.clientX, y: e.clientY, button: e.button, moved: false };
+      const ed = editRef.current;
+      let mode: 'orbit' | 'pan' | 'edit' | 'pick' = e.button === 0 ? 'pick' : 'pan';
+      if (ed?.isEditMode) {
+        if (e.button === 1 || (e.button === 0 && e.shiftKey)) mode = 'orbit';
+        else if (e.button === 2 && !isPaintTool(ed.editorState.activeTool)) mode = 'pan';
+        else {
+          mode = 'edit';
+          editor.down(ed, tileAt(e.clientX, e.clientY), e.button);
+        }
+      }
+      drag = { x: e.clientX, y: e.clientY, button: e.button, moved: false, mode };
       el.setPointerCapture(e.pointerId);
     };
     const onMove = (e: PointerEvent) => {
+      const ed = editRef.current;
+      if (ed?.isEditMode && (!drag || drag.mode === 'edit')) {
+        editor.move(ed, tileAt(e.clientX, e.clientY));
+        el.style.cursor = ed.editorState.isDragMoving ? 'grabbing' : 'crosshair';
+        if (!drag) return;
+      }
       if (!drag) {
         officeState.hoveredAgentId = pickRef.current(e.clientX, e.clientY);
         el.style.cursor = officeState.hoveredAgentId === null ? 'grab' : 'pointer';
         return;
       }
+      if (drag.mode === 'edit') return;
       const dx = e.clientX - drag.x,
         dy = e.clientY - drag.y;
       if (!drag.moved && Math.hypot(dx, dy) < OFFICE3D_DRAG_SLOP_PX) return;
       drag.moved = true;
       drag.x = e.clientX;
       drag.y = e.clientY;
-      if (drag.button === 0) {
+      if (drag.mode === 'orbit' || drag.mode === 'pick') {
         cam.az -= dx * 0.008;
         cam.el = Math.min(OFFICE3D_TILT_MAX, Math.max(OFFICE3D_TILT_MIN, cam.el + dy * 0.005));
       } else {
@@ -306,7 +382,12 @@ export default function Office3DView({
     const onUp = (e: PointerEvent) => {
       const d = drag;
       drag = null;
-      if (!d || d.moved || d.button !== 0) return;
+      const ed = editRef.current;
+      if (d?.mode === 'edit' && ed) {
+        editor.up(ed, d.button);
+        return;
+      }
+      if (!d || d.moved || d.mode !== 'pick') return;
       const hit = pickRef.current(e.clientX, e.clientY);
       if (hit !== null) {
         officeState.dismissBubble(hit);
@@ -332,6 +413,8 @@ export default function Office3DView({
     };
     const onLeave = () => {
       if (!drag) officeState.hoveredAgentId = null;
+      const ed = editRef.current;
+      if (ed?.isEditMode && !drag) editor.leave(ed);
     };
     const noMenu = (e: Event) => e.preventDefault();
     el.addEventListener('pointerdown', onDown);
@@ -443,6 +526,25 @@ export default function Office3DView({
       }
       overlayRef.current = items;
 
+      // Editor previews and the buttons that float over the map.
+      const ed = editRef.current;
+      editor.update(ed ?? null);
+      const anchor = editor.selectedAnchor(ed ?? null);
+      const L = officeState.getLayout();
+      editUiRef.current = {
+        sel: anchor ? at(anchor.x, anchor.y, anchor.z) : null,
+        grow: ed?.isEditMode
+          ? (
+              [
+                ['left', -0.6, L.rows / 2],
+                ['right', L.cols + 0.6, L.rows / 2],
+                ['up', L.cols / 2, -0.6],
+                ['down', L.cols / 2, L.rows + 0.6],
+              ] as Array<[ExpandDirection, number, number]>
+            ).map(([dir, x, z]) => ({ dir, ...at(x, 0, z) }))
+          : [],
+      };
+
       // Screens light up in front of whoever is typing.
       if (office) {
         for (const [key, scr] of office.screens) {
@@ -479,6 +581,7 @@ export default function Office3DView({
     return () => {
       cancelAnimationFrame(raf);
       setScreen3D(null);
+      editor.dispose();
       ro.disconnect();
       el.removeEventListener('pointerdown', onDown);
       el.removeEventListener('pointermove', onMove);
@@ -556,6 +659,7 @@ export default function Office3DView({
         }}
       />
       <Overlay3D itemsRef={overlayRef} />
+      {edit?.isEditMode && <EditButtons3D uiRef={editUiRef} edit={edit} />}
       <div className="absolute top-8 left-8 z-10">
         <Button
           type="button"
@@ -576,6 +680,82 @@ export default function Office3DView({
 }
 
 type NightMode = 'auto' | 'day' | 'night';
+
+interface EditUi {
+  sel: { x: number; y: number } | null;
+  grow: Array<{ dir: ExpandDirection; x: number; y: number }>;
+}
+
+const GROW_STEP_LABEL = `+${OFFICE3D_GROW_STEP}`;
+
+/** Turn / remove over the selected item, and "+" buttons on each map edge. */
+function EditButtons3D({
+  uiRef,
+  edit,
+}: {
+  uiRef: React.RefObject<EditUi>;
+  edit: NonNullable<Office3DViewProps['edit']>;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      setTick((n) => (n + 1) % 1_000_000);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const ui = uiRef.current;
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {ui.sel && (
+        <div
+          className="absolute -translate-x-1/2 -translate-y-full flex gap-4 pointer-events-auto"
+          style={{ left: ui.sel.x, top: ui.sel.y }}
+        >
+          <Button
+            type="button"
+            size="sm"
+            onClick={edit.onRotateSelected}
+            data-testid="edit3d-rotate"
+          >
+            Turn (R)
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={edit.onDeleteSelected}
+            data-testid="edit3d-delete"
+          >
+            Remove
+          </Button>
+        </div>
+      )}
+      {ui.grow.map((g) => (
+        <div
+          key={g.dir}
+          className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto"
+          style={{ left: g.x, top: g.y }}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            onClick={() => edit.onGrow(g.dir)}
+            title={`Grow the map ${OFFICE3D_GROW_STEP} tiles (${g.dir})`}
+            data-testid={`edit3d-grow-${g.dir}`}
+          >
+            {GROW_STEP_LABEL}
+          </Button>
+        </div>
+      ))}
+      <div className="absolute top-64 left-1/2 -translate-x-1/2 px-8 py-2 text-2xs bg-bg-dark text-text-muted border-2 border-border">
+        Shift-drag or middle-drag turns the view · right-drag erases (paint tools) or pans
+      </div>
+    </div>
+  );
+}
 
 function nightWanted(mode: NightMode): boolean {
   if (mode !== 'auto') return mode === 'night';

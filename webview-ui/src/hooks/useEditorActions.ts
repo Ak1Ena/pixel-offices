@@ -79,6 +79,8 @@ interface EditorActions {
   applyPresetLayout: (layout: OfficeLayout) => void;
   /** Apply one layout edit (one undo entry, saved, marked dirty). */
   applyEdit: (layout: OfficeLayout) => void;
+  /** Grow the map on one side; false when it can't grow further. */
+  handleGrowLayout: (dir: ExpandDirection, steps: number) => boolean;
   handleZoomChange: (zoom: number) => void;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
@@ -167,6 +169,34 @@ export function useEditorActions(
       // Save what the office holds: rebuilding gives every team room a door.
       saveLayout(os.getLayout());
       setEditorTick((n) => n + 1);
+    },
+    [getOfficeState, editorState, saveLayout],
+  );
+
+  /** Grow the map `steps` tiles on one side in one undoable edit (new tiles
+   *  are empty; characters shift with the map when it grows left or up). */
+  const handleGrowLayout = useCallback(
+    (dir: ExpandDirection, steps: number) => {
+      const os = getOfficeState();
+      const before = os.getLayout();
+      let layout = before;
+      const shift = { col: 0, row: 0 };
+      for (let i = 0; i < steps; i++) {
+        const r = expandLayout(layout, dir);
+        if (!r) break;
+        layout = r.layout;
+        shift.col += r.shift.col;
+        shift.row += r.shift.row;
+      }
+      if (layout === before) return false;
+      editorState.pushUndo(before);
+      editorState.clearRedo();
+      editorState.isDirty = true;
+      setIsDirty(true);
+      os.rebuildFromLayout(layout, shift);
+      saveLayout(os.getLayout());
+      setEditorTick((n) => n + 1);
+      return true;
     },
     [getOfficeState, editorState, saveLayout],
   );
@@ -976,6 +1006,7 @@ export function useEditorActions(
     handleSave,
     applyPresetLayout,
     applyEdit,
+    handleGrowLayout,
     handleZoomChange,
     handleEditorTileAction,
     handleEditorEraseAction,

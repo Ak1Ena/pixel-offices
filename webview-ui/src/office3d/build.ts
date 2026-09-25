@@ -296,14 +296,8 @@ export function buildOffice(layout: OfficeLayout): OfficeMeshes {
   buildTeamRooms(layout, group);
 
   // Desk tiles, so surface items (monitors, mugs) know to sit on top.
-  const deskTiles = new Set<string>();
-  for (const f of layout.furniture) {
-    const e = getCatalogEntry(f.type);
-    if (!e?.isDesk) continue;
-    const bg = e.backgroundTiles ?? 0;
-    for (let dr = bg; dr < e.footprintH; dr++)
-      for (let dc = 0; dc < e.footprintW; dc++) deskTiles.add(`${f.col + dc},${f.row + dr}`);
-  }
+  const deskTiles = deskTilesOf(layout);
+  buildCarpets(layout, group);
   for (const f of layout.furniture) buildFurniture(f, group, deskTiles, screens);
 
   const tables: OfficeMeshes['tables'] = [];
@@ -407,6 +401,49 @@ function nameTag(text: string, x: number, y: number, z: number): THREE.Sprite {
   s.scale.set(1.6, 0.4, 1);
   s.position.set(x, y, z);
   return s;
+}
+
+/** Tiles covered by desk tops ("col,row"). */
+export function deskTilesOf(layout: OfficeLayout): Set<string> {
+  const deskTiles = new Set<string>();
+  for (const f of layout.furniture) {
+    const e = getCatalogEntry(f.type);
+    if (!e?.isDesk) continue;
+    const bg = e.backgroundTiles ?? 0;
+    for (let dr = bg; dr < e.footprintH; dr++)
+      for (let dc = 0; dc < e.footprintW; dc++) deskTiles.add(`${f.col + dc},${f.row + dr}`);
+  }
+  return deskTiles;
+}
+
+/** One furniture item on its own (the editor's placement preview). */
+export function buildFurnitureItem(f: PlacedFurniture, deskTiles: Set<string>): THREE.Group {
+  const g = new THREE.Group();
+  buildFurniture(f, g, deskTiles, new Map());
+  return g;
+}
+
+/** Carpets as flat rugs in their main colour. */
+function buildCarpets(layout: OfficeLayout, g: THREE.Group): void {
+  const cells: Array<[number, number, THREE.Color]> = [];
+  (layout.carpetTiles ?? []).forEach((ct, i) => {
+    if (!ct) return;
+    cells.push([i % layout.cols, Math.floor(i / layout.cols), tint(C.carpet, ct.color)]);
+  });
+  if (!cells.length) return;
+  const rugs = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 0.02, 1),
+    new THREE.MeshStandardMaterial({ roughness: 1 }),
+    cells.length,
+  );
+  const mtx = new THREE.Matrix4();
+  cells.forEach(([c, r, col], k) => {
+    mtx.makeTranslation(c + 0.5, 0.012, r + 0.5);
+    rugs.setMatrixAt(k, mtx);
+    rugs.setColorAt(k, col);
+  });
+  rugs.receiveShadow = true;
+  g.add(rugs);
 }
 
 function buildFurniture(

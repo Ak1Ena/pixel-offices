@@ -90,6 +90,7 @@ declare global {
       /** 3D view only: where a character's body is on screen (CSS px), or null. */
       screenOf3D?: (id: number) => { x: number; y: number } | null;
       standupNow3D?: () => void;
+      screenOfTile3D?: (col: number, row: number, y?: number) => { x: number; y: number };
       meeting3D?: () => string | null;
     };
   }

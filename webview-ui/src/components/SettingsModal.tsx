@@ -16,7 +16,7 @@ interface SettingsModalProps {
   onClose: () => void;
   isDebugMode: boolean;
   onToggleDebugMode: () => void;
-  /** 3D office view (preview): per viewer, saved in localStorage. */
+  /** 3D office view (the default; off = the pixel view). Per viewer, in localStorage. */
   is3DView?: boolean;
   onToggle3DView?: () => void;
   alwaysShowOverlay: boolean;
@@ -258,7 +258,7 @@ export function SettingsModal({
         <Checkbox label="Show Areas" checked={showAreas} onChange={onToggleShowAreas} />
       )}
       {onToggle3DView && (
-        <Checkbox label="3D Office (preview)" checked={!!is3DView} onChange={onToggle3DView} />
+        <Checkbox label="3D Office" checked={!!is3DView} onChange={onToggle3DView} />
       )}
       <Checkbox label="Debug View" checked={isDebugMode} onChange={onToggleDebugMode} />
       {docEditDefault && onDocEditDefault && (

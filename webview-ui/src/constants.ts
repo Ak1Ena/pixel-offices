@@ -583,6 +583,11 @@ export const OFFICE3D_COLORS = {
   flame: '#FF8A2A',
   flameCore: '#FFD34D',
   talk: '#FFFFFF',
+  carpet: '#C98F7A',
+  ghostOk: '#4ADE80',
+  ghostBad: '#F87171',
+  gridLine: '#1B1D22',
+  edgeLine: '#6030FF',
 } as const;
 /** The six character palettes, in the same order as char_0..char_5.png. */
 export const OFFICE3D_PALETTES: ReadonlyArray<{
@@ -648,3 +653,5 @@ export const OFFICE3D_NIGHT_KEY = 'pixel-agents.office3dNight';
 /** 'auto' night hours (local time). */
 export const OFFICE3D_NIGHT_FROM_HOUR = 19;
 export const OFFICE3D_NIGHT_TO_HOUR = 7;
+/** Tiles added per click on a 3D edit-mode "+" edge button. */
+export const OFFICE3D_GROW_STEP = 4;
