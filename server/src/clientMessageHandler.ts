@@ -14,7 +14,7 @@ import {
 } from './configPersistence.js';
 import { HUE_SHIFT_MAX_DEG, PALETTE_COUNT } from './constants.js';
 import { handleContextClearMessage } from './contextClearMessages.js';
-import { listFolder } from './folderBrowser.js';
+import { listFolder, nativePickerAvailable, pickFolderNative } from './folderBrowser.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import { handleOfficeFileMessage } from './officeFileMessages.js';
 import type { OfficeSessions } from './officeSessions.js';
@@ -96,6 +96,9 @@ const KEY_SHOW_AREAS = 'pixel-agents.showAreas';
  * layout, settings, agents. Assets are loaded once at startup and cached
  * in memory. Each connecting client receives the full state on webviewReady.
  */
+/** A modal dialog belongs to the machine, not to a socket: one at a time. */
+let folderDialogOpen = false;
+
 export function handleClientMessage(
   msg: Record<string, unknown>,
   send: WsSend,
@@ -431,6 +434,35 @@ export function handleClientMessage(
       break;
     }
 
+    case 'pickFolder': {
+      // Opens a dialog on THIS machine and hands back a path: same proof as
+      // browsing folders. Point-to-point reply, never a broadcast.
+      if (!ctx.privileged) {
+        send({
+          type: 'folderPicked',
+          error: 'Open the office from your private link to choose a folder.',
+        });
+        break;
+      }
+      if (!nativePickerAvailable()) {
+        send({ type: 'folderPicked', error: 'No folder dialog available.' });
+        break;
+      }
+      // One dialog at a time: a second request would stack modal windows the
+      // human then has to dismiss one by one.
+      if (folderDialogOpen) {
+        send({ type: 'folderPicked', error: 'A folder dialog is already open.' });
+        break;
+      }
+      folderDialogOpen = true;
+      void pickFolderNative()
+        .then((pick) => send({ type: 'folderPicked', ...pick }))
+        .finally(() => {
+          folderDialogOpen = false;
+        });
+      break;
+    }
+
     case 'renameAgent':
       runtime?.renameAgent(msg.id, msg.name);
       break;
@@ -708,6 +740,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   send({
     type: 'officeCapabilities',
     canStartAgents: ctx.privileged === true && ctx.officeSessions?.available === true,
+    canPickFolder: ctx.privileged === true && nativePickerAvailable(),
     privileged: ctx.privileged === true,
     recentFolders: ctx.officeSessions?.recentFolders() ?? [],
   });

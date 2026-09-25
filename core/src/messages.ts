@@ -48,6 +48,7 @@ export type ServerMessage =
   | AgentPermissionAsk
   | AgentPermissionAnswered
   | FolderListing
+  | FolderPicked
   | BoardLoaded
   | FocusRequests
   | WorkflowsLoaded
@@ -149,7 +150,8 @@ export type ClientMessage =
   | AnswerScreenQuestion
   | SetAgentRelay
   | AnswerPermission
-  | ListFolder;
+  | ListFolder
+  | PickFolder;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -362,6 +364,7 @@ export interface OfficeCapabilities {
   type: 'officeCapabilities';
   canStartAgents: boolean;
   privileged?: boolean;
+  canPickFolder?: boolean;
   recentFolders: string[];
 }
 
@@ -559,6 +562,12 @@ export interface FolderFile {
   path: string;
   size: number;
   modifiedAt?: string;
+}
+
+export interface FolderPicked {
+  type: 'folderPicked';
+  path?: string;
+  error?: string;
 }
 
 export interface BoardLoaded {
@@ -1454,4 +1463,8 @@ export interface ListFolder {
   type: 'listFolder';
   path?: string;
   files?: boolean;
+}
+
+export interface PickFolder {
+  type: 'pickFolder';
 }

@@ -126,6 +126,7 @@ components:
         - $ref: '#/components/schemas/AgentPermissionAsk'
         - $ref: '#/components/schemas/AgentPermissionAnswered'
         - $ref: '#/components/schemas/FolderListing'
+        - $ref: '#/components/schemas/FolderPicked'
         # Whiteboard
         - $ref: '#/components/schemas/BoardLoaded'
         - $ref: '#/components/schemas/FocusRequests'
@@ -237,6 +238,7 @@ components:
         - $ref: '#/components/schemas/SetAgentRelay'
         - $ref: '#/components/schemas/AnswerPermission'
         - $ref: '#/components/schemas/ListFolder'
+        - $ref: '#/components/schemas/PickFolder'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -677,6 +679,11 @@ components:
           description: |
             True when this connection may do privileged things (type into
             sessions, answer permission prompts, toggle the relay, browse folders).
+        canPickFolder:
+          type: boolean
+          description: |
+            True when this connection may open the machine's own folder dialog
+            (`pickFolder`): privileged, and a native dialog is available here.
         recentFolders:
           type: array
           items:
@@ -1149,6 +1156,24 @@ components:
           description: Viewable files in the folder, when the request asked for them.
           items:
             $ref: '#/components/schemas/FolderFile'
+        error:
+          type: string
+
+    FolderPicked:
+      description: |
+        Reply to pickFolder, sent only to the requesting client. `path` is the
+        folder the human chose in their machine's own dialog; a cancel sends
+        neither `path` nor `error` (nothing changes). `error` is set when the
+        connection may not pick, or no dialog is available.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: folderPicked
+        path:
+          type: string
+          description: Absolute path of the chosen folder.
         error:
           type: string
 
@@ -3089,6 +3114,19 @@ components:
           type: string
         files:
           type: boolean
+
+    PickFolder:
+      description: |
+        Open this machine's own folder dialog and reply with `folderPicked`.
+        The dialog appears where the office RUNS, so clients only offer it
+        when `officeCapabilities.canPickFolder` says one is available.
+        Privileged: it reveals and hands back a path on this machine.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: pickFolder
 
     # ── Supporting schemas ─────────────────────────────────────────
 

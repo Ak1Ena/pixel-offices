@@ -1,3 +1,4 @@
+import { useNativeFolderPick } from '../folderPick.js';
 import { FolderPicker } from './FolderPicker.js';
 import { Button } from './ui/Button.js';
 
@@ -18,6 +19,7 @@ interface FolderFieldProps {
  * as one-click picks (VS Code panel, untokened page).
  */
 export function FolderField({ value, onChange, folders, canBrowse, optional }: FolderFieldProps) {
+  const nativePick = useNativeFolderPick();
   const clear = optional && value.trim() !== '' && (
     <Button
       type="button"
@@ -39,6 +41,20 @@ export function FolderField({ value, onChange, folders, canBrowse, optional }: F
   }
   return (
     <div className="flex flex-col gap-4">
+      {nativePick.available && (
+        <Button
+          type="button"
+          size="sm"
+          variant="accent"
+          className="self-start"
+          onClick={() => nativePick.pick(onChange)}
+          disabled={nativePick.picking}
+          data-testid="folder-native"
+        >
+          {nativePick.picking ? 'Choosing…' : 'Open folder…'}
+        </Button>
+      )}
+      {nativePick.error && <span className="text-sm text-danger">{nativePick.error}</span>}
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}

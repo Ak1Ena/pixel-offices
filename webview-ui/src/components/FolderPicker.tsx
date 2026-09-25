@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { FolderListing } from '../../../core/src/messages.js';
+import { useNativeFolderPick } from '../folderPick.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
 
@@ -31,6 +32,7 @@ export function FolderPicker({ value, onChange, recentFolders }: FolderPickerPro
   const [loading, setLoading] = useState(false);
   // Start where the current choice is; if that folder is gone, fall back to home once.
   const fellBackRef = useRef(false);
+  const nativePick = useNativeFolderPick();
 
   const browse = useCallback((path?: string) => {
     setLoading(true);
@@ -61,27 +63,55 @@ export function FolderPicker({ value, onChange, recentFolders }: FolderPickerPro
   const current = listing?.path ?? '';
   const isChosen = current !== '' && !listing?.error && value.trim() === current;
 
+  const recentChips = recentFolders.length > 0 && (
+    <div className="flex flex-wrap gap-4">
+      {recentFolders.slice(0, 5).map((f) => (
+        <Button
+          key={f}
+          type="button"
+          size="sm"
+          variant={value.trim() === f ? 'active' : 'default'}
+          title={f}
+          onClick={() => {
+            onChange(f);
+            browse(f);
+          }}
+        >
+          {baseName(f)}
+        </Button>
+      ))}
+    </div>
+  );
+
+  if (nativePick.available) {
+    return (
+      <div className="flex flex-col gap-4" data-testid="folder-picker">
+        {recentChips}
+        <Button
+          type="button"
+          size="sm"
+          variant="accent"
+          onClick={() => nativePick.pick(onChange)}
+          disabled={nativePick.picking}
+          data-testid="folder-native"
+        >
+          {nativePick.picking ? 'Choosing…' : 'Open folder…'}
+        </Button>
+        {nativePick.error && <span className="text-sm text-danger">{nativePick.error}</span>}
+        <input
+          className={fieldClass}
+          value={value}
+          placeholder="~/code/my-project"
+          onChange={(e) => onChange(e.target.value)}
+          data-testid="agent-cwd"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4" data-testid="folder-picker">
-      {recentFolders.length > 0 && (
-        <div className="flex flex-wrap gap-4">
-          {recentFolders.slice(0, 5).map((f) => (
-            <Button
-              key={f}
-              type="button"
-              size="sm"
-              variant={value.trim() === f ? 'active' : 'default'}
-              title={f}
-              onClick={() => {
-                onChange(f);
-                browse(f);
-              }}
-            >
-              {baseName(f)}
-            </Button>
-          ))}
-        </div>
-      )}
+      {recentChips}
 
       <div className="flex gap-4">
         <Button

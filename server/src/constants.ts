@@ -375,6 +375,9 @@ export const FOLDER_PROJECT_MARKERS: readonly string[] = [
   'Cargo.toml',
   'go.mod',
 ];
+/** How long the machine's own folder dialog may stay open before `pickFolder`
+ *  gives up. Long: a human is browsing their disk, not a machine answering. */
+export const FOLDER_DIALOG_TIMEOUT_MS = 120_000;
 
 // ── Task desk ────────────────────────────────────────────────
 /** Bytes read from a transcript's tail (then head) to learn the session's working folder. */

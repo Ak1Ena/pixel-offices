@@ -924,6 +924,20 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         if (projectDir && fs.existsSync(projectDir)) {
           vscode.env.openExternal(vscode.Uri.file(projectDir));
         }
+      } else if (message.type === 'pickFolder') {
+        // The panel has VS Code's own dialog, so it never needs the server's
+        // (the webview asks the same way on both surfaces). A cancel replies
+        // with neither path nor error: the current value stays.
+        const uris = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          canSelectMany: false,
+          openLabel: 'Use This Folder',
+        });
+        this.webview?.postMessage({
+          type: 'folderPicked',
+          ...(uris && uris.length > 0 ? { path: uris[0].fsPath } : {}),
+        });
       } else if (message.type === 'exportLayout') {
         const layout = readLayoutFromFile();
         if (!layout) {
