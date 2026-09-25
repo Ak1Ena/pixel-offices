@@ -108,6 +108,7 @@ components:
         # Token usage + naming
         - $ref: '#/components/schemas/AgentTokenUsage'
         - $ref: '#/components/schemas/AgentRenamed'
+        - $ref: '#/components/schemas/AgentLookChanged'
         # Agents the office runs itself
         - $ref: '#/components/schemas/OfficeCapabilities'
         - $ref: '#/components/schemas/AgentScreen'
@@ -217,6 +218,7 @@ components:
         - $ref: '#/components/schemas/SetDeskTaskAllow'
         - $ref: '#/components/schemas/SetAgentPickup'
         - $ref: '#/components/schemas/RenameAgent'
+        - $ref: '#/components/schemas/SetAgentLook'
         - $ref: '#/components/schemas/StartAgent'
         - $ref: '#/components/schemas/SendAgentKeys'
         - $ref: '#/components/schemas/InterruptAgent'
@@ -644,6 +646,65 @@ components:
           type: integer
         partial:
           type: boolean
+
+    AgentLook:
+      description: |
+        A character's look in the 3D office. The server rebuilds it from known
+        values (core/src/agentLook.ts) before storing or sending it.
+      type: object
+      additionalProperties: false
+      required: [hair, top, height, extras, skin, hairColor, shirt, pants]
+      properties:
+        hair:
+          $ref: '#/components/schemas/LookHair'
+        top:
+          $ref: '#/components/schemas/LookTop'
+        height:
+          $ref: '#/components/schemas/LookHeight'
+        extras:
+          type: array
+          items:
+            $ref: '#/components/schemas/LookExtra'
+        skin:
+          type: string
+        hairColor:
+          type: string
+        shirt:
+          type: string
+        pants:
+          type: string
+
+    LookHair:
+      type: string
+      enum: [short, bob, long, bun, spiky, curly, bald]
+
+    LookTop:
+      type: string
+      enum: [tee, hoodie, tie]
+
+    LookHeight:
+      type: string
+      enum: [short, average, tall]
+
+    LookExtra:
+      type: string
+      enum: [glasses, headphones, cap, beanie, beard]
+
+    AgentLookChanged:
+      description: |
+        An agent's 3D look changed (setAgentLook, or a look chosen when the
+        office started it). No `look` = cleared. Persisted with the agent and
+        sent during the handshake.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: agentLook
+        id:
+          type: integer
+        look:
+          $ref: '#/components/schemas/AgentLook'
 
     AgentRenamed:
       description: |
@@ -2795,6 +2856,21 @@ components:
         enabled:
           type: boolean
 
+    SetAgentLook:
+      description: |
+        Give an agent's character a look for the 3D office (character studio).
+        No `look` clears it: the character goes back to its palette.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: setAgentLook
+        id:
+          type: integer
+        look:
+          $ref: '#/components/schemas/AgentLook'
+
     RenameAgent:
       description: Give an agent's character a name (empty string clears it).
       type: object
@@ -2839,6 +2915,9 @@ components:
             A model label from `modelOptions`. The agent starts, the office
             picks the model in its picker (this session only), and only then
             types `firstMessage`.
+        look:
+          $ref: '#/components/schemas/AgentLook'
+          description: The character's 3D look, applied once the session is adopted.
 
     SetAgentRelay:
       description: Turn agent-to-agent @mention passing on or off. Privileged.

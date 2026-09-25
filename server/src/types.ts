@@ -1,5 +1,6 @@
 import type * as vscode from 'vscode';
 
+import type { AgentLook } from '../../core/src/agentLook.js';
 import type { ChatEntry } from '../../core/src/messages.js';
 import type { TokenMeter } from './tokenUsage.js';
 
@@ -84,6 +85,8 @@ export interface AgentState {
   tokenMeter?: TokenMeter;
   /** User-given character name (renameAgent). Persisted. */
   displayName?: string;
+  /** 3D look from the character studio (setAgentLook). Persisted. */
+  look?: AgentLook;
 
   // -- Task desk (server/src/taskDesk.ts) --
   /** The folder the session actually works in. NOT `projectDir`, which is the
@@ -153,6 +156,8 @@ export interface PersistedAgent {
   hueShift?: number;
   /** User-given character name. */
   displayName?: string;
+  /** 3D look from the character studio. */
+  look?: AgentLook;
   /** The folder the session works in (task desk folder matching). */
   cwd?: string;
   /** Task desk pick-up switch; absent = default for how it was started. */

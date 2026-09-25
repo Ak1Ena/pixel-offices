@@ -95,6 +95,7 @@ export function resendAgentActivity(
 
     // 6. Name + token usage
     if (agent.displayName) send({ type: 'agentRenamed', id, name: agent.displayName });
+    if (agent.look) send({ type: 'agentLook', id, look: agent.look });
     // Only what the human changed: the client's defaults cover the rest.
     if (agent.clearPolicy || agent.docEditMode) send(prefsMessage(id, agent));
     const usage = tokenUsageMessage(id, agent);

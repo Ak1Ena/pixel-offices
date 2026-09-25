@@ -24,6 +24,7 @@ export type TileType = (typeof TileType)[keyof typeof TileType];
 
 /** Re-export ColorValue for consumers that import color types from office/types */
 export type { ColorValue } from '../components/ui/types.js';
+import type { AgentLook } from '../../../core/src/agentLook.js';
 import type { ColorValue } from '../components/ui/types.js';
 
 export const CharacterState = {
@@ -296,6 +297,8 @@ export interface Character {
   burnLevel?: 0 | 1 | 2;
   /** User-given name (renameAgent); shown instead of the default label. */
   displayName?: string;
+  /** 3D look (character studio). The pixel view keeps using `palette`. */
+  look?: AgentLook;
 }
 
 export const PetState = { IDLE: 'idle', WALK: 'walk', FOLLOW: 'follow' } as const;

@@ -31,6 +31,7 @@ export type ServerMessage =
   | AgentChatSendable
   | AgentTokenUsage
   | AgentRenamed
+  | AgentLookChanged
   | OfficeCapabilities
   | AgentScreen
   | StartAgentResult
@@ -130,6 +131,7 @@ export type ClientMessage =
   | SetDeskTaskAllow
   | SetAgentPickup
   | RenameAgent
+  | SetAgentLook
   | StartAgent
   | SendAgentKeys
   | InterruptAgent
@@ -359,6 +361,31 @@ export interface AgentRenamed {
   id: number;
   name: string;
 }
+
+export interface AgentLookChanged {
+  type: 'agentLook';
+  id: number;
+  look?: AgentLook;
+}
+
+export interface AgentLook {
+  hair: LookHair;
+  top: LookTop;
+  height: LookHeight;
+  extras: LookExtra[];
+  skin: string;
+  hairColor: string;
+  shirt: string;
+  pants: string;
+}
+
+export type LookHair = 'short' | 'bob' | 'long' | 'bun' | 'spiky' | 'curly' | 'bald';
+
+export type LookTop = 'tee' | 'hoodie' | 'tie';
+
+export type LookHeight = 'short' | 'average' | 'tall';
+
+export type LookExtra = 'glasses' | 'headphones' | 'cap' | 'beanie' | 'beard';
 
 export interface OfficeCapabilities {
   type: 'officeCapabilities';
@@ -1338,6 +1365,12 @@ export interface RenameAgent {
   name: string;
 }
 
+export interface SetAgentLook {
+  type: 'setAgentLook';
+  id: number;
+  look?: AgentLook;
+}
+
 export interface StartAgent {
   type: 'startAgent';
   cwd: string;
@@ -1347,6 +1380,7 @@ export interface StartAgent {
   skipPermissions?: boolean;
   resume?: string;
   model?: string;
+  look?: AgentLook;
 }
 
 export interface SendAgentKeys {

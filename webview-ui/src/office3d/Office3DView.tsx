@@ -31,6 +31,7 @@ import type { OfficeState } from '../office/engine/officeState.js';
 import { setScreen3D } from '../office/projection.js';
 import type { OfficeLayout } from '../office/types.js';
 import { CharacterState } from '../office/types.js';
+import { isE2E } from '../runtime.js';
 import { buildOffice, disposeGroup, type OfficeMeshes } from './build.js';
 import { buildRig, disposeRig, lookKey, poseRig, type Rig } from './characters3d.js';
 
@@ -210,6 +211,21 @@ export default function Office3DView({
       }
       return null;
     };
+
+    // e2e: find a character on screen without hunting pixels.
+    if (isE2E) {
+      const hooks = (window.__pixelAgentsTestHooks ??= {});
+      hooks.screenOf3D = (id) => {
+        const r = rigs.get(id);
+        if (!r) return null;
+        const rect = renderer.domElement.getBoundingClientRect();
+        v.set(r.g.position.x, r.height * 0.55, r.g.position.z).project(camera);
+        return {
+          x: rect.left + (v.x * 0.5 + 0.5) * rect.width,
+          y: rect.top + (-v.y * 0.5 + 0.5) * rect.height,
+        };
+      };
+    }
 
     // Pointer: left-drag turns, right/middle-drag pans, wheel zooms, a still click picks.
     let drag: { x: number; y: number; button: number; moved: boolean } | null = null;

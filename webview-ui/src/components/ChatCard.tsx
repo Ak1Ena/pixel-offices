@@ -70,6 +70,8 @@ interface ChatCardProps {
   /** The user-given name, '' when none (then `title` is the default label). */
   customName: string;
   onRename: (name: string) => void;
+  /** 3D office: open the character studio for this agent. */
+  onEditLook?: () => void;
   /** Terminal screen of an agent the office runs itself; undefined for every other agent. */
   screen?: string[];
   onKeys?: (keys: AgentKey[]) => void;
@@ -278,6 +280,7 @@ export function ChatCard({
   usage,
   customName,
   onRename,
+  onEditLook,
   screen,
   onKeys,
   onStop,
@@ -560,6 +563,17 @@ export function ChatCard({
                 <path d="M2 12 L2 9 L9 2 L12 5 L5 12 Z" />
               </svg>
             </Button>
+            {onEditLook && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onEditLook}
+                title="Change how this agent looks"
+                data-testid="chat-look"
+              >
+                Look
+              </Button>
+            )}
           </>
         ) : (
           <form

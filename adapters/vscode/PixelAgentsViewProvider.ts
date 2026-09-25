@@ -516,6 +516,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         this.runtime.permissions.answer(message.id, message.requestId, message.decision);
       } else if (message.type === 'renameAgent') {
         this.runtime.renameAgent(message.id, message.name);
+      } else if (message.type === 'setAgentLook') {
+        this.runtime.setAgentLook(message.id, message.look);
       } else if (
         // The VS Code webview is privileged by construction (our own iframe).
         handleTaskDeskMessage(message, (m) => this.sendOrBuffer(m), this.runtime.desk, true)

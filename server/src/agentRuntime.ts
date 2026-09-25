@@ -12,6 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { sameAgentLook, sanitizeAgentLook } from '../../core/src/agentLook.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { pruneBackups } from './backups.js';
@@ -676,6 +677,7 @@ export class AgentRuntime {
         palette: p.palette,
         hueShift: p.hueShift,
         displayName: p.displayName,
+        look: sanitizeAgentLook(p.look),
         cwd: p.cwd,
         pickup: p.pickup,
         launchKey: p.launchKey,
@@ -732,6 +734,18 @@ export class AgentRuntime {
     agent.displayName = name || undefined;
     this.store.persist();
     this.store.broadcast({ type: 'agentRenamed', id: agentId, name });
+  }
+
+  /** Give an agent's character a 3D look; anything that isn't one clears it. Persisted. */
+  setAgentLook(agentId: unknown, rawLook: unknown): void {
+    if (typeof agentId !== 'number') return;
+    const agent = this.store.get(agentId);
+    if (!agent) return;
+    const look = sanitizeAgentLook(rawLook);
+    if (sameAgentLook(agent.look, look)) return;
+    agent.look = look;
+    this.store.persist();
+    this.store.broadcast({ type: 'agentLook', id: agentId, look });
   }
 
   // ── Launched sessions ──

@@ -181,6 +181,7 @@ export class AgentStateStore {
         palette: agent.palette,
         hueShift: agent.hueShift,
         displayName: agent.displayName,
+        look: agent.look,
         cwd: agent.cwd,
         pickup: agent.pickup,
         launchKey: agent.launchKey,

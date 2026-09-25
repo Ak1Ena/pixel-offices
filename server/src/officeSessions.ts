@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+import type { AgentLook } from '../../core/src/agentLook.js';
 import type {
   AgentKey,
   AgentModelsState,
@@ -63,6 +64,8 @@ export interface StartAgentRequest {
   model?: string;
   /** An earlier session to continue (`claude --resume <id>`). */
   resume?: string;
+  /** The character's 3D look, applied once the session is adopted. */
+  look?: AgentLook;
 }
 
 /** What OfficeSessions needs from the runtime. */
@@ -74,6 +77,7 @@ export interface OfficeSessionHost {
   /** Show a pid-followed run (agy) now, as a hooks-only agent known by `key`. */
   adoptLaunchedHooksSession?(key: string, cwd: string, providerId: string): void;
   renameAgent(agentId: number, name: string): void;
+  setAgentLook(agentId: number, look: AgentLook): void;
   removeAgent(agentId: number): void;
   refreshSendable(): void;
   /** The agent can take typed input now: deliver anything queued for it. */
@@ -91,6 +95,7 @@ interface OwnedSession {
   screenTimer: ReturnType<typeof setTimeout> | null;
   adoptTimer: ReturnType<typeof setInterval> | null;
   name?: string;
+  look?: AgentLook;
   /** True while WE flagged the agent as waiting on a question seen on its screen. */
   askingByScreen: boolean;
   /** Visible screen text as of the last change (redraws that change nothing don't count). */
@@ -463,6 +468,7 @@ export class OfficeSessions {
       screenTimer: null,
       adoptTimer: null,
       name: req.name?.trim() || undefined,
+      look: req.look,
       askingByScreen: false,
       lastContent: '',
       settleTimer: null,
@@ -887,6 +893,7 @@ export class OfficeSessions {
     agent.officeRun = true;
     this.store.persist();
     if (session.name) this.host.renameAgent(agent.id, session.name);
+    if (session.look) this.host.setAgentLook(agent.id, session.look);
     this.host.refreshSendable();
     this.broadcastScreen(session);
     // Anything queued while it was being adopted goes out once it is ready.

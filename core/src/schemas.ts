@@ -12,6 +12,8 @@
 // ── Agent State ──────────────────────────────────────────────
 
 /** Persisted agent data (survives F5 reload / restart) */
+
+import type { AgentLook } from './agentLook.js';
 export interface PersistedAgent {
   id: number;
   sessionId?: string;
@@ -36,6 +38,8 @@ export interface PersistedAgent {
   hueShift?: number;
   /** User-given character name (renameAgent). */
   displayName?: string;
+  /** 3D look from the character studio (setAgentLook). */
+  look?: AgentLook;
   /** The folder the session works in (task desk folder matching). */
   cwd?: string;
   /** Task desk pick-up switch; absent = default for how it was started. */

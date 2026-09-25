@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import type { StateAdapter } from '../../core/src/adapter.js';
+import { sanitizeAgentLook } from '../../core/src/agentLook.js';
 import { resendAgentActivity } from '../../server/src/agentActivityResend.js';
 import { AgentStateStore } from '../../server/src/agentStateStore.js';
 import { DEFAULT_MAX_CONTEXT_TOKENS, JSONL_POLL_INTERVAL_MS } from '../../server/src/constants.js';
@@ -296,6 +297,7 @@ export function persistAgents(agents: AgentStateStore, adapter: StateAdapter): v
       backgroundAgentToolIds:
         agent.backgroundAgentToolIds.size > 0 ? [...agent.backgroundAgentToolIds] : undefined,
       displayName: agent.displayName,
+      look: agent.look,
       cwd: agent.cwd,
       pickup: agent.pickup,
       launchKey: agent.launchKey,
@@ -401,6 +403,7 @@ export function restoreAgents(
       palette: p.palette,
       hueShift: p.hueShift,
       displayName: p.displayName,
+      look: sanitizeAgentLook(p.look),
       cwd: p.cwd,
       pickup: p.pickup,
       launchKey: p.launchKey,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { AgentLook } from '../../../core/src/agentLook.js';
 import type { HooksConsentRequest } from '../../../core/src/messages.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
@@ -244,6 +245,8 @@ export function useExtensionMessages(
         if (os.characters.size > 0) {
           saveAgentSeats(os);
         }
+      } else if (msg.type === 'agentLook') {
+        os.setCharacterLook(msg.id as number, msg.look as AgentLook | undefined);
       } else if (msg.type === 'agentCreated') {
         const id = msg.id as number;
         const folderName = msg.folderName as string | undefined;

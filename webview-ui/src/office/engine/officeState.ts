@@ -1,3 +1,4 @@
+import type { AgentLook } from '../../../../core/src/agentLook.js';
 import { pickDiversePalette } from '../../../../core/src/paletteUtils.js';
 import {
   AUTO_ON_FACING_DEPTH,
@@ -561,6 +562,7 @@ export class OfficeState {
     if (!skipSpawnEffect) {
       startMatrixEffect(ch, 'spawn');
     }
+    ch.look = this.agentLooks.get(id);
     this.characters.set(id, ch);
   }
 
@@ -785,6 +787,7 @@ export class OfficeState {
     ch.isSubagent = true;
     ch.parentAgentId = parentAgentId;
     startMatrixEffect(ch, 'spawn');
+    if (parentCh?.look) ch.look = parentCh.look;
     this.characters.set(id, ch);
 
     this.subagentIdMap.set(key, id);
@@ -1172,6 +1175,18 @@ export class OfficeState {
   setBurnLevel(id: number, level: 0 | 1 | 2): void {
     const ch = this.characters.get(id);
     if (ch) ch.burnLevel = level;
+  }
+
+  /** 3D looks by agent id: kept apart from the characters so a look that
+   *  arrives before its agent (handshake order) still lands. */
+  agentLooks = new Map<number, AgentLook>();
+
+  setCharacterLook(id: number, look: AgentLook | undefined): void {
+    if (look) this.agentLooks.set(id, look);
+    else this.agentLooks.delete(id);
+    for (const ch of this.characters.values()) {
+      if (ch.id === id || (ch.isSubagent && ch.parentAgentId === id)) ch.look = look;
+    }
   }
 
   setDisplayName(id: number, name: string): void {

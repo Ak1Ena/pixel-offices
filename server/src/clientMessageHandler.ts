@@ -1,3 +1,4 @@
+import { sanitizeAgentLook } from '../../core/src/agentLook.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity, sendOfficeChatState } from './agentActivityResend.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
@@ -332,6 +333,7 @@ export function handleClientMessage(
         skipPermissions: msg.skipPermissions === true,
         model: typeof msg.model === 'string' ? msg.model : undefined,
         resume: typeof msg.resume === 'string' ? msg.resume : undefined,
+        look: sanitizeAgentLook(msg.look),
       });
       send({ type: 'startAgentResult', ...result });
       break;
@@ -462,6 +464,10 @@ export function handleClientMessage(
         });
       break;
     }
+
+    case 'setAgentLook':
+      runtime?.setAgentLook(msg.id, msg.look);
+      break;
 
     case 'renameAgent':
       runtime?.renameAgent(msg.id, msg.name);

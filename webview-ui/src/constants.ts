@@ -564,6 +564,12 @@ export const OFFICE3D_COLORS = {
   cheek: '#F2A0A0',
   shoes: '#4A4560',
   select: '#E8927C',
+  frames: '#22252B',
+  lens: '#CFE8F2',
+  cup: '#E8927C',
+  collar: '#F4F1EA',
+  tie: '#C23B3B',
+  tieKnot: '#A12F2F',
 } as const;
 /** The six character palettes, in the same order as char_0..char_5.png. */
 export const OFFICE3D_PALETTES: ReadonlyArray<{
@@ -586,3 +592,35 @@ export const OFFICE3D_RISE_M_PER_PX = 1.3 / 32;
 export const OFFICE3D_HEMI_INTENSITY = 2.6;
 export const OFFICE3D_SUN_INTENSITY = 2.4;
 export const OFFICE3D_CAMERA_SPAN_K = 1.2;
+/** Character studio colour choices. */
+export const OFFICE3D_SWATCHES = {
+  skin: ['#ffe0c7', '#f2cba5', '#e8b98f', '#c68a5e', '#a86e48', '#8d5a3b', '#6b4230'],
+  hairColor: [
+    '#101010',
+    '#2b1d14',
+    '#5a3825',
+    '#8a4b2a',
+    '#c98a3d',
+    '#d9b26f',
+    '#b8b8b8',
+    '#e86f8f',
+    '#4f6db8',
+  ],
+  shirt: [
+    '#3b6ea8',
+    '#2f9c95',
+    '#3f8f6b',
+    '#7a9a3b',
+    '#e0a43a',
+    '#e07a3f',
+    '#d2573f',
+    '#c45baa',
+    '#8c5bb5',
+    '#5e6b78',
+    '#f4f1ea',
+    '#2b2f3a',
+  ],
+  pants: ['#2b2f3a', '#35495e', '#4b3f35', '#3a3f4b', '#6b7a8f', '#c9b79c'],
+} as const;
+/** Studio preview backdrop. */
+export const OFFICE3D_STUDIO_BG = '#2A2E36';

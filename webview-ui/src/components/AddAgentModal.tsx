@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
+import type { AgentLook } from '../../../core/src/agentLook.js';
 import type { ModelOption, PastSession } from '../../../core/src/messages.js';
+import { randomLook } from '../lookOptions.js';
 import { transport } from '../transport/index.js';
 import { FolderPicker } from './FolderPicker.js';
 import { ModelSelect } from './ModelSelect.js';
@@ -13,7 +15,11 @@ interface AddAgentModalProps {
   recentFolders: string[];
   /** Claude's model picker options, as last read (see ModelSelect). */
   modelOptions: ModelOption[];
+  /** The 3D office is on: design the new agent's look here too. */
+  show3D?: boolean;
 }
+
+const LookStudio = lazy(() => import('../office3d/LookStudio.js'));
 
 const fieldClass =
   'w-full px-8 py-4 bg-bg-dark text-text text-sm border-2 border-border rounded-none outline-none focus:border-accent';
@@ -28,7 +34,9 @@ export function AddAgentModal({
   onClose,
   recentFolders,
   modelOptions,
+  show3D,
 }: AddAgentModalProps) {
+  const [look, setLook] = useState<AgentLook>(randomLook);
   const [name, setName] = useState('');
   const [cwd, setCwd] = useState('');
   const [command, setCommand] = useState('claude');
@@ -75,6 +83,7 @@ export function AddAgentModal({
       if (msg.ok) {
         setName('');
         setFirstMessage('');
+        setLook(randomLook());
         onClose();
       } else {
         setError(msg.error ?? 'Could not start the agent.');
@@ -109,6 +118,7 @@ export function AddAgentModal({
             skipPermissions: skipPermissions || undefined,
             model: model || undefined,
             resume: mode === 'resume' ? resumeId : undefined,
+            look: show3D ? look : undefined,
           });
         }}
       >
@@ -187,6 +197,14 @@ export function AddAgentModal({
             data-testid="agent-first-message"
           />
         </label>
+        {show3D && (
+          <div className="flex flex-col gap-4 text-sm">
+            Look
+            <Suspense fallback={<span className="text-2xs text-text-muted">Loading…</span>}>
+              <LookStudio look={look} onChange={setLook} />
+            </Suspense>
+          </div>
+        )}
         <label className="flex items-center gap-6 text-sm">
           <input
             type="checkbox"

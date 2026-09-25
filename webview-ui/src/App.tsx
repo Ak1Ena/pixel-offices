@@ -18,6 +18,7 @@ import { FilesRail } from './components/FilesRail.js';
 import { FocusNotices } from './components/FocusNotices.js';
 import { GroupChatPanel } from './components/GroupChatPanel.js';
 import { IntroBubble } from './components/IntroBubble.js';
+import { LookModal } from './components/LookModal.js';
 import { MessengerPanel, type MessengerStatus } from './components/MessengerPanel.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { OpenFileDialog } from './components/OpenFileDialog.js';
@@ -311,6 +312,8 @@ function App() {
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
+  /** The agent whose look the character studio is changing. */
+  const [lookAgentId, setLookAgentId] = useState<number | null>(null);
   const [is3DView, setIs3DView] = useState(() => {
     try {
       return localStorage.getItem(OFFICE_VIEW_KEY) === '3d';
@@ -899,6 +902,7 @@ function App() {
                   usage={chat.usage[id]}
                   customName={chat.names[id] ?? ''}
                   onRename={(name) => chat.renameAgent(id, name)}
+                  onEditLook={is3DView ? () => setLookAgentId(id) : undefined}
                   screen={chat.screens[id]}
                   onKeys={(keys) => chat.sendKeys(id, keys)}
                   onStop={() => chat.interruptAgent(id)}
@@ -1455,6 +1459,20 @@ function App() {
         onClose={() => setIsAddAgentOpen(false)}
         recentFolders={chat.recentFolders}
         modelOptions={chat.modelOptions.claude ?? []}
+        show3D={is3DView}
+      />
+
+      <LookModal
+        agentName={lookAgentId === null ? null : agentLabel(lookAgentId)}
+        current={lookAgentId === null ? undefined : officeState.agentLooks.get(lookAgentId)}
+        onClose={() => setLookAgentId(null)}
+        onSave={(look) => {
+          if (lookAgentId === null) return;
+          // Optimistic: the server echoes agentLook with the cleaned-up look.
+          officeState.setCharacterLook(lookAgentId, look);
+          transport.send({ type: 'setAgentLook', id: lookAgentId, look });
+          setLookAgentId(null);
+        }}
       />
 
       <Modal

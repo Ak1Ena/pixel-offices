@@ -25,3 +25,11 @@ export const TRANSPORT_STATE_CONNECTING = 'connecting';
 export const TRANSPORT_STATE_CONNECTED = 'connected';
 export const TRANSPORT_STATE_RECONNECTING = 'reconnecting';
 export const TRANSPORT_STATE_DISCONNECTED = 'disconnected';
+
+/** Colours a 3D character look falls back to when a field is missing or invalid. */
+export const DEFAULT_LOOK_COLORS = {
+  skin: '#e8b98f',
+  hairColor: '#2b1d14',
+  shirt: '#3b6ea8',
+  pants: '#2b2f3a',
+} as const;

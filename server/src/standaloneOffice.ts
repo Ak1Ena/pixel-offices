@@ -206,6 +206,7 @@ export async function startStandaloneOffice(
       runtime.adoptLaunchedHooksSession(key, cwd, providerId),
     forgetPid: (pid) => runtime.forgetLaunchedPid(pid),
     renameAgent: (id, name) => runtime.renameAgent(id, name),
+    setAgentLook: (id, look) => runtime.setAgentLook(id, look),
     removeAgent: (id) => runtime.removeAgent(id),
     refreshSendable: () => runtime.chatSender.refreshSendable(),
     inputReady: (id) => runtime.chatSender.retry(id),
