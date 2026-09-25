@@ -110,11 +110,39 @@ export function defaultDoor(layout: OfficeLayout, label: string): RoomDoor | nul
 }
 
 /** Every team room gets a valid door (older layouts had none). Same layout when nothing changed. */
+function tileBounds(layout: OfficeLayout, label: string): RoomRect | null {
+  const cells = roomTiles(layout, label);
+  if (cells.length === 0) return null;
+  let c0 = Infinity,
+    r0 = Infinity,
+    c1 = -Infinity,
+    r1 = -Infinity;
+  for (const t of cells) {
+    c0 = Math.min(c0, t.col);
+    r0 = Math.min(r0, t.row);
+    c1 = Math.max(c1, t.col + 1);
+    r1 = Math.max(r1, t.row + 1);
+  }
+  return { col: c0, row: r0, w: c1 - c0, h: r1 - r0 };
+}
+
 export function ensureRoomDoors(layout: OfficeLayout): OfficeLayout {
   const rooms = teamRooms(layout);
   if (rooms.length === 0) return layout;
   let changed = false;
-  const areas = (layout.areas ?? []).map((a) => {
+  const areas = (layout.areas ?? []).map((orig) => {
+    let a = orig;
+    // A rect that no longer matches the painted tiles (an older map grow moved
+    // the tiles but not the rect) is re-read from the tiles.
+    const box = a.teamRoom && a.rect ? tileBounds(layout, a.label) : null;
+    if (
+      box &&
+      a.rect &&
+      (box.col !== a.rect.col || box.row !== a.rect.row || box.w !== a.rect.w || box.h !== a.rect.h)
+    ) {
+      changed = true;
+      a = { ...a, rect: box };
+    }
     if (!a.teamRoom || isValidDoor(layout, a.label, a.door)) return a;
     const door = defaultDoor(layout, a.label);
     if (!door && !a.door) return a;

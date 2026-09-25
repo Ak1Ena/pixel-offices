@@ -416,6 +416,26 @@ export function expandLayout(
     row: f.row + shiftRow,
   }));
 
+  // Rooms, doors and portals are tile positions too: they move with the map.
+  const at = (p: { col: number; row: number }) => ({
+    ...p,
+    col: p.col + shiftCol,
+    row: p.row + shiftRow,
+  });
+  const moved = shiftCol !== 0 || shiftRow !== 0;
+  const newAreas =
+    moved && layout.areas
+      ? layout.areas.map((a) => ({
+          ...a,
+          ...(a.rect ? { rect: at(a.rect) } : {}),
+          ...(a.door ? { door: at(a.door) } : {}),
+        }))
+      : layout.areas;
+  const newPortals =
+    moved && layout.portals
+      ? layout.portals.map((p) => ({ ...p, a: at(p.a), b: at(p.b) }))
+      : layout.portals;
+
   return {
     layout: {
       ...layout,
@@ -426,6 +446,8 @@ export function expandLayout(
       furniture: newFurniture,
       ...(newCarpetTiles ? { carpetTiles: newCarpetTiles } : {}),
       ...(newAreaTiles ? { areaTiles: newAreaTiles } : {}),
+      ...(newAreas ? { areas: newAreas } : {}),
+      ...(newPortals ? { portals: newPortals } : {}),
     },
     shift: { col: shiftCol, row: shiftRow },
   };

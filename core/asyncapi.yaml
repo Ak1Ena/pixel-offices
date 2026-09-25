@@ -358,6 +358,12 @@ components:
             Only meaningful when status is "waiting". True when the agent went
             idle waiting on the user (drives the "Waiting for input" label);
             absent/false means the agent finished its turn ("Done").
+        seeded:
+          type: boolean
+          description: >-
+            The state was read from the transcript when the agent was adopted
+            or restored (it was already at its prompt), not a turn that just
+            ended: the client shows it idle with no bubble and no sound.
 
     AgentActivityStatus:
       description: Activity state of an agent.

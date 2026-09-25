@@ -26,6 +26,7 @@ import {
   OFFICE3D_WINDOW_TOP_M,
 } from '../constants.js';
 import { getCatalogEntry } from '../office/layout/furnitureCatalog.js';
+import { boundaryEdges, isValidDoor, roomTiles, teamRooms } from '../office/layout/rooms.js';
 import type { OfficeLayout, PlacedFurniture, SpriteData } from '../office/types.js';
 import { TileType } from '../office/types.js';
 import { baseName, buildModel, buildWallModel, type ModelKit, yawOf } from './furniture3d.js';
@@ -299,12 +300,10 @@ function buildGarden(
 }
 
 function roomOf(layout: OfficeLayout, col: number, row: number): string | null {
-  for (const a of layout.areas ?? []) {
-    const rc = a.teamRoom ? a.rect : undefined;
-    if (rc && col >= rc.col && col < rc.col + rc.w && row >= rc.row && row < rc.row + rc.h)
-      return a.label;
-  }
-  return null;
+  if (col < 0 || row < 0 || col >= layout.cols || row >= layout.rows) return null;
+  const label = layout.areaTiles?.[row * layout.cols + col];
+  if (!label) return null;
+  return layout.areas?.some((a) => a.teamRoom && a.label === label) ? label : null;
 }
 
 export function buildOffice(layout: OfficeLayout): OfficeMeshes {
@@ -540,7 +539,8 @@ function buildWalls(layout: OfficeLayout, cells: Array<[number, number]>, g: THR
   );
 }
 
-/** Glass walls around each team room, open at its door, with the room's name. */
+/** Glass walls around each team room — along its painted tiles (what walking
+ *  obeys), open at its door, none where a real wall already stands. */
 function buildTeamRooms(layout: OfficeLayout, g: THREE.Group): void {
   const glass = new THREE.MeshStandardMaterial({
     color: C.glass,
@@ -549,29 +549,44 @@ function buildTeamRooms(layout: OfficeLayout, g: THREE.Group): void {
     roughness: 0.05,
   });
   const hG = 1.1;
-  for (const a of layout.areas ?? []) {
-    const rc = a.teamRoom ? a.rect : undefined;
-    if (!rc) continue;
-    const isDoor = (col: number, row: number, side: string) =>
-      a.door?.col === col && a.door?.row === row && a.door?.side === side;
-    const pane = (x: number, z: number, alongX: boolean) => {
-      const m = new THREE.Mesh(
-        new THREE.BoxGeometry(alongX ? 1 : 0.04, hG, alongX ? 0.04 : 1),
-        glass,
-      );
-      m.position.set(x, hG / 2, z);
-      g.add(m);
-      rbox(alongX ? 1 : 0.06, 0.05, alongX ? 0.06 : 1, C.glassFrame, x, hG, z, g);
-    };
-    for (let c = rc.col; c < rc.col + rc.w; c++) {
-      if (!isDoor(c, rc.row, 'N')) pane(c + 0.5, rc.row, true);
-      if (!isDoor(c, rc.row + rc.h - 1, 'S')) pane(c + 0.5, rc.row + rc.h, true);
+  const pane = (x: number, z: number, alongX: boolean) => {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(alongX ? 1 : 0.04, hG, alongX ? 0.04 : 1),
+      glass,
+    );
+    m.position.set(x, hG / 2, z);
+    g.add(m);
+    rbox(alongX ? 1 : 0.06, 0.05, alongX ? 0.06 : 1, C.glassFrame, x, hG, z, g);
+  };
+  const isWall = (col: number, row: number) =>
+    col >= 0 &&
+    row >= 0 &&
+    col < layout.cols &&
+    row < layout.rows &&
+    layout.tiles[row * layout.cols + col] === TileType.WALL;
+  for (const a of teamRooms(layout)) {
+    const cells = roomTiles(layout, a.label);
+    if (cells.length === 0) continue;
+    const door = isValidDoor(layout, a.label, a.door) ? a.door : undefined;
+    for (const e of boundaryEdges(layout, a.label)) {
+      if (door && door.col === e.col && door.row === e.row && door.side === e.side) continue;
+      const oc = e.col + (e.side === 'E' ? 1 : e.side === 'W' ? -1 : 0);
+      const or = e.row + (e.side === 'S' ? 1 : e.side === 'N' ? -1 : 0);
+      if (isWall(oc, or)) continue;
+      if (e.side === 'N') pane(e.col + 0.5, e.row, true);
+      else if (e.side === 'S') pane(e.col + 0.5, e.row + 1, true);
+      else if (e.side === 'W') pane(e.col, e.row + 0.5, false);
+      else pane(e.col + 1, e.row + 0.5, false);
     }
-    for (let r = rc.row; r < rc.row + rc.h; r++) {
-      if (!isDoor(rc.col, r, 'W')) pane(rc.col, r + 0.5, false);
-      if (!isDoor(rc.col + rc.w - 1, r, 'E')) pane(rc.col + rc.w, r + 0.5, false);
+    let c0 = Infinity,
+      c1 = -Infinity,
+      r1 = -Infinity;
+    for (const t of cells) {
+      c0 = Math.min(c0, t.col);
+      c1 = Math.max(c1, t.col + 1);
+      r1 = Math.max(r1, t.row + 1);
     }
-    g.add(nameTag(a.label, rc.col + rc.w / 2, hG + 0.35, rc.row + rc.h));
+    g.add(nameTag(a.label, (c0 + c1) / 2, hG + 0.35, r1));
   }
 }
 

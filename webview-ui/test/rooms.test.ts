@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import { TEAM_ROOM_AREA_COLOR } from '../src/constants.js';
+import { expandLayout } from '../src/office/editor/editorActions.js';
 import {
   addPortal,
   blockedEdges,
@@ -207,4 +208,37 @@ test('ready-made rooms and fill presets place everything or nothing', () => {
     ),
     null,
   );
+});
+
+test('growing the map left or up moves team rooms, doors and portals with it', () => {
+  let layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room',
+    TEAM_ROOM_AREA_COLOR,
+  );
+  layout = { ...layout, portals: [{ id: 'p', a: { col: 1, row: 1 }, b: { col: 3, row: 3 } }] };
+  const door = layout.areas?.[0].door;
+  const left = expandLayout(layout, 'left');
+  const up = left && expandLayout(left.layout, 'up');
+  assert.ok(up && door);
+  const room = up.layout.areas?.[0];
+  assert.deepEqual(room?.rect, { col: 3, row: 3, w: 4, h: 3 });
+  assert.deepEqual(room?.door, { ...door, col: door.col + 1, row: door.row + 1 });
+  assert.deepEqual(up.layout.portals?.[0].a, { col: 2, row: 2 });
+  assert.deepEqual(up.layout.portals?.[0].b, { col: 4, row: 4 });
+});
+
+test('a room rect that no longer matches its painted tiles is re-read from them', () => {
+  const layout = createRectRoom(
+    floor(12, 10),
+    { col: 2, row: 2, w: 4, h: 3 },
+    'Room',
+    TEAM_ROOM_AREA_COLOR,
+  );
+  const stale = {
+    ...layout,
+    areas: layout.areas?.map((a) => ({ ...a, rect: { col: 0, row: 0, w: 4, h: 3 } })),
+  };
+  assert.deepEqual(ensureRoomDoors(stale).areas?.[0].rect, { col: 2, row: 2, w: 4, h: 3 });
 });

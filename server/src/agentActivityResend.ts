@@ -80,6 +80,8 @@ export function resendAgentActivity(
         type: 'agentStatus',
         id,
         status: 'waiting',
+        // A replay, not a turn that just ended: no bubble, no chime.
+        seeded: true,
       });
     }
 

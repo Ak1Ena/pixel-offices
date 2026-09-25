@@ -487,7 +487,8 @@ export function useExtensionMessages(
           return { ...prev, [id]: status };
         });
         os.setAgentActive(id, status === 'active');
-        if (status === 'waiting') {
+        // seeded = already at its prompt when adopted/restored: idle, quietly.
+        if (status === 'waiting' && msg.seeded !== true) {
           os.showWaitingBubble(id, msg.awaitingInput === true);
           playDoneSound();
         }

@@ -46,6 +46,7 @@ import {
 } from './constants.js';
 import { seedContextUsage } from './contextUsage.js';
 import type { DismissalTracker } from './dismissalTracker.js';
+import { seedIdleState } from './idleSeed.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { pathsMatch } from './pathKey.js';
 import type { SubagentWatch } from './subagentWatch.js';
@@ -124,6 +125,7 @@ export function startFileWatching(
   seedChatHistory(agentId, agents, formatToolStatus, describeEdit);
   seedTokenUsage(agentId, agents);
   seedAgentCwd(agentId, agents);
+  seedIdleState(agentId, agents);
 
   // Single polling approach: reliable on all platforms (macOS, Linux, WSL2, Windows).
   // Previously used triple-redundant fs.watch + fs.watchFile + setInterval, but
