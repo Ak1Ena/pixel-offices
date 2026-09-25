@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // The office new users get (the server serves the same file as the default layout).
 import originalOfficeLayout from '../public/assets/default-layout-1.json';
@@ -35,7 +35,12 @@ import { WhiteboardRail } from './components/WhiteboardRail.js';
 import { WorkflowBadges } from './components/WorkflowBadges.js';
 import { WorkflowRail } from './components/WorkflowRail.js';
 import { ZoomControls } from './components/ZoomControls.js';
-import { BOARD_FILE_API, DOC_UPLOAD_MAX_BYTES, INTRO_SEEN_KEY } from './constants.js';
+import {
+  BOARD_FILE_API,
+  DOC_UPLOAD_MAX_BYTES,
+  INTRO_SEEN_KEY,
+  OFFICE_VIEW_KEY,
+} from './constants.js';
 import { isDocProposal, openProposalFor } from './docSuggestions.js';
 import type { DocRef } from './docViewer.js';
 import { fileBaseName, refText, samePath, withRefs } from './docViewer.js';
@@ -79,6 +84,9 @@ import { transport } from './transport/index.js';
 import { activeRun, openGates } from './workflows.js';
 
 // Game state lives outside React — updated imperatively by message handlers
+// Three.js only loads for viewers who switch the 3D view on.
+const Office3DView = lazy(() => import('./office3d/Office3DView.js'));
+
 const officeStateRef = { current: null as OfficeState | null };
 const editorState = new EditorState();
 
@@ -303,6 +311,13 @@ function App() {
   const [isHooksInfoOpen, setIsHooksInfoOpen] = useState(false);
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
+  const [is3DView, setIs3DView] = useState(() => {
+    try {
+      return localStorage.getItem(OFFICE_VIEW_KEY) === '3d';
+    } catch {
+      return false;
+    }
+  });
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
 
   const currentMajorMinor = toMajorMinor(extensionVersion);
@@ -322,6 +337,16 @@ function App() {
   }, [alwaysShowLabels]);
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), []);
+  const handleToggle3DView = useCallback(() => {
+    setIs3DView((prev) => {
+      try {
+        localStorage.setItem(OFFICE_VIEW_KEY, prev ? 'pixel' : '3d');
+      } catch {
+        /* the choice just won't be remembered */
+      }
+      return !prev;
+    });
+  }, []);
   const handleToggleAlwaysShowOverlay = useCallback(() => {
     setAlwaysShowOverlay((prev) => {
       const newVal = !prev;
@@ -648,51 +673,66 @@ function App() {
       return false;
     })();
 
+  const handleWorkflowDrop =
+    chat.privileged || !isBrowserRuntime
+      ? (agentId: number, workflowId: string) => workflows.attach(agentId, workflowId)
+      : undefined;
+  const handleCardDrop =
+    chat.privileged || !isBrowserRuntime
+      ? (agentId: number, taskId: string) => {
+          // Only this agent may take the card; a draft goes onto the desk with it.
+          desk.setAllow(taskId, [agentId]);
+          if (desk.tasks.find((t) => t.id === taskId)?.state === 'draft') {
+            desk.call(taskId, 'publish');
+          }
+        }
+      : undefined;
+  // The layout editor still works on the pixel canvas (3D building is phase 4).
+  const show3D = is3DView && !editor.isEditMode;
+
   if (!layoutReady) {
     return <div className="w-full h-full flex items-center justify-center ">Loading...</div>;
   }
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden">
-      <OfficeCanvas
-        officeState={officeState}
-        onClick={handleClick}
-        isEditMode={editor.isEditMode}
-        editorState={editorState}
-        onEditorTileAction={editor.handleEditorTileAction}
-        onEditorEraseAction={editor.handleEditorEraseAction}
-        onEditorSelectionChange={editor.handleEditorSelectionChange}
-        onDeleteSelected={editor.handleDeleteSelected}
-        onRotateSelected={editor.handleRotateSelected}
-        onDragMove={editor.handleDragMove}
-        editorTick={editor.editorTick}
-        zoom={editor.zoom}
-        onZoomChange={editor.handleZoomChange}
-        panRef={editor.panRef}
-        showAreas={effectiveShowAreas}
-        activeAreaLabel={activeAreaLabel}
-        onPinDrop={handlePinDrop}
-        onWorkflowDrop={
-          chat.privileged || !isBrowserRuntime
-            ? (agentId, workflowId) => workflows.attach(agentId, workflowId)
-            : undefined
-        }
-        onCardDrop={
-          chat.privileged || !isBrowserRuntime
-            ? (agentId, taskId) => {
-                // Only this agent may take the card; a draft goes onto the desk with it.
-                desk.setAllow(taskId, [agentId]);
-                if (desk.tasks.find((t) => t.id === taskId)?.state === 'draft') {
-                  desk.call(taskId, 'publish');
-                }
-              }
-            : undefined
-        }
-      />
+      {show3D ? (
+        <Suspense fallback={null}>
+          <Office3DView
+            officeState={officeState}
+            onClick={handleClick}
+            onPinDrop={handlePinDrop}
+            onWorkflowDrop={handleWorkflowDrop}
+            onCardDrop={handleCardDrop}
+          />
+        </Suspense>
+      ) : (
+        <OfficeCanvas
+          officeState={officeState}
+          onClick={handleClick}
+          isEditMode={editor.isEditMode}
+          editorState={editorState}
+          onEditorTileAction={editor.handleEditorTileAction}
+          onEditorEraseAction={editor.handleEditorEraseAction}
+          onEditorSelectionChange={editor.handleEditorSelectionChange}
+          onDeleteSelected={editor.handleDeleteSelected}
+          onRotateSelected={editor.handleRotateSelected}
+          onDragMove={editor.handleDragMove}
+          editorTick={editor.editorTick}
+          zoom={editor.zoom}
+          onZoomChange={editor.handleZoomChange}
+          panRef={editor.panRef}
+          showAreas={effectiveShowAreas}
+          activeAreaLabel={activeAreaLabel}
+          onPinDrop={handlePinDrop}
+          onWorkflowDrop={handleWorkflowDrop}
+          onCardDrop={handleCardDrop}
+        />
+      )}
 
       {!isDebugMode ? (
         <>
-          <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+          {!show3D && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
 
           {/* Vignette overlay */}
           <div
@@ -1481,6 +1521,8 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         isDebugMode={isDebugMode}
         onToggleDebugMode={handleToggleDebugMode}
+        is3DView={is3DView}
+        onToggle3DView={handleToggle3DView}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
         ghostHeadlessAgents={ghostHeadlessAgents}

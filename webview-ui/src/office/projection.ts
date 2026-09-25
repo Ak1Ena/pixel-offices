@@ -41,12 +41,26 @@ export function mapOffset(
 export interface OverlayProjection {
   toScreenX(worldX: number): number;
   toScreenY(worldY: number): number;
+  /** A point `rise` world px above the floor at (worldX, worldY), in CSS px.
+   *  Overlays that float over a character use this: it is the one form the
+   *  3D view can answer too (perspective can't map x and y separately). */
+  toScreen(worldX: number, worldY: number, rise?: number): { x: number; y: number };
   /** Container size in world units — what the viewport currently covers.
    *  Used to cap overlay offsets against the visible area. */
   readonly viewportWorldWidth: number;
   readonly viewportWorldHeight: number;
   /** CSS px → world units, for sizing overlay geometry in world terms. */
   toWorldLength(cssPx: number): number;
+}
+
+/** Set by the 3D view while it is on screen; `null` = the pixel canvas. */
+export type Screen3D = (worldX: number, worldY: number, rise: number) => { x: number; y: number };
+let screen3d: Screen3D | null = null;
+export function setScreen3D(fn: Screen3D | null): void {
+  screen3d = fn;
+}
+export function is3DView(): boolean {
+  return screen3d !== null;
 }
 
 export function overlayProjection(
@@ -67,9 +81,15 @@ export function overlayProjection(
     pan.x,
     pan.y,
   );
+  const toScreenX = (worldX: number) => (offsetX + worldX * zoom) / dpr;
+  const toScreenY = (worldY: number) => (offsetY + worldY * zoom) / dpr;
+  const s3 = screen3d;
   return {
-    toScreenX: (worldX) => (offsetX + worldX * zoom) / dpr,
-    toScreenY: (worldY) => (offsetY + worldY * zoom) / dpr,
+    toScreenX,
+    toScreenY,
+    toScreen: s3
+      ? (worldX, worldY, rise = 0) => s3(worldX, worldY, rise)
+      : (worldX, worldY, rise = 0) => ({ x: toScreenX(worldX), y: toScreenY(worldY - rise) }),
     viewportWorldWidth: canvasW / zoom,
     viewportWorldHeight: canvasH / zoom,
     toWorldLength: (cssPx) => (cssPx * dpr) / zoom,

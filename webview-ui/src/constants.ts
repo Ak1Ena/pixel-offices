@@ -519,3 +519,70 @@ export const TASK_DESK_COMMAND_KEY = 'pixel-agents.deskLaunchCommand';
  *  sees a session once its transcript exists, and that starts with a prompt. */
 export const TASK_DESK_FIRST_MESSAGE =
   'You were started by the Pixel Office task desk. A card will follow. Reply with just: ready';
+
+// ── 3D office (Soft Dollhouse view) ─────────────────────────────
+/** localStorage key: which office view this viewer uses ('pixel' | '3d'). */
+export const OFFICE_VIEW_KEY = 'pixel-agents.officeView';
+/** World px per metre: one tile is one metre in the 3D view. */
+export const OFFICE3D_PX_PER_M = 16;
+export const OFFICE3D_WALL_HEIGHT_M = 1.4;
+export const OFFICE3D_DESK_HEIGHT_M = 0.74;
+export const OFFICE3D_SEAT_HEIGHT_M = 0.47;
+/** Grass border around the office island, in tiles. */
+export const OFFICE3D_LAND_MARGIN = 3;
+/** Camera: field of view (deg), tilt limits (rad), zoom limits. */
+export const OFFICE3D_FOV = 30;
+export const OFFICE3D_TILT_MIN = 0.45;
+export const OFFICE3D_TILT_MAX = 1.35;
+export const OFFICE3D_ZOOM_MIN = 0.35;
+export const OFFICE3D_ZOOM_MAX = 2.5;
+/** Pointer travel (px) that turns a click into a drag. */
+export const OFFICE3D_DRAG_SLOP_PX = 4;
+/** Sub-agents are drawn smaller than their lead. */
+export const OFFICE3D_SUBAGENT_SCALE = 0.72;
+export const OFFICE3D_WALK_SWING = 0.6;
+export const OFFICE3D_COLORS = {
+  sky: '#F1E7DC',
+  floorA: '#F3E4CE',
+  floorB: '#EAD6BA',
+  wall: '#EFC9BC',
+  wallCap: '#FFF6EA',
+  base: '#C39A72',
+  grass: '#A3CC86',
+  hemiSky: '#FFFFFF',
+  hemiGround: '#C9A77F',
+  sun: '#FFF1DC',
+  deskTop: '#FFF5E6',
+  deskLeg: '#E3B57A',
+  chair: '#86B8BE',
+  chairBack: '#6A9FA6',
+  screen: '#4A4560',
+  screenOn: '#8FD3FF',
+  pot: '#E8927C',
+  leaf: '#7CC67A',
+  eyes: '#2A2638',
+  cheek: '#F2A0A0',
+  shoes: '#4A4560',
+  select: '#E8927C',
+} as const;
+/** The six character palettes, in the same order as char_0..char_5.png. */
+export const OFFICE3D_PALETTES: ReadonlyArray<{
+  shirt: string;
+  pants: string;
+  skin: string;
+  hair: string;
+}> = [
+  { shirt: '#3B6EA8', pants: '#2B2F3A', skin: '#E8B98F', hair: '#2B1D14' },
+  { shirt: '#D2573F', pants: '#3A3F4B', skin: '#8D5A3B', hair: '#1A1412' },
+  { shirt: '#3F8F6B', pants: '#4B3F35', skin: '#F2CBA5', hair: '#C98A3D' },
+  { shirt: '#8C5BB5', pants: '#2E3040', skin: '#C68A5E', hair: '#101010' },
+  { shirt: '#E0A43A', pants: '#35495E', skin: '#FFD9B8', hair: '#7A3E22' },
+  { shirt: '#5E6B78', pants: '#22252B', skin: '#A86E48', hair: '#3C3C3C' },
+];
+/** Overlay rise (world px above the feet, as the pixel view counts it) → metres:
+ *  32 px is the top of a standing sprite, the top of a 3D head is ~1.3 m. */
+export const OFFICE3D_RISE_M_PER_PX = 1.3 / 32;
+/** Light strength (three.js physical units) and how far the camera starts from the office. */
+export const OFFICE3D_HEMI_INTENSITY = 2.6;
+export const OFFICE3D_SUN_INTENSITY = 2.4;
+export const OFFICE3D_CAMERA_SPAN_K = 1.2;

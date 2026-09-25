@@ -412,8 +412,7 @@ export function ChatCard({
     panRef.current,
     window.devicePixelRatio || 1,
   );
-  const charX = project.toScreenX(ch.x);
-  const charY = project.toScreenY(ch.y);
+  const { x: charX, y: charY } = project.toScreen(ch.x, ch.y);
   const width = Math.min(tunable('chatCardWidthPx'), rect.width - CHAT_CARD_EDGE_MARGIN_PX * 2);
   const height = Math.min(tunable('chatCardHeightPx'), rect.height - CHAT_CARD_EDGE_MARGIN_PX * 2);
   const fitsRight = charX + CHAT_CARD_GAP_PX + width <= rect.width - CHAT_CARD_EDGE_MARGIN_PX;

@@ -55,6 +55,7 @@ export function WorkflowBadges({
         if (!ch || !run) return null;
         const p = runProgress(run);
         const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
+        const at = project.toScreen(ch.x, ch.y, WORKFLOW_BADGE_VERTICAL_OFFSET - sittingOffset);
         return (
           <div
             key={id}
@@ -62,8 +63,8 @@ export function WorkflowBadges({
               p.waiting ? 'border-status-permission' : 'border-accent'
             } pointer-events-none`}
             style={{
-              left: project.toScreenX(ch.x),
-              top: project.toScreenY(ch.y + sittingOffset - WORKFLOW_BADGE_VERTICAL_OFFSET),
+              left: at.x,
+              top: at.y,
             }}
             title={run.title}
             data-testid="workflow-badge"
