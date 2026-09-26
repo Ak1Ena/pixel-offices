@@ -171,6 +171,7 @@ export class TaskDesk {
 
   dispose(): void {
     clearInterval(this.timer);
+    this.autopilot?.dispose();
     this.agents.off('broadcast', this.onBroadcast);
     this.agents.off('agentRemoved', this.onAgentRemoved);
     for (const key of [...this.gateWaiters.keys()]) this.settleGate(key, { decision: 'gone' });
@@ -643,6 +644,7 @@ export class TaskDesk {
       if (!this.isCandidate(agent) || !this.pickupOf(agent)) continue;
       if (this.claims.has(id)) continue;
       if (!agent.isWaiting || agent.permissionSent) continue;
+      if (this.autopilot?.warmingUp(id)) continue;
       if (!this.chat.canSend(id) || !this.chat.isIdle(id)) continue;
       if (task.teamId) {
         // A team card goes to its team's lead, and only once the team runs.

@@ -250,11 +250,16 @@ describe('desk autopilot', () => {
     const task = await t.addCard();
     await t.desk.tick();
     expect(t.started).toHaveLength(1);
-    // Its agent shows up and takes the card; somebody else's agent 8 is idle all along.
+    // Its agent shows up: not handed the card while it answers its startup prompt.
     t.adopted.set('s1', 7);
     t.addAgent(7);
     await t.desk.tick();
+    expect(t.card(task).state).toBe('inbox');
+    t.store.broadcast({ type: 'agentStatus', id: 7, status: 'active' });
+    t.store.broadcast({ type: 'agentStatus', id: 7, status: 'waiting' });
+    await t.desk.tick();
     expect(t.card(task).claimedBy).toBe(7);
+    // Somebody else's agent 8 is idle all along.
     t.addAgent(8);
     // Holding a card is not idle, however long it takes.
     t.advance(11 * 60_000);

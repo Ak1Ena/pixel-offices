@@ -82,6 +82,8 @@ export interface OfficeSessionHost {
   refreshSendable(): void;
   /** The agent can take typed input now: deliver anything queued for it. */
   inputReady(agentId: number): void;
+  /** Its transcript is known: remember it as this office's, in case the office stops uncleanly. */
+  sessionRunning?(transcript: string): void;
 }
 
 interface OwnedSession {
@@ -892,6 +894,7 @@ export class OfficeSessions {
     // Dies with this office: never restored by the next one (see restoreExternalAgents).
     agent.officeRun = true;
     this.store.persist();
+    if (agent.jsonlFile) this.host.sessionRunning?.(agent.jsonlFile);
     if (session.name) this.host.renameAgent(agent.id, session.name);
     if (session.look) this.host.setAgentLook(agent.id, session.look);
     this.host.refreshSendable();

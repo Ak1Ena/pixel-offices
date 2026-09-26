@@ -8,6 +8,7 @@ import {
   AUTOPILOT_LOG_NAME,
   AUTOPILOT_MAX_SEND_BACKS,
   AUTOPILOT_SPAWN_TIMEOUT_MS,
+  AUTOPILOT_WARMUP_MAX_MS,
   TASK_CLI_COMMAND,
 } from './constants.js';
 import { confidentChoice, type Decider, type DecisionAnswer, tailOf } from './decisions.js';
@@ -88,6 +89,10 @@ interface Spawned {
   agentId?: number;
   /** Since when it has been idle with no card. */
   idleSince?: number;
+  /** Seen working on its startup prompt. */
+  busySeen?: boolean;
+  /** Its startup turn is over: it may be handed a card. */
+  ready?: boolean;
 }
 
 const PLAN_QUESTION = {
@@ -146,6 +151,37 @@ export class DeskAutopilot {
   constructor(private readonly opts: DeskAutopilotOptions) {
     this.settingsCache = (opts.readSettings ?? getAutopilot)();
     this.nowMs = opts.nowMs ?? Date.now;
+    opts.store.on('broadcast', this.onBroadcast);
+  }
+
+  dispose(): void {
+    this.opts.store.off('broadcast', this.onBroadcast);
+  }
+
+  /** Follows its own agents' startup turn: busy, then waiting = ready for a card. */
+  private readonly onBroadcast = (message: Record<string, unknown>): void => {
+    if (message.type !== 'agentStatus' || typeof message.id !== 'number') return;
+    const starter = this.opts.starter();
+    for (const [sessionId, s] of this.spawned) {
+      s.agentId ??= starter?.agentIdFor(sessionId);
+      if (s.agentId !== message.id || s.ready) continue;
+      if (message.status === 'active') s.busySeen = true;
+      else if (message.status === 'waiting' && s.busySeen) s.ready = true;
+    }
+  };
+
+  /**
+   * An agent autopilot started, still on its startup prompt. Handing it a card
+   * now would read the end of that "ready" turn as the end of the card's work.
+   */
+  warmingUp(agentId: number): boolean {
+    const starter = this.opts.starter();
+    for (const [sessionId, s] of this.spawned) {
+      s.agentId ??= starter?.agentIdFor(sessionId);
+      if (s.agentId !== agentId) continue;
+      return !s.ready && this.nowMs() - s.startedAt < AUTOPILOT_WARMUP_MAX_MS;
+    }
+    return false;
   }
 
   get settings(): AutopilotSettings {

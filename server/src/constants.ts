@@ -556,3 +556,5 @@ export const AUTOPILOT_MAX_SEND_BACKS = 2;
 /** Written into a brief question nobody answered when the agent may choose. */
 export const AUTOPILOT_AGENT_CHOOSES =
   'Nobody answered. Choose sensibly, and list it under "Choices I made" in your summary.';
+/** An agent autopilot started counts as busy until its startup turn ("ready") ended — or this long at most. */
+export const AUTOPILOT_WARMUP_MAX_MS = 90_000;

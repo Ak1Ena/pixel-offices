@@ -21,7 +21,7 @@ import {
 } from './assetReload.js';
 import type { AssetCache, ReloadAssetsSideEffect } from './clientMessageHandler.js';
 import { getHooksEnabled, grantHooksConsent, readConfig } from './configPersistence.js';
-import { readEndedSessions } from './endedSessions.js';
+import { readEndedSessions, recordEndedSessions, sessionsToDismiss } from './endedSessions.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import { OfficeSessions } from './officeSessions.js';
 import {
@@ -210,6 +210,7 @@ export async function startStandaloneOffice(
     removeAgent: (id) => runtime.removeAgent(id),
     refreshSendable: () => runtime.chatSender.refreshSendable(),
     inputReady: (id) => runtime.chatSender.retry(id),
+    sessionRunning: (file) => recordEndedSessions([file], Date.now(), undefined, process.pid),
   });
   runtime.chatSender.addWriter(officeSessions.writer);
   // Agents the office started were started to be given work.
@@ -263,7 +264,16 @@ export async function startStandaloneOffice(
   runtime.watchAllSessions.current = adapter.getSetting('pixel-agents.watchAllSessions', false);
 
   // Agents the previous office ran ended with it: keep them from coming back as ghosts.
-  runtime.dismissEndedSessions(readEndedSessions());
+  runtime.dismissEndedSessions(
+    sessionsToDismiss(readEndedSessions(), (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch (err) {
+        return (err as NodeJS.ErrnoException).code === 'EPERM';
+      }
+    }),
+  );
 
   // Start scanning for external sessions (Claude running in user's terminal)
   const dirs = claudeProvider.getSessionDirs?.(projectDir);

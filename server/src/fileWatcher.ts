@@ -1537,11 +1537,21 @@ function scanGlobalProjectDirs(
         }
       }
       if (tracked) continue;
+      // Closed by the user, ended with the previous office, or /clear'd: not ours to bring back.
+      if (dismissalTracker?.isPermanentlyDismissed(file) || dismissalTracker?.isDismissed(file)) {
+        continue;
+      }
       // Activity filter: >3KB AND modified within 10 minutes
       try {
         const stat = fs.statSync(file);
         if (stat.size < GLOBAL_SCAN_ACTIVE_MIN_SIZE) continue;
         if (now - stat.mtimeMs > GLOBAL_SCAN_ACTIVE_MAX_AGE_MS) continue;
+        // Seeded at startup (an office's own ended session): only a new write brings it back.
+        const seeded = dismissalTracker?.getSeededMtime(file);
+        if (seeded !== undefined) {
+          if (stat.mtimeMs <= seeded) continue;
+          dismissalTracker?.clearSeededMtime(file);
+        }
       } catch {
         continue;
       }

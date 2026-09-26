@@ -970,7 +970,16 @@ export class AgentRuntime {
    * being re-adopted as external sessions (see endedSessions.ts).
    */
   dismissEndedSessions(sessions: Array<{ file: string; at: number }>): void {
-    for (const s of sessions) this.dismissalTracker.dismiss(s.file, s.at);
+    for (const s of sessions) {
+      this.dismissalTracker.dismiss(s.file, s.at);
+      // Ignored until written again (a resume), not only for the short
+      // close cooldown: the global scan treats 10-minute-old transcripts as live.
+      try {
+        this.dismissalTracker.seedMtime(s.file, fs.statSync(s.file).mtimeMs);
+      } catch {
+        /* gone */
+      }
+    }
   }
 
   /** Broadcast Files (filesLoaded) — after anything that changes it outside the store. */
