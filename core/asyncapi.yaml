@@ -1042,11 +1042,28 @@ components:
         idle ones. Handshake + on change.
       type: object
       additionalProperties: false
-      required: [type, enabled, maxAgents, idleMinutes, command, canStartAgents, running]
+      required:
+        [
+          type,
+          enabled,
+          maxAgents,
+          idleMinutes,
+          command,
+          agentAnswers,
+          passGates,
+          canStartAgents,
+          running,
+        ]
       properties:
         type:
           const: autopilotState
         enabled:
+          type: boolean
+        agentAnswers:
+          description: Brief questions the decision model reads as safe are left to the agent to choose.
+          type: boolean
+        passGates:
+          description: Gate steps the decision model reads as routine are passed without the human.
           type: boolean
         maxAgents:
           type: integer
@@ -1070,6 +1087,10 @@ components:
         type:
           const: setAutopilot
         enabled:
+          type: boolean
+        agentAnswers:
+          type: boolean
+        passGates:
           type: boolean
         maxAgents:
           type: integer

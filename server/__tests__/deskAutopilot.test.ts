@@ -8,7 +8,7 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { type AutopilotSettings, parseAutopilot } from '../src/configPersistence.js';
 import { AUTOPILOT_FIRST_MESSAGE } from '../src/constants.js';
 import type { Decider, DecisionAnswer } from '../src/decisions.js';
-import { type AutopilotStarter, DeskAutopilot } from '../src/deskAutopilot.js';
+import { type AutopilotStarter, DeskAutopilot, testsFailed } from '../src/deskAutopilot.js';
 import { TaskDesk } from '../src/taskDesk.js';
 import { TaskStore } from '../src/taskStore.js';
 import type { AgentState } from '../src/types.js';
@@ -53,7 +53,10 @@ function setup(
       return { ok: true, sessionId: `s${started.length}` };
     },
     agentIdFor: (sessionId) => adopted.get(sessionId),
-    stopSession: (sessionId) => void stopped.push(sessionId) || true,
+    stopSession: (sessionId) => {
+      stopped.push(sessionId);
+      return true;
+    },
   };
   const autopilot = new DeskAutopilot({
     store,
@@ -275,5 +278,135 @@ describe('desk autopilot', () => {
     expect(t.stopped).toEqual(['s1']);
     expect(t.autopilot.snapshot()).toMatchObject({ running: 0 });
     t.desk.dispose();
+  });
+
+  /** A card taken by agent 1, its brief in: the desk has autopilot's go (or not). */
+  async function withBrief(
+    t: ReturnType<typeof setup>,
+    brief: { questions?: string[]; subtasks?: string[]; risk?: string } = {},
+  ) {
+    t.addAgent(1);
+    const task = await t.addCard();
+    await t.desk.tick();
+    await settle();
+    await t.desk.tick();
+    expect(
+      t.desk.submitBrief(task.num, {
+        understanding: 'You want X.',
+        subtasks: brief.subtasks ?? ['do it'],
+        files: [],
+        questions: brief.questions ?? [],
+        risk: brief.risk ?? 'low',
+        size: 'small',
+      }).ok,
+    ).toBe(true);
+    await t.desk.tick();
+    await settle();
+    await t.desk.tick();
+    return task;
+  }
+
+  it('lets the agent choose answers to questions the model reads as its own to pick', async () => {
+    const t = setup({
+      decider: decider((k) =>
+        k === 'q'
+          ? { choice: 'agent', confidence: 0.9 }
+          : k === 'plan'
+            ? { choice: 'go', confidence: 0.9 }
+            : undefined,
+      ),
+    });
+    const task = await withBrief(t, { questions: ['Commit on master or a new branch?'] });
+    expect(t.card(task).state).toBe('working');
+    expect(t.card(task).briefs.at(-1)?.questions[0].a).toMatch(/Choose sensibly/);
+    // The build prompt carries autopilot's rules.
+    expect(t.sent.at(-1)?.[1]).toMatch(/new branch of your own/);
+    t.desk.dispose();
+  });
+
+  it('keeps a question only the human can answer, and says so on the card', async () => {
+    const t = setup({
+      decider: decider((k) => (k === 'q' ? { choice: 'user', confidence: 0.9 } : undefined)),
+    });
+    const task = await withBrief(t, { questions: ['Delete the old API?'] });
+    expect(t.card(task).state).toBe('brief');
+    expect(t.card(task).log.at(-1)?.text).toMatch(/only you can answer/);
+    t.desk.dispose();
+  });
+
+  it('keeps questions for the human when the setting is off', async () => {
+    const t = setup({
+      settings: { agentAnswers: false },
+      decider: decider(() => ({ choice: 'agent', confidence: 0.99 })),
+    });
+    const task = await withBrief(t, { questions: ['Which branch?'] });
+    expect(t.card(task).state).toBe('brief');
+    t.desk.dispose();
+  });
+
+  it('passes a gate step the model reads as routine', async () => {
+    const t = setup({
+      decider: decider((k) => (k === 'gate' ? { choice: 'go', confidence: 0.9 } : undefined)),
+    });
+    const task = await withBrief(t, { subtasks: ['[gate] review your own diff', 'finish'] });
+    expect(t.card(task).state).toBe('working');
+    expect(t.desk.openGate(task.num, 1, '').ok).toBe(true);
+    await t.desk.tick();
+    await settle();
+    const step = t.card(task).briefs.at(-1)?.subtasks[0];
+    expect(step).toMatchObject({ done: true });
+    expect(step?.waiting).toBeUndefined();
+    expect(t.card(task).log.at(-1)).toMatchObject({ who: 'Autopilot' });
+    t.desk.dispose();
+  });
+
+  it('leaves a gate the model does not read as routine', async () => {
+    const t = setup({
+      decider: decider((k) => (k === 'gate' ? { choice: 'ask', confidence: 0.9 } : undefined)),
+    });
+    const task = await withBrief(t, { subtasks: ['[gate] deploy to production'] });
+    t.desk.openGate(task.num, 1, '');
+    await t.desk.tick();
+    await settle();
+    expect(t.card(task).briefs.at(-1)?.subtasks[0].waiting).toBe(true);
+    t.desk.dispose();
+  });
+
+  it('sends back a result with no or failing tests, twice at most', async () => {
+    const t = setup();
+    const task = await withBrief(t);
+    expect(t.card(task).state).toBe('working');
+    t.desk.submitResult(task.num, { summary: 'done', branch: 'autopilot/card-1' });
+    await t.desk.tick();
+    expect(t.card(task).log.some((l) => /Sent back: no test result/.test(l.text))).toBe(true);
+    // Rebuilt right away by the same agent (queued), then fails its tests.
+    expect(t.card(task).state).toBe('working');
+    t.desk.submitResult(task.num, { summary: 'done', branch: 'b', tests: '2 failed, 40 passed' });
+    await t.desk.tick();
+    expect(t.card(task).log.some((l) => /the tests failed/.test(l.text))).toBe(true);
+    t.desk.submitResult(task.num, { summary: 'done', branch: 'b', tests: '1 failed' });
+    await t.desk.tick();
+    // Third time: the human decides.
+    expect(t.card(task).state).toBe('result');
+    t.desk.dispose();
+  });
+
+  it('hands a passing result to the human', async () => {
+    const t = setup();
+    const task = await withBrief(t);
+    t.desk.submitResult(task.num, { summary: 'done', branch: 'b', tests: '42 passed, 0 failed' });
+    await t.desk.tick();
+    expect(t.card(task).state).toBe('result');
+    t.desk.dispose();
+  });
+});
+
+describe('testsFailed', () => {
+  it('reads failures, not passes', () => {
+    expect(testsFailed('3 failed, 10 passed')).toBe(true);
+    expect(testsFailed('tests failing on CI')).toBe(true);
+    expect(testsFailed('42 passed, 0 failed')).toBe(false);
+    expect(testsFailed('all passed, no errors')).toBe(false);
+    expect(testsFailed('no tests failed')).toBe(false);
   });
 });

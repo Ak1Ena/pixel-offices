@@ -551,3 +551,8 @@ export const AUTOPILOT_FIRST_MESSAGE =
 export const AUTOPILOT_LOG_NAME = 'Autopilot';
 /** A member name shorter than this is never matched without `@` ("ui", "qa" hide inside ordinary text). */
 export const ADDRESS_BARE_NAME_MIN_CHARS = 3;
+/** Autopilot sends a finished card back at most this many times (failed or missing tests). */
+export const AUTOPILOT_MAX_SEND_BACKS = 2;
+/** Written into a brief question nobody answered when the agent may choose. */
+export const AUTOPILOT_AGENT_CHOOSES =
+  'Nobody answered. Choose sensibly, and list it under "Choices I made" in your summary.';

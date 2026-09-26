@@ -555,6 +555,8 @@ export interface DeskCardSuggestionConfidence {
 export interface AutopilotState {
   type: 'autopilotState';
   enabled: boolean;
+  agentAnswers: boolean;
+  passGates: boolean;
   maxAgents: number;
   idleMinutes: number;
   command: string;
@@ -1536,6 +1538,8 @@ export interface SuggestDeskCard {
 export interface SetAutopilot {
   type: 'setAutopilot';
   enabled?: boolean;
+  agentAnswers?: boolean;
+  passGates?: boolean;
   maxAgents?: number;
   idleMinutes?: number;
   command?: string;

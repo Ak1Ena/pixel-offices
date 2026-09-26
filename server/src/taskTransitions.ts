@@ -148,12 +148,54 @@ export function applyHumanCall(task: DeskTask, call: HumanCall, at: string): Tra
  * Autopilot starts the build of a brief nobody has to answer: the human's
  * "Do the task", logged as autopilot's so the card says who decided.
  */
-export function autopilotBuild(task: DeskTask, who: string, why: string, at: string): Transition {
+export function autopilotBuild(
+  task: DeskTask,
+  who: string,
+  why: string,
+  at: string,
+  /** Written into the newest brief's unanswered questions (the agent chooses). */
+  unanswered?: string,
+): Transition {
   if (task.state !== 'brief') return fail('Only a card with a new brief can be started.');
   if (task.briefs.length === 0) return fail('This card has no brief to build from.');
+  const briefs = unanswered
+    ? task.briefs.map((b, i) =>
+        i === task.briefs.length - 1
+          ? { ...b, questions: b.questions.map((q) => (q.a.trim() ? q : { ...q, a: unanswered })) }
+          : b,
+      )
+    : task.briefs;
   return {
     ok: true,
-    task: { ...task, state: 'ready', queued: true, log: logged(task, 'verified', who, why, at) },
+    task: {
+      ...task,
+      state: 'ready',
+      queued: true,
+      briefs,
+      log: logged(task, 'verified', who, why, at),
+    },
+  };
+}
+
+/**
+ * Autopilot sends a finished card back (its tests failed or were never run):
+ * the human's "Send back", logged as autopilot's.
+ */
+export function autopilotSendBack(
+  task: DeskTask,
+  who: string,
+  note: string,
+  at: string,
+): Transition {
+  if (task.state !== 'result') return fail('Only a finished card can be sent back.');
+  return {
+    ok: true,
+    task: {
+      ...task,
+      state: 'ready',
+      queued: true,
+      log: logged(task, 'rejected', who, `Sent back: ${note}`, at),
+    },
   };
 }
 
@@ -399,6 +441,7 @@ export function gateAnswered(
   decision: 'continue' | 'stop',
   note: string,
   at: string,
+  who: string = YOU,
 ): Transition {
   const index = stepIndex(task, position);
   if (index === null) return fail(`This card has no step ${position}.`);
@@ -418,7 +461,7 @@ export function gateAnswered(
       log: logged(
         task,
         decision === 'continue' ? 'verified' : 'rejected',
-        YOU,
+        who,
         note ? `${said} ${note}` : said,
         at,
       ),

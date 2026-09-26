@@ -84,6 +84,10 @@ export interface AutopilotSettings {
   idleMinutes: number;
   /** What it runs to start an agent (an alias works when it runs Claude). */
   command: string;
+  /** A brief's questions the decision model reads as safe: the agent picks the answer itself. */
+  agentAnswers: boolean;
+  /** Gate steps the decision model reads as routine are passed without the human. */
+  passGates: boolean;
 }
 
 /** Laya checkpoint choice: one language model, or both with Laya's router picking. */
@@ -413,7 +417,10 @@ export function parseAutopilot(raw: unknown, base?: AutopilotSettings): Autopilo
     maxAgents: AUTOPILOT_DEFAULT_MAX_AGENTS,
     idleMinutes: AUTOPILOT_DEFAULT_IDLE_MINUTES,
     command: AUTOPILOT_DEFAULT_COMMAND,
+    agentAnswers: true,
+    passGates: true,
   };
+  const bool = (v: unknown, fallback: boolean) => (typeof v === 'boolean' ? v : fallback);
   const command =
     typeof r.command === 'string' ? r.command.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
   return {
@@ -421,6 +428,8 @@ export function parseAutopilot(raw: unknown, base?: AutopilotSettings): Autopilo
     maxAgents: clampInt(r.maxAgents, 1, AUTOPILOT_MAX_AGENTS_LIMIT, b.maxAgents),
     idleMinutes: clampInt(r.idleMinutes, 1, AUTOPILOT_IDLE_MINUTES_MAX, b.idleMinutes),
     command: command.slice(0, 200) || b.command,
+    agentAnswers: bool(r.agentAnswers, b.agentAnswers),
+    passGates: bool(r.passGates, b.passGates),
   };
 }
 

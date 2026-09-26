@@ -346,14 +346,22 @@ export class TaskDesk {
   }
 
   /** The human answers an agent waiting at a gate step. */
-  answerGate(taskId: unknown, position: unknown, decision: unknown, note: unknown): DeskReply {
+  answerGate(
+    taskId: unknown,
+    position: unknown,
+    decision: unknown,
+    note: unknown,
+    who?: string,
+  ): DeskReply {
     const task = this.cards.find(taskId);
     if (!task) return { ok: false, error: NO_CARD };
     if (decision !== 'continue' && decision !== 'stop')
       return { ok: false, error: 'Unknown answer.' };
     const step = stepAt(task, position);
     const text = cleanText(note, TASK_NOTE_MAX_CHARS) ?? '';
-    const reply = this.commit(gateAnswered(task, Number(position), decision, text, this.now()));
+    const reply = this.commit(
+      gateAnswered(task, Number(position), decision, text, this.now(), who),
+    );
     if (reply.ok && step?.id) {
       this.settleGate(`${task.id}:${step.id}`, { decision, ...(text ? { note: text } : {}) });
     }
@@ -602,7 +610,11 @@ export class TaskDesk {
       const reply = this.commit(startWork(task, agent.id), { owner: this.owner });
       if (!reply.ok) continue;
       this.claims.set(agent.id, { taskId: task.id, sawBusy: false });
-      this.chat.send(agent.id, buildPrompt(reply.value));
+      const note = this.autopilot?.buildNote(reply.value);
+      this.chat.send(
+        agent.id,
+        note ? `${buildPrompt(reply.value)}\n${note}` : buildPrompt(reply.value),
+      );
     }
     for (const task of looks) {
       const agent = this.freeAgentsFor(task)[0];
@@ -619,6 +631,8 @@ export class TaskDesk {
     cards: () => this.cards.getTasks(),
     commit: (transition) => this.commit(transition),
     hasFreeAgent: (task) => this.freeAgentsFor(task).length > 0,
+    answerGate: (taskId, position, note, who) =>
+      this.answerGate(taskId, position, 'continue', note, who),
     holding: (agentId) => this.claims.has(agentId),
     tick: () => void this.tick(),
   };

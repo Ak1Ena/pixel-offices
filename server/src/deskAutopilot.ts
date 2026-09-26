@@ -3,13 +3,21 @@ import type { AgentStateStore } from './agentStateStore.js';
 import { type CardRoutingOptions, suggestForCard } from './cardRouting.js';
 import { type AutopilotSettings, getAutopilot, setAutopilot } from './configPersistence.js';
 import {
+  AUTOPILOT_AGENT_CHOOSES,
   AUTOPILOT_FIRST_MESSAGE,
   AUTOPILOT_LOG_NAME,
+  AUTOPILOT_MAX_SEND_BACKS,
   AUTOPILOT_SPAWN_TIMEOUT_MS,
+  TASK_CLI_COMMAND,
 } from './constants.js';
-import { confidentChoice, type Decider, tailOf } from './decisions.js';
+import { confidentChoice, type Decider, type DecisionAnswer, tailOf } from './decisions.js';
 import type { DeskReply } from './taskDesk.js';
-import { autopilotBuild, autopilotRouted, type Transition } from './taskTransitions.js';
+import {
+  autopilotBuild,
+  autopilotRouted,
+  autopilotSendBack,
+  type Transition,
+} from './taskTransitions.js';
 
 /**
  * The desk on autopilot (Settings → Autopilot): cards go from the inbox to a
@@ -19,15 +27,22 @@ import { autopilotBuild, autopilotRouted, type Transition } from './taskTransiti
  * 1. Route — a new inbox card the human left without a team, workflow or
  *    model gets them from the decision model (cardRouting.ts). Unsure or no
  *    model: one agent, the usual model. Once per card, logged on it.
- * 2. Approve — a brief with no open questions and not marked high risk is
- *    built at once, unless the decision model says the plan needs the human.
- * 3. Staff — a card with no free agent in its folder gets one started there
+ * 2. Approve — a brief not marked high risk is built at once, unless the
+ *    decision model says the plan needs the human. Open questions: with
+ *    `agentAnswers`, each one the model reads as safe to leave to the agent
+ *    is answered "choose sensibly and say what you chose"; any other keeps
+ *    the brief with the human.
+ * 3. Gates — with `passGates`, a gate step the model reads as routine is
+ *    passed; any other waits for the human.
+ * 4. Check — the build prompt asks for its own branch and a test run; a
+ *    result with failing or missing tests is sent back (at most
+ *    AUTOPILOT_MAX_SEND_BACKS times) before the human sees it.
+ * 5. Staff — a card with no free agent in its folder gets one started there
  *    (OfficeSessions; standalone only), up to `maxAgents` of autopilot's own.
- * 4. Tidy — an agent autopilot started that sits idle with no card for
+ * 6. Tidy — an agent autopilot started that sits idle with no card for
  *    `idleMinutes` is closed. Agents somebody else started are never touched.
  *
- * Never used for permissions, answering an agent's questions, or accepting a
- * result: those stay with the human.
+ * Never used for permissions or accepting a result: those stay with the human.
  */
 
 /** What autopilot starts agents with (OfficeSessions). */
@@ -50,6 +65,8 @@ export interface AutopilotDesk {
   hasFreeAgent(task: DeskTask): boolean;
   /** The agent is looking at or building a card. */
   holding(agentId: number): boolean;
+  /** Let an agent waiting at a gate step go on. */
+  answerGate(taskId: string, position: number, note: string, who: string): DeskReply;
   tick(): void;
 }
 
@@ -82,6 +99,36 @@ const PLAN_QUESTION = {
     ask: 'deletes data, touches production, payments, secrets or security, rewrites a lot, or leaves a decision open for the user',
   },
 };
+
+const QUESTION_QUESTION = {
+  type: 'choice' as const,
+  instructions:
+    'A coding agent asked the user this before starting. Nobody answered. Can the agent safely choose the answer itself?',
+  criteria: {
+    agent:
+      'a detail with a sensible default the user can change later: naming, wording, style, where to put a file, which branch',
+    user: 'only the user can decide: deletes or replaces something, changes behaviour users rely on, costs money, touches production, security or secrets',
+  },
+};
+
+const GATE_QUESTION = {
+  type: 'choice' as const,
+  instructions:
+    'A coding agent stopped at this step of its plan and waits for a go-ahead. Is it a routine step it can simply continue with?',
+  criteria: {
+    go: 'routine: writing or changing code or docs, running tests, a review of its own work',
+    ask: 'deletes data, deploys or publishes, migrates a database, touches production, payments, secrets or security, or asks the user to decide something',
+  },
+};
+
+/** A test report that says something failed ("3 failed", "tests failing"), and not "0 failed". */
+export function testsFailed(tests: string): boolean {
+  if (/\b[1-9]\d*\s+(failed|failing|failures?|errors?)\b/i.test(tests)) return true;
+  return (
+    /\b(failed|failing|broken)\b/i.test(tests) &&
+    !/\b(0|no|zero)\s+(tests?\s+)?(failed|failing|failures?)\b/i.test(tests)
+  );
+}
 
 export class DeskAutopilot {
   private settingsCache: AutopilotSettings;
@@ -140,7 +187,11 @@ export class DeskAutopilot {
     for (const task of desk.cards()) {
       if (this.held.has(task.id)) continue;
       if (task.state === 'inbox' && !task.autoRouted) this.route(desk, task);
+      // Past the inbox, only cards autopilot took on: one you were driving stays yours.
+      else if (!task.autoRouted) continue;
       else if (task.state === 'brief') this.judge(desk, task);
+      else if (task.state === 'working' && this.settingsCache.passGates) this.gates(desk, task);
+      else if (task.state === 'result') this.check(desk, task);
     }
   }
 
@@ -210,20 +261,28 @@ export class DeskAutopilot {
     const brief = task.briefs[task.briefs.length - 1];
     if (!brief) return;
     this.judged.add(key);
-    // Open questions and high-risk plans are the human's, whatever a model says.
-    if (brief.questions.some((q) => !q.a.trim())) return;
+    // A high-risk plan is the human's, whatever a model says.
     if (/high/i.test(brief.risk)) return;
+    const open = brief.questions.filter((q) => !q.a.trim());
     const decider = this.opts.decider();
+    // Questions need a model to read them (and the setting); without one they wait.
+    if (open.length > 0 && (!decider || !this.settingsCache.agentAnswers)) return;
     const build = (why: string) => {
       const current = desk.cards().find((t) => t.id === task.id);
       if (!current || current.state !== 'brief' || current.briefs.length !== task.briefs.length)
         return;
       desk.commit(
-        autopilotBuild(current, AUTOPILOT_LOG_NAME, why, new Date(this.nowMs()).toISOString()),
+        autopilotBuild(
+          current,
+          AUTOPILOT_LOG_NAME,
+          why,
+          new Date(this.nowMs()).toISOString(),
+          open.length > 0 ? AUTOPILOT_AGENT_CHOOSES : undefined,
+        ),
       );
     };
     if (!decider) {
-      build('No open questions and not high risk: started the build.');
+      build('Not high risk: started the build.');
       return;
     }
     this.held.add(task.id);
@@ -234,16 +293,118 @@ export class DeskAutopilot {
     ]
       .filter(Boolean)
       .join('\n');
-    void decider
-      .ask({ card: task.title, plan: tailOf(plan) }, { plan: PLAN_QUESTION })
-      .then((answers) => {
-        if (confidentChoice(answers?.plan, 'plan') === 'ask') return;
-        build('The plan needs no answers from you: started the build.');
+    void Promise.all([
+      decider.ask({ card: task.title, plan: tailOf(plan) }, { plan: PLAN_QUESTION }),
+      ...open.map((q) =>
+        decider.ask({ card: task.title, question: tailOf(q.q) }, { q: QUESTION_QUESTION }),
+      ),
+    ])
+      .then(([planAnswers, ...questionAnswers]) => {
+        if (confidentChoice(planAnswers?.plan, 'plan') === 'ask') {
+          this.note(desk, task, 'Left the plan for you: it reads as risky.');
+          return;
+        }
+        const blocking = open.filter(
+          (_, i) =>
+            confidentChoice(questionAnswers[i]?.q as DecisionAnswer | undefined, 'plan') !==
+            'agent',
+        );
+        if (blocking.length > 0) {
+          this.note(
+            desk,
+            task,
+            `Waiting for you: ${blocking.length === 1 ? 'a question only you can answer' : `${blocking.length} questions only you can answer`} ("${blocking[0].q.slice(0, 120)}").`,
+          );
+          return;
+        }
+        build(
+          open.length > 0
+            ? `${open.length} question${open.length === 1 ? '' : 's'}, none only yours: the agent chooses and says what it chose. Started the build.`
+            : 'The plan needs no answers from you: started the build.',
+        );
       })
       .finally(() => {
         this.held.delete(task.id);
         desk.tick();
       });
+  }
+
+  /** A gate step the agent waits at: pass it when the model reads it as routine. */
+  private gates(desk: AutopilotDesk, task: DeskTask): void {
+    const brief = task.briefs[task.briefs.length - 1];
+    const decider = this.opts.decider();
+    if (!brief || !decider) return;
+    brief.subtasks.forEach((step, index) => {
+      if (!step.waiting) return;
+      const key = `${task.id}:gate:${step.id ?? index}:${task.log.length}`;
+      if (this.judged.has(key)) return;
+      this.judged.add(key);
+      void decider
+        .ask(
+          { card: task.title, step: tailOf(`${step.title}${step.ask ? `\n${step.ask}` : ''}`) },
+          { gate: GATE_QUESTION },
+        )
+        .then((answers) => {
+          if (confidentChoice(answers?.gate, 'plan') !== 'go') return;
+          desk.answerGate(task.id, index + 1, 'Autopilot: a routine step.', AUTOPILOT_LOG_NAME);
+        });
+    });
+  }
+
+  /** A finished card: tests failed or never ran → back to the agent, a few times at most. */
+  private check(desk: AutopilotDesk, task: DeskTask): void {
+    const key = `${task.id}:result:${task.log.length}`;
+    if (this.judged.has(key) || !task.result) return;
+    this.judged.add(key);
+    const sentBack = task.log.filter(
+      (l) => l.who === AUTOPILOT_LOG_NAME && l.text.startsWith('Sent back'),
+    ).length;
+    const tests = task.result.tests?.trim() ?? '';
+    const branch = task.result.branch?.trim() ?? '';
+    if (!branch || /^(main|master)$/i.test(branch)) {
+      this.note(desk, task, 'Check the branch: this work is not on a branch of its own.');
+    }
+    if (sentBack >= AUTOPILOT_MAX_SEND_BACKS) return;
+    const why = !tests
+      ? `no test result was reported. Run the project's tests (or say why none apply) and report with ${TASK_CLI_COMMAND} done ${task.num} --tests "…".`
+      : testsFailed(tests)
+        ? `the tests failed ("${tests.slice(0, 120)}"). Fix them, run them again and report the result.`
+        : '';
+    if (!why) return;
+    const current = desk.cards().find((t) => t.id === task.id) ?? task;
+    desk.commit(
+      autopilotSendBack(current, AUTOPILOT_LOG_NAME, why, new Date(this.nowMs()).toISOString()),
+    );
+  }
+
+  /** A line on the card's log from autopilot. */
+  private note(desk: AutopilotDesk, task: DeskTask, text: string): void {
+    const current = desk.cards().find((t) => t.id === task.id) ?? task;
+    desk.commit({
+      ok: true,
+      task: {
+        ...current,
+        log: [
+          ...current.log,
+          {
+            at: new Date(this.nowMs()).toISOString(),
+            who: AUTOPILOT_LOG_NAME,
+            kind: 'system',
+            text,
+          },
+        ],
+      },
+    });
+  }
+
+  /** Added to the build prompt while autopilot runs the desk. */
+  buildNote(task: DeskTask): string {
+    if (!this.settingsCache.enabled) return '';
+    return [
+      `Autopilot runs this card: work on a new branch of your own (for example autopilot/card-${task.num}), never on main or master, and do not push.`,
+      `Before ${TASK_CLI_COMMAND} done, run the project's tests and pass the result with --tests and your branch with --branch.`,
+      'Questions nobody answered: choose sensibly and list them under "Choices I made" in your summary.',
+    ].join('\n');
   }
 
   /** After the hand-out: start agents for cards nobody could take, close idle ones. */
