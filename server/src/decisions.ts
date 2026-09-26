@@ -40,11 +40,19 @@ export interface DecisionAnswer {
   model?: string;
 }
 
+/** Who a decision is about, for the office to show (the agent walks over to Laya). */
+export interface DecisionAbout {
+  agentId?: number;
+  /** A few words: what is being asked ("Is the work done?"). */
+  topic: string;
+}
+
 export interface Decider {
   /** Answers by question key, or null when the model could not be asked. Never throws. */
   ask(
     state: Record<string, string>,
     questions: Record<string, DecisionQuestion>,
+    about?: DecisionAbout,
   ): Promise<Record<string, DecisionAnswer> | null>;
 }
 

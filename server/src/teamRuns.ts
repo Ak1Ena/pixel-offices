@@ -169,15 +169,19 @@ export class TeamRuns {
         changed = this.callIn(run, team, starter, addressedParts(reply, benched)) || changed;
         continue;
       }
-      void addressedPartsWithDecisions(reply, benched, decider, (i) => run.members[i].name).then(
-        (parts) => {
-          const now = this.starter();
-          if (now && this.callIn(run, team, now, parts)) {
-            this.ensureTimer();
-            this.broadcast();
-          }
-        },
-      );
+      void addressedPartsWithDecisions(
+        reply,
+        benched,
+        decider,
+        (i) => run.members[i].name,
+        agentId,
+      ).then((parts) => {
+        const now = this.starter();
+        if (now && this.callIn(run, team, now, parts)) {
+          this.ensureTimer();
+          this.broadcast();
+        }
+      });
     }
     if (changed) {
       this.ensureTimer();

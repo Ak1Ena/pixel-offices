@@ -1,5 +1,6 @@
 import type {
   DeskAgent,
+  DeskColumnDef,
   DeskHumanAction,
   DeskSubtask,
   DeskTask,
@@ -217,6 +218,8 @@ export interface DeskColumn {
   hint: string;
   /** The human's column: briefs to judge and results to check. */
   yours: boolean;
+  /** The card states it shows. */
+  states: DeskTaskState[];
   tasks: DeskTask[];
 }
 
@@ -230,6 +233,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Drafts',
       hint: 'Yours. No agent sees these',
       yours: false,
+      states: ['draft'],
       tasks: pick(['draft']),
     },
     {
@@ -237,6 +241,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Inbox',
       hint: 'Waiting for a free agent',
       yours: false,
+      states: ['inbox'],
       tasks: pick(['inbox']),
     },
     {
@@ -244,6 +249,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Agent looking',
       hint: 'Reading the code',
       yours: false,
+      states: ['looking'],
       tasks: pick(['looking']),
     },
     {
@@ -251,6 +257,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Needs you',
       hint: 'Briefs and results to judge',
       yours: true,
+      states: ['brief', 'result'],
       tasks: pick(['brief', 'result']),
     },
     {
@@ -258,6 +265,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Ready',
       hint: 'Verified, or queued to start',
       yours: false,
+      states: ['ready'],
       tasks: pick(['ready']),
     },
     {
@@ -265,6 +273,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Working',
       hint: 'Building from the brief',
       yours: false,
+      states: ['working'],
       tasks: pick(['working']),
     },
     {
@@ -272,6 +281,7 @@ export function deskColumns(tasks: DeskTask[]): DeskColumn[] {
       title: 'Done',
       hint: 'Accepted by you',
       yours: false,
+      states: ['done'],
       tasks: pick(['done']).reverse(),
     },
   ];
@@ -400,4 +410,33 @@ export function sameSteps(a: DeskSubtask[], b: DeskSubtask[]): boolean {
       (s.ref ?? '') === (b[i].ref ?? '') &&
       s.skip === b[i].skip,
   );
+}
+
+/** A section of a board column: one of your columns (flow), or the state's own cards. */
+export interface DeskSubColumn {
+  /** The column you defined; null = cards of a state with no columns of its own. */
+  def: DeskColumnDef | null;
+  tasks: DeskTask[];
+}
+
+/**
+ * A board column split by the columns you defined for its states (deskFlow).
+ * A card with no (or a stale) column sits in its state's first one — as the
+ * server places it. Empty when none of its states has columns: show it whole.
+ */
+export function subColumns(column: DeskColumn, flow: DeskColumnDef[]): DeskSubColumn[] {
+  const defs = flow.filter((c) => column.states.includes(c.phase));
+  if (defs.length === 0) return [];
+  const sections: DeskSubColumn[] = defs.map((def) => ({ def, tasks: [] }));
+  const plain: DeskTask[] = [];
+  for (const task of column.tasks) {
+    const own = defs.filter((d) => d.phase === task.state);
+    if (own.length === 0) {
+      plain.push(task);
+      continue;
+    }
+    const def = own.find((d) => d.id === task.column) ?? own[0];
+    sections.find((s) => s.def === def)!.tasks.push(task);
+  }
+  return plain.length > 0 ? [{ def: null, tasks: plain }, ...sections] : sections;
 }

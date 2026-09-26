@@ -23,11 +23,13 @@ import { readConfig } from './configPersistence.js';
 import {
   AGENT_NAME_MAX_CHARS,
   DEFAULT_MAX_CONTEXT_TOKENS,
+  LAYA_CONSULT_COOLDOWN_MS,
   TOKEN_BURN_TICK_MS,
 } from './constants.js';
 import { ContextClear } from './contextClear.js';
 import { type Decider, decisionsConfig, SystemOneClient } from './decisions.js';
 import { DeskAutopilot } from './deskAutopilot.js';
+import { DeskFlowStore } from './deskFlow.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import { DocEdits } from './docEdits.js';
 import {
@@ -1083,7 +1085,36 @@ export class AgentRuntime {
       this.manualDecider = config ? new SystemOneClient(config) : null;
       if (config) console.log(`[Pixel Agents] Decision model: ${config.url}`);
     }
-    return this.manualDecider ?? this.laya.decider();
+    const inner = this.manualDecider ?? this.laya.decider();
+    return inner ? this.watched(inner) : null;
+  }
+
+  private readonly watchedDeciders = new WeakMap<Decider, Decider>();
+  private readonly consultedAt = new Map<number, number>();
+
+  /** The decider, telling the office whenever it is asked about an agent (layaConsult). */
+  private watched(inner: Decider): Decider {
+    let wrapped = this.watchedDeciders.get(inner);
+    if (!wrapped) {
+      wrapped = {
+        ask: (state, questions, about) => {
+          if (about?.agentId !== undefined) this.consulted(about.agentId, about.topic);
+          return inner.ask(state, questions, about);
+        },
+      };
+      this.watchedDeciders.set(inner, wrapped);
+    }
+    return wrapped;
+  }
+
+  /** The agent is shown walking over to Laya with its question — now and then, not every call. */
+  private consulted(agentId: number, topic: string): void {
+    const now = Date.now();
+    const last = this.consultedAt.get(agentId);
+    if (last !== undefined && now - last < LAYA_CONSULT_COOLDOWN_MS) return;
+    if (!this.store.get(agentId)) return;
+    this.consultedAt.set(agentId, now);
+    this.store.broadcast({ type: 'layaConsult', id: agentId, topic: topic.slice(0, 80) });
   }
 
   /** Laya run by the office (layaManager.ts). Created on first use; starts itself when config says on. */
@@ -1106,6 +1137,9 @@ export class AgentRuntime {
       defaultPickup: (agentId) => this.deskDefaultPickup(agentId),
       workflows: (id) => this.workflows.get(id),
       decider: () => this.decisions,
+      flow: new DeskFlowStore((columns) =>
+        this.store.broadcast({ type: 'deskFlowLoaded', columns }),
+      ),
       autopilot: new DeskAutopilot({
         store: this.store,
         decider: () => this.decisions,

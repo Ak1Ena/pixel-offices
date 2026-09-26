@@ -45,11 +45,13 @@ import {
   stepsToWorkflow,
   stuckFixes,
   stuckReason,
+  subColumns,
   subtaskProgress,
   workflowToSteps,
 } from '../taskDesk.js';
 import { transport } from '../transport/index.js';
 import { tunable } from '../tunableStore.js';
+import { DeskFlowEditor } from './DeskFlowEditor.js';
 import { DeskSteps } from './DeskSteps.js';
 import { FolderPicker } from './FolderPicker.js';
 import { ModelSelect } from './ModelSelect.js';
@@ -1375,6 +1377,9 @@ function DeskPanel({
   const [isAdding, setIsAdding] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [isFull, setIsFull] = useState(false);
+  const [editingFlow, setEditingFlow] = useState(false);
+  /** The board section under a dragged card (a column of yours). */
+  const [overSection, setOverSection] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState(false);
   const [filter, setFilter] = useState<DeskFilter>(NO_FILTER);
   /** The card being dragged, and the board column under it. */
@@ -1467,6 +1472,16 @@ function DeskPanel({
           Filter
         </Button>
       )}
+      {isFull && (
+        <Button
+          size="sm"
+          onClick={() => setEditingFlow(true)}
+          title="Split the board's states into your own columns; Laya moves cards between them"
+          data-testid="desk-flow-edit"
+        >
+          Columns
+        </Button>
+      )}
       <Button
         size="sm"
         onClick={() => setIsFull((v) => !v)}
@@ -1516,6 +1531,7 @@ function DeskPanel({
 
   if (isFull) {
     const columns = deskColumns(cards);
+    const sections = (column: (typeof columns)[number]) => subColumns(column, desk.flow);
     const open = desk.tasks.find((t) => t.id === openId);
     return (
       <section
@@ -1525,6 +1541,13 @@ function DeskPanel({
         {...stop}
       >
         {header}
+        {editingFlow && (
+          <DeskFlowEditor
+            columns={desk.flow}
+            onSave={desk.saveFlow}
+            onClose={() => setEditingFlow(false)}
+          />
+        )}
         {notice}
         {dropHint && (
           <span
@@ -1599,12 +1622,62 @@ function DeskPanel({
                       <span className="text-2xs text-text-muted">{column.hint}</span>
                     </div>
                     <div className="flex flex-col gap-6 p-8 overflow-y-auto">
-                      {column.tasks.length === 0 && (
+                      {column.tasks.length === 0 && sections(column).length === 0 && (
                         <span className="text-2xs text-text-muted">
                           {filtering ? 'Nothing matches.' : 'Nothing here.'}
                         </span>
                       )}
-                      {column.tasks.map((task) => card(task, false))}
+                      {sections(column).length === 0
+                        ? column.tasks.map((task) => card(task, false))
+                        : sections(column).map((section) => {
+                            const key = section.def?.id ?? '__own';
+                            const draggedTask = dragged;
+                            const canMove =
+                              !!section.def &&
+                              !!draggedTask &&
+                              draggedTask.state === section.def.phase &&
+                              draggedTask.column !== section.def.id;
+                            return (
+                              <div
+                                key={key}
+                                className={`flex flex-col gap-6 p-4 rounded-ui border ${
+                                  canMove && overSection === key
+                                    ? 'border-accent bg-active-bg'
+                                    : canMove
+                                      ? 'border-dashed border-accent'
+                                      : 'border-transparent'
+                                }`}
+                                data-testid={`desk-section-${key}`}
+                                onDragOver={(e) => {
+                                  if (!canMove) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  e.dataTransfer.dropEffect = 'move';
+                                  setOverSection(key);
+                                }}
+                                onDragLeave={() => setOverSection((s) => (s === key ? null : s))}
+                                onDrop={(e) => {
+                                  if (!canMove || !section.def || !draggedTask) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDragId(null);
+                                  setOverSection(null);
+                                  desk.setColumn(draggedTask.id, section.def.id);
+                                }}
+                              >
+                                {section.def && (
+                                  <span
+                                    className="text-2xs uppercase tracking-wider text-text-muted"
+                                    title={section.def.description}
+                                  >
+                                    {section.def.name} · {section.tasks.length}
+                                    {section.def.laya ? ' · Laya' : ''}
+                                  </span>
+                                )}
+                                {section.tasks.map((task) => card(task, false))}
+                              </div>
+                            );
+                          })}
                     </div>
                   </div>
                 );

@@ -272,6 +272,8 @@ export interface Character {
    *  per-consumer guard reads this flag. It exists for the render/e2e snapshot
    *  (testHooks.getCharacters) to tell the greeter from agents. */
   isGreeter?: boolean;
+  /** Laya, the decision model: a character, not an agent (officeState.laya). */
+  isLaya?: boolean;
 
   // -- Agent Teams --
   /** Team name this agent belongs to */

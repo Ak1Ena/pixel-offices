@@ -47,6 +47,8 @@ export type ServerMessage =
   | LayaStatus
   | DeskCardSuggestion
   | AutopilotState
+  | LayaConsult
+  | DeskFlowLoaded
   | FilesLoaded
   | FileOpened
   | AgentPermissionAsk
@@ -152,6 +154,8 @@ export type ClientMessage =
   | UninstallLaya
   | SuggestDeskCard
   | SetAutopilot
+  | SaveDeskFlow
+  | SetDeskColumn
   | OpenOfficeFile
   | ForgetOfficeFile
   | PinOfficeFile
@@ -564,6 +568,28 @@ export interface AutopilotState {
   running: number;
 }
 
+export interface LayaConsult {
+  type: 'layaConsult';
+  id: number;
+  topic: string;
+}
+
+export interface DeskFlowLoaded {
+  type: 'deskFlowLoaded';
+  columns: DeskColumnDef[];
+}
+
+export interface DeskColumnDef {
+  id: string;
+  name: string;
+  description: string;
+  phase: DeskTaskState;
+  laya: boolean;
+}
+
+export type DeskTaskState =
+  'draft' | 'inbox' | 'looking' | 'brief' | 'ready' | 'working' | 'result' | 'done';
+
 export interface FilesLoaded {
   type: 'filesLoaded';
   files: OfficeFile[];
@@ -896,6 +922,7 @@ export interface DeskTask {
   workflowId?: string;
   model?: string;
   autoRouted?: boolean;
+  column?: string;
   attachments?: DeskAttachment[];
   waitingOn?: DeskWaitingOn;
 }
@@ -911,9 +938,6 @@ export interface DeskFolder {
   branch?: string;
   subPath?: string;
 }
-
-export type DeskTaskState =
-  'draft' | 'inbox' | 'looking' | 'brief' | 'ready' | 'working' | 'result' | 'done';
 
 export interface DeskBrief {
   by: string;
@@ -1543,6 +1567,17 @@ export interface SetAutopilot {
   maxAgents?: number;
   idleMinutes?: number;
   command?: string;
+}
+
+export interface SaveDeskFlow {
+  type: 'saveDeskFlow';
+  columns: DeskColumnDef[];
+}
+
+export interface SetDeskColumn {
+  type: 'setDeskColumn';
+  taskId: string;
+  column: string;
 }
 
 export interface OpenOfficeFile {

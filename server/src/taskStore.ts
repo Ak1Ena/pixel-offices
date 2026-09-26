@@ -329,6 +329,9 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
       ? { workflowId: t.workflowId }
       : {}),
     ...(t.autoRouted === true ? { autoRouted: true } : {}),
+    ...(typeof t.column === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(t.column)
+      ? { column: t.column }
+      : {}),
     ...(typeof t.model === 'string' && t.model.trim()
       ? { model: t.model.trim().slice(0, MODEL_LABEL_MAX_CHARS) }
       : {}),

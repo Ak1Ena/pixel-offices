@@ -232,6 +232,17 @@ export const INTRO_BUBBLE_Z_INDEX = 45;
 /** The greeter stands this many tiles in from the office's bottom-left corner
  *  (target tile (margin, rows-1-margin); nearest walkable tile if blocked). */
 export const GREETER_TILE_MARGIN = 3;
+/** Laya, the decision model, as a character (not an agent): shown while Laya is on. */
+export const LAYA_CHAR_ID = -1_000_000_001;
+/** Laya stands this many tiles in from the office's top-right corner (closest free tile). */
+export const LAYA_TILE_MARGIN = 2;
+/** Her look: a palette and hue shift no agent is likely to share. */
+export const LAYA_PALETTE = 5;
+export const LAYA_HUE_SHIFT = 200;
+/** An agent that walked over to Laya talks this long, then goes back to its desk. */
+export const LAYA_TALK_SEC = 4;
+/** Giving up on a walk to Laya that never arrives. */
+export const LAYA_WALK_MAX_SEC = 20;
 /** World px above the greeter's anchor (feet) where the bubble's bottom sits.
  *  Kept well above the head target (INTRO_TAIL_TARGET_RISE_WORLD) so the
  *  tail squares have a visible run between bubble and head. */

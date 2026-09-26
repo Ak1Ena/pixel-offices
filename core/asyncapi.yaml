@@ -125,6 +125,8 @@ components:
         - $ref: '#/components/schemas/LayaStatus'
         - $ref: '#/components/schemas/DeskCardSuggestion'
         - $ref: '#/components/schemas/AutopilotState'
+        - $ref: '#/components/schemas/LayaConsult'
+        - $ref: '#/components/schemas/DeskFlowLoaded'
         - $ref: '#/components/schemas/FilesLoaded'
         - $ref: '#/components/schemas/FileOpened'
         - $ref: '#/components/schemas/AgentPermissionAsk'
@@ -239,6 +241,8 @@ components:
         - $ref: '#/components/schemas/UninstallLaya'
         - $ref: '#/components/schemas/SuggestDeskCard'
         - $ref: '#/components/schemas/SetAutopilot'
+        - $ref: '#/components/schemas/SaveDeskFlow'
+        - $ref: '#/components/schemas/SetDeskColumn'
         - $ref: '#/components/schemas/OpenOfficeFile'
         - $ref: '#/components/schemas/ForgetOfficeFile'
         - $ref: '#/components/schemas/PinOfficeFile'
@@ -1077,6 +1081,82 @@ components:
         running:
           description: Agents autopilot started that are still open.
           type: integer
+
+    DeskColumnDef:
+      description: |
+        A board column you define inside one card state (its `phase`): cards in
+        that state sit in one of the state's columns. The description says what
+        a card in it looks like — Laya reads it to move cards after each agent
+        turn when `laya` is on. Moves between states stay with the desk's own
+        rules; columns only split a state.
+      type: object
+      additionalProperties: false
+      required: [id, name, description, phase, laya]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        phase:
+          $ref: '#/components/schemas/DeskTaskState'
+        laya:
+          type: boolean
+
+    DeskFlowLoaded:
+      description: The board's columns (~/.pixel-agents/desk-flow.json). Handshake + on change.
+      type: object
+      additionalProperties: false
+      required: [type, columns]
+      properties:
+        type:
+          const: deskFlowLoaded
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskColumnDef'
+
+    SaveDeskFlow:
+      description: Replace the board's columns. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, columns]
+      properties:
+        type:
+          const: saveDeskFlow
+        columns:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeskColumnDef'
+
+    SetDeskColumn:
+      description: Move a card to another column of its current state ('' = the state's own column). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, taskId, column]
+      properties:
+        type:
+          const: setDeskColumn
+        taskId:
+          type: string
+        column:
+          type: string
+
+    LayaConsult:
+      description: |
+        The decision model (Laya) is being asked about this agent — the office
+        shows it walking over to Laya with `topic`. Throttled per agent.
+      type: object
+      additionalProperties: false
+      required: [type, id, topic]
+      properties:
+        type:
+          const: layaConsult
+        id:
+          type: integer
+        topic:
+          type: string
 
     SetAutopilot:
       description: Change Settings → Autopilot; omitted fields keep their value. Privileged; persisted in config.json.
@@ -3652,6 +3732,9 @@ components:
         autoRouted:
           type: boolean
           description: Autopilot has chosen this card's team / workflow / model (once; the human can still change them).
+        column:
+          type: string
+          description: The board column (deskFlow) the card sits in inside its state; absent = the state's own column.
         attachments:
           type: array
           description: Files the human attached. Agents get their paths, never their content.

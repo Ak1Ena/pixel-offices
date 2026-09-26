@@ -330,7 +330,14 @@ export class DeskAutopilot {
       .filter(Boolean)
       .join('\n');
     void Promise.all([
-      decider.ask({ card: task.title, plan: tailOf(plan) }, { plan: PLAN_QUESTION }),
+      decider.ask(
+        { card: task.title, plan: tailOf(plan) },
+        { plan: PLAN_QUESTION },
+        {
+          agentId: task.claimedBy,
+          topic: open.length > 0 ? 'Can I choose these myself?' : 'Can my plan go ahead?',
+        },
+      ),
       ...open.map((q) =>
         decider.ask({ card: task.title, question: tailOf(q.q) }, { q: QUESTION_QUESTION }),
       ),
@@ -379,6 +386,7 @@ export class DeskAutopilot {
         .ask(
           { card: task.title, step: tailOf(`${step.title}${step.ask ? `\n${step.ask}` : ''}`) },
           { gate: GATE_QUESTION },
+          { agentId: task.claimedBy, topic: `Can I go on after step ${index + 1}?` },
         )
         .then((answers) => {
           if (confidentChoice(answers?.gate, 'plan') !== 'go') return;

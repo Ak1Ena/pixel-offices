@@ -24,7 +24,9 @@ export function handleTaskDeskMessage(
     type !== 'setDeskTaskAllow' &&
     type !== 'editDeskSteps' &&
     type !== 'answerDeskGate' &&
-    type !== 'setAgentPickup'
+    type !== 'setAgentPickup' &&
+    type !== 'saveDeskFlow' &&
+    type !== 'setDeskColumn'
   ) {
     return false;
   }
@@ -86,6 +88,13 @@ export function handleTaskDeskMessage(
       break;
     case 'setAgentPickup':
       desk.setPickup(msg.id, msg.enabled);
+      break;
+    case 'saveDeskFlow':
+      if (!desk.flow) refuse('Board columns are not available here.');
+      else desk.flow.save(msg.columns);
+      break;
+    case 'setDeskColumn':
+      report(desk.setColumn(msg.taskId, msg.column));
       break;
   }
   return true;

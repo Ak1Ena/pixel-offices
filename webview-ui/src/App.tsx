@@ -58,7 +58,7 @@ import { useExtensionMessages } from './hooks/useExtensionMessages.js';
 import { useFiles } from './hooks/useFiles.js';
 import { useFocusRequests } from './hooks/useFocusRequests.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
-import { useLayaStatus } from './hooks/useLayaStatus.js';
+import { decisionModelReady, useLayaStatus } from './hooks/useLayaStatus.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
 import { useProposals } from './hooks/useProposals.js';
@@ -264,6 +264,19 @@ function App() {
   const proposals = useProposals();
   const docEdits = useDocEdits();
   const layaStatus = useLayaStatus();
+  // Laya stands in the office while it runs; agents walk over when she is asked about them.
+  const layaOn = decisionModelReady(layaStatus);
+  useEffect(() => {
+    if (layaOn) getOfficeState().spawnLaya();
+    else getOfficeState().despawnLaya();
+  }, [layaOn]);
+  useEffect(
+    () =>
+      transport.onMessage((msg) => {
+        if (msg.type === 'layaConsult') getOfficeState().consultLaya(msg.id, msg.topic);
+      }),
+    [],
+  );
   const autopilotState = useAutopilotState();
   const [docEditsSeen, setDocEditsSeen] = useState<ReadonlySet<string>>(() => new Set());
   const [reviewingId, setReviewingId] = useState<string | null>(null);

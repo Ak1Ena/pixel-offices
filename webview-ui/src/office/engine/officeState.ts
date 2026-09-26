@@ -11,6 +11,12 @@ import {
   GREETER_ID,
   GREETER_TILE_MARGIN,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
+  LAYA_CHAR_ID,
+  LAYA_HUE_SHIFT,
+  LAYA_PALETTE,
+  LAYA_TALK_SEC,
+  LAYA_TILE_MARGIN,
+  LAYA_WALK_MAX_SEC,
   MAX_PET_ID_LENGTH,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
@@ -98,6 +104,13 @@ export class OfficeState {
    * others.
    */
   greeter: Character | null = null;
+  /** Laya, the decision model, standing in the office while it runs (not an agent). */
+  laya: Character | null = null;
+  /** Agents visiting Laya: walking over, then talking (`topic` shown over them). */
+  private readonly layaVisits = new Map<
+    number,
+    { topic: string; phase: 'walk' | 'talk'; t: number; atDesk: boolean }
+  >();
 
   /** World-space point the camera drifts to while the greeter is up
    *  (the bubble overlay recomputes it every frame: the combined center of the
@@ -609,6 +622,119 @@ export class OfficeState {
     this.greeterCameraCancelled = false;
     if (!this.greeter || this.greeter.matrixEffect === 'despawn') return;
     startMatrixEffect(this.greeter, 'despawn');
+  }
+
+  /** Laya appears near the top-right corner while the decision model runs. Idempotent. */
+  spawnLaya(): void {
+    if (this.laya) {
+      if (this.laya.matrixEffect === 'despawn') startMatrixEffect(this.laya, 'spawn');
+      return;
+    }
+    const spawn = this.closestFreeWalkableTile(
+      this.layout.cols - 1 - LAYA_TILE_MARGIN,
+      LAYA_TILE_MARGIN,
+    );
+    if (!spawn) return;
+    const ch = createCharacter(LAYA_CHAR_ID, LAYA_PALETTE, null, null, LAYA_HUE_SHIFT);
+    ch.isLaya = true;
+    ch.displayName = 'Laya';
+    ch.state = CharacterState.IDLE;
+    ch.isActive = false;
+    ch.dir = Direction.DOWN;
+    ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2;
+    ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2;
+    ch.tileCol = spawn.col;
+    ch.tileRow = spawn.row;
+    startMatrixEffect(ch, 'spawn');
+    this.laya = ch;
+  }
+
+  despawnLaya(): void {
+    for (const id of [...this.layaVisits.keys()]) this.endLayaVisit(id);
+    if (!this.laya || this.laya.matrixEffect === 'despawn') return;
+    startMatrixEffect(this.laya, 'despawn');
+  }
+
+  /**
+   * Laya is being asked about this agent (server `layaConsult`): a free agent
+   * walks over to her and talks for a moment, then goes back to its desk. A
+   * busy one stays put and only shows the question.
+   */
+  consultLaya(agentId: number, topic: string): void {
+    const ch = this.characters.get(agentId);
+    const laya = this.laya;
+    if (!ch || !laya || ch.isSubagent || this.layaVisits.has(agentId)) return;
+    const busy = ch.isActive || ch.bubbleType === 'permission';
+    const spot = busy ? null : this.closestFreeWalkableTile(laya.tileCol, laya.tileRow + 1);
+    const walking = !!spot && this.walkToTile(agentId, spot.col, spot.row);
+    if (walking) ch.wanderTimer = Number.MAX_SAFE_INTEGER;
+    this.layaVisits.set(agentId, {
+      topic,
+      phase: walking ? 'walk' : 'talk',
+      t: 0,
+      atDesk: !walking,
+    });
+  }
+
+  /** What an agent is asking Laya right now (shown over it), else null. */
+  layaTopicOf(agentId: number): string | null {
+    const v = this.layaVisits.get(agentId);
+    return v && v.phase === 'talk' ? v.topic : null;
+  }
+
+  /** Someone is talking with Laya this moment. */
+  layaIsTalking(): boolean {
+    for (const v of this.layaVisits.values()) if (v.phase === 'talk' && !v.atDesk) return true;
+    return false;
+  }
+
+  private endLayaVisit(agentId: number): void {
+    const visit = this.layaVisits.get(agentId);
+    this.layaVisits.delete(agentId);
+    const ch = this.characters.get(agentId);
+    if (!ch || !visit || visit.atDesk) return;
+    ch.wanderTimer = 0;
+    if (!ch.isActive) this.sendToSeat(agentId);
+  }
+
+  private updateLayaVisits(dt: number): void {
+    for (const [id, v] of this.layaVisits) {
+      const ch = this.characters.get(id);
+      if (!ch) {
+        this.layaVisits.delete(id);
+        continue;
+      }
+      v.t += dt;
+      if (v.phase === 'walk') {
+        // Work arrived on the way, or the walk never gets there: back to the desk.
+        if (ch.isActive || v.t > LAYA_WALK_MAX_SEC) {
+          this.endLayaVisit(id);
+        } else if (ch.state !== CharacterState.WALK && this.laya) {
+          v.phase = 'talk';
+          v.t = 0;
+          const dx = this.laya.x - ch.x;
+          const dy = this.laya.y - ch.y;
+          ch.dir =
+            Math.abs(dx) > Math.abs(dy)
+              ? dx > 0
+                ? Direction.RIGHT
+                : Direction.LEFT
+              : dy > 0
+                ? Direction.DOWN
+                : Direction.UP;
+          this.laya.dir =
+            ch.dir === Direction.RIGHT
+              ? Direction.LEFT
+              : ch.dir === Direction.LEFT
+                ? Direction.RIGHT
+                : ch.dir === Direction.DOWN
+                  ? Direction.UP
+                  : Direction.DOWN;
+        }
+      } else if (v.t > LAYA_TALK_SEC || (!v.atDesk && ch.isActive)) {
+        this.endLayaVisit(id);
+      }
+    }
   }
 
   /** Per-frame update from the bubble overlay; ignored once the user panned. */
@@ -1222,6 +1348,10 @@ export class OfficeState {
     if (this.greeter && advanceMatrixEffect(this.greeter, dt) === 'despawned') {
       this.greeter = null;
     }
+    if (this.laya && advanceMatrixEffect(this.laya, dt) === 'despawned') {
+      this.laya = null;
+    }
+    this.updateLayaVisits(dt);
 
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
@@ -1287,6 +1417,7 @@ export class OfficeState {
   getCharacters(): Character[] {
     const chars = Array.from(this.characters.values());
     if (this.greeter) chars.push(this.greeter);
+    if (this.laya) chars.push(this.laya);
     return chars;
   }
 

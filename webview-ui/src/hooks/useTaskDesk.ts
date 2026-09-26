@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import type {
   DeskAgent,
+  DeskColumnDef,
   DeskHumanAction,
   DeskSubtask,
   DeskTask,
@@ -34,6 +35,11 @@ export interface NewCard {
 export interface TaskDeskState {
   tasks: DeskTask[];
   agents: DeskAgent[];
+  /** Board columns you defined inside the card states (server: deskFlow.ts). */
+  flow: DeskColumnDef[];
+  saveFlow: (columns: DeskColumnDef[]) => void;
+  /** Move a card to another column of its state ('' = the state's first). */
+  setColumn: (taskId: string, column: string) => void;
   /** Why the server refused the latest request, until the next one goes out. */
   notice: string | null;
   /** Add a card, or (with `taskId`) edit one. */
@@ -64,12 +70,15 @@ export function useTaskDesk(): TaskDeskState {
   const [tasks, setTasks] = useState<DeskTask[]>([]);
   const [agents, setAgents] = useState<DeskAgent[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [flow, setFlow] = useState<DeskColumnDef[]>([]);
 
   useEffect(() => {
     return transport.onMessage((msg) => {
       if (msg.type === 'taskDeskLoaded') {
         setTasks(msg.tasks);
         setAgents(msg.agents);
+      } else if (msg.type === 'deskFlowLoaded') {
+        setFlow(msg.columns);
       } else if (msg.type === 'taskDeskNotice') {
         setNotice(msg.error);
       }
@@ -107,6 +116,16 @@ export function useTaskDesk(): TaskDeskState {
     transport.send({ type: 'setAgentPickup', id: agentId, enabled });
   }, []);
 
+  const saveFlow = useCallback((columns: DeskColumnDef[]) => {
+    setNotice(null);
+    setFlow(columns);
+    transport.send({ type: 'saveDeskFlow', columns });
+  }, []);
+  const setColumn = useCallback((taskId: string, column: string) => {
+    setNotice(null);
+    transport.send({ type: 'setDeskColumn', taskId, column });
+  }, []);
+
   const reply = useCallback((agentId: number, text: string) => {
     setNotice(null);
     transport.send({ type: 'sendChatMessage', id: agentId, text });
@@ -115,6 +134,9 @@ export function useTaskDesk(): TaskDeskState {
   return {
     tasks,
     agents,
+    flow,
+    saveFlow,
+    setColumn,
     notice,
     saveCard,
     removeCard,

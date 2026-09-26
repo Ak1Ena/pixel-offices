@@ -104,12 +104,16 @@ export class MentionRelay {
       return;
     }
     const names = new Map(others.map((o) => [o.key, o.aliases[0]]));
-    void addressedPartsWithDecisions(text, others, decider, (id) => names.get(id) ?? `#${id}`).then(
-      (parts) => {
-        // Turned off, or the sender left, while the model was reading.
-        if (this.enabled && this.store.get(senderId)) this.pass(senderId, from, parts, now);
-      },
-    );
+    void addressedPartsWithDecisions(
+      text,
+      others,
+      decider,
+      (id) => names.get(id) ?? `#${id}`,
+      senderId,
+    ).then((parts) => {
+      // Turned off, or the sender left, while the model was reading.
+      if (this.enabled && this.store.get(senderId)) this.pass(senderId, from, parts, now);
+    });
   }
 
   private pass(senderId: number, from: string, parts: Map<number, string>, now: number): void {

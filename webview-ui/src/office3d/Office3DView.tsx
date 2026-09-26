@@ -644,12 +644,13 @@ export default function Office3DView({
       for (const ch of officeState.getCharacters()) {
         const r = rigs.get(ch.id);
         if (!r) continue;
+        const askingLaya = officeState.layaTopicOf(ch.id);
         const kind =
           ch.bubbleType === 'permission'
             ? 'ask'
             : ch.bubbleType === 'waiting'
               ? 'done'
-              : mt?.speaker === ch.id
+              : mt?.speaker === ch.id || (ch.isLaya && officeState.layaIsTalking())
                 ? 'talk'
                 : null;
         const above = at(r.g.position.x, r.height + 0.3, r.g.position.z);
@@ -658,7 +659,9 @@ export default function Office3DView({
           ch.id !== officeState.selectedAgentId &&
           ch.id !== officeState.hoveredAgentId &&
           !ch.matrixEffect
-            ? tagOfRef.current?.(ch.id)
+            ? ch.isLaya
+              ? { name: 'Laya', activity: 'decision model', status: undefined }
+              : tagOfRef.current?.(ch.id)
             : null;
         if (tag) {
           items.push({
@@ -671,6 +674,15 @@ export default function Office3DView({
           });
         }
         if (kind) items.push({ key: `b${ch.id}`, kind, ...above, y: above.y - (tag ? 30 : 0) });
+        if (askingLaya) {
+          items.push({
+            key: `laya${ch.id}`,
+            kind: 'say',
+            text: `Laya, ${askingLaya.charAt(0).toLowerCase()}${askingLaya.slice(1)}`,
+            ...above,
+            y: above.y - (tag ? 30 : 0) - (kind ? 30 : 0),
+          });
+        }
       }
       const youAt = at(avatar.x, avatar.rig.height + 0.3, avatar.z);
       if (avatar.isPlaced && Number.isFinite(youAt.x) && Number.isFinite(youAt.y))
@@ -1116,7 +1128,7 @@ function MeetingPanel({
   const d = directorRef.current;
   const m = d?.meeting ?? null;
   const people = [...officeState.characters.values()]
-    .filter((c) => !c.isSubagent && !c.isGreeter)
+    .filter((c) => !c.isSubagent && !c.isGreeter && !c.isLaya)
     .map((c) => ({
       id: c.id,
       tag: tagOf?.(c.id) ?? null,

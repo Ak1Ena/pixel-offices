@@ -463,7 +463,8 @@ export const DECISION_MIN_CONFIDENCE = 0.85;
  * Laya's `confidence` is not P(answer): on this office's questions its correct
  * answers mostly score 0.1–0.6, so one global 0.85 threw nearly all of them away.
  */
-export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card' | 'plan';
+export type DecisionKind =
+  'ending' | 'textIdle' | 'addressed' | 'card' | 'plan' | 'step' | 'column';
 /**
  * Per Laya checkpoint (the reply's `model`), the lowest confidence used per
  * question kind. Set where no WRONG answer passed on `scripts/laya-eval.py`
@@ -474,9 +475,36 @@ export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card' | 'plan'
 export const DECISION_THRESHOLDS: Record<string, Record<DecisionKind, number>> = {
   // `plan` (autopilot: may a brief be built without the human?) has no measurements yet:
   // it borrows `ending`'s values, and only a confident "ask the human" is acted on.
-  english: { ending: 0.3, textIdle: 0.2, addressed: 0.8, card: 0.35, plan: 0.3 },
-  multilingual: { ending: 0.45, textIdle: 0.35, addressed: 1.01, card: 0.5, plan: 0.45 },
-  'typed-decisions': { ending: 0.15, textIdle: 0.1, addressed: 0.7, card: 0.1, plan: 0.15 },
+  // `step` (a yes/no: "does the reply say this step is done?") borrows `addressed`'s
+  // yes/no values, multilingual's yes/no answers included (never used).
+  // `column` (which board column a reply puts the card in) borrows `ending`'s.
+  english: {
+    ending: 0.3,
+    textIdle: 0.2,
+    addressed: 0.8,
+    card: 0.35,
+    plan: 0.3,
+    step: 0.8,
+    column: 0.3,
+  },
+  multilingual: {
+    ending: 0.45,
+    textIdle: 0.35,
+    addressed: 1.01,
+    card: 0.5,
+    plan: 0.45,
+    step: 1.01,
+    column: 0.45,
+  },
+  'typed-decisions': {
+    ending: 0.15,
+    textIdle: 0.1,
+    addressed: 0.7,
+    card: 0.1,
+    plan: 0.15,
+    step: 0.7,
+    column: 0.15,
+  },
 };
 /** Text sent per decision. Laya's English checkpoint reads ~320 tokens of state, so replies keep their END. */
 export const DECISION_STATE_MAX_CHARS = 2_000;
@@ -558,3 +586,15 @@ export const AUTOPILOT_AGENT_CHOOSES =
   'Nobody answered. Choose sensibly, and list it under "Choices I made" in your summary.';
 /** An agent autopilot started counts as busy until its startup turn ("ready") ended — or this long at most. */
 export const AUTOPILOT_WARMUP_MAX_MS = 90_000;
+/** An agent is shown walking over to Laya at most once per this long (Laya is asked far more often). */
+export const LAYA_CONSULT_COOLDOWN_MS = 45_000;
+/** Steps asked about per turn end when the agent did not report them (Laya reads the reply). */
+export const TASK_STEP_READ_MAX = 10;
+
+// ── Board columns (deskFlow.ts) ──
+export const DESK_FLOW_FILE_NAME = 'desk-flow.json';
+export const DESK_FLOW_MAX_COLUMNS = 24;
+export const DESK_COLUMN_NAME_MAX_CHARS = 40;
+export const DESK_COLUMN_DESCRIPTION_MAX_CHARS = 300;
+/** Mid-turn, Laya reads a card's newest agent reply for its board column at most this often. */
+export const DESK_COLUMN_READ_MS = 20_000;

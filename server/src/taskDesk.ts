@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import type {
   DeskAgent,
   DeskBrief,
+  DeskColumnDef,
   DeskSubtask,
   DeskTask,
   TaskDeskLoaded,
@@ -12,14 +13,17 @@ import type {
 import type { AgentStateStore } from './agentStateStore.js';
 import type { ChatSender } from './chatSender.js';
 import {
+  DESK_COLUMN_READ_MS,
   SHOW_CLI_COMMAND,
   TASK_CLI_COMMAND,
   TASK_DESK_TICK_MS,
   TASK_NO_SUCH_CARD_ERROR,
   TASK_NOTE_MAX_CHARS,
+  TASK_STEP_READ_MAX,
 } from './constants.js';
-import { confidentChoice, type Decider, tailOf } from './decisions.js';
+import { confidentChoice, confidentYes, type Decider, tailOf } from './decisions.js';
 import type { AutopilotDesk, DeskAutopilot } from './deskAutopilot.js';
+import { columnsOf, type DeskFlowStore, placeCard } from './deskFlow.js';
 import { type FolderRoot, resolveFolderRoot, sameRoot } from './gitRoot.js';
 import {
   briefFromInput,
@@ -40,6 +44,7 @@ import {
   type HumanCall,
   lookFailed,
   startWork,
+  stepsReadDone,
   subtaskDone,
   type Transition,
   workAbandoned,
@@ -90,6 +95,8 @@ export interface TaskDeskOptions {
   decider?: () => Decider | null;
   /** Settings → Autopilot (deskAutopilot.ts). Absent = the human drives every card. */
   autopilot?: DeskAutopilot;
+  /** Board columns inside the card states (deskFlow.ts). Absent = one column per state. */
+  flow?: DeskFlowStore;
 }
 
 /** What the desk needs to give a card to a team (TeamStore + TeamRuns in the runtime). */
@@ -134,6 +141,8 @@ export class TaskDesk {
   private readonly teams: DeskTeams | undefined;
   private readonly decider: () => Decider | null;
   readonly autopilot: DeskAutopilot | undefined;
+  private readonly columns: () => DeskColumnDef[];
+  readonly flow: DeskFlowStore | undefined;
   /** Team cards whose team could not start: not retried until the card is edited. */
   private readonly teamFailed = new Set<string>();
   /** agent id → the card it is looking at or building. */
@@ -162,6 +171,8 @@ export class TaskDesk {
     this.teams = opts.teams;
     this.decider = opts.decider ?? (() => null);
     this.autopilot = opts.autopilot;
+    this.flow = opts.flow;
+    this.columns = () => this.flow?.list() ?? [];
     this.cards = opts.taskStore ?? new TaskStore(() => this.publish());
     this.agents.on('broadcast', this.onBroadcast);
     this.agents.on('agentRemoved', this.onAgentRemoved);
@@ -172,6 +183,7 @@ export class TaskDesk {
   dispose(): void {
     clearInterval(this.timer);
     this.autopilot?.dispose();
+    this.flow?.dispose();
     this.agents.off('broadcast', this.onBroadcast);
     this.agents.off('agentRemoved', this.onAgentRemoved);
     for (const key of [...this.gateWaiters.keys()]) this.settleGate(key, { decision: 'gone' });
@@ -671,6 +683,9 @@ export class TaskDesk {
     const id = message.id;
     if (typeof id !== 'number') return;
     const claim = this.claims.get(id);
+    // Mid-turn replies: the card may belong in another column of its state.
+    if (claim && message.type === 'agentChatEntry')
+      this.readColumnMidTurn(id, claim, message.entry);
     if (!claim) {
       // An agent just went idle: there may be a card waiting for it.
       if (message.type === 'agentStatus' && message.status === 'waiting') void this.tick();
@@ -714,19 +729,33 @@ export class TaskDesk {
       task.owner !== this.owner
     ) {
       this.finishTurn(agentId, claim);
+      if (decider && said && task) void this.placeByReply(task.id, said, agentId);
       return;
     }
     // Only a NEW turn may end it again; this one is being read.
     claim.sawBusy = false;
-    void this.readEnding(decider, task.title, said).then((kind) => {
+    void Promise.all([
+      this.readEnding(decider, task.title, said, agentId),
+      this.readSteps(decider, task, said),
+    ]).then(([kind, doneSteps]) => {
       // The agent went back to work (or lost the card) while the model read.
       if (this.claims.get(agentId) !== claim || claim.sawBusy) return;
+      if (doneSteps.length > 0) {
+        const before = this.cards.find(claim.taskId);
+        if (before) this.commit(stepsReadDone(before, doneSteps, this.now()));
+      }
       const current = this.cards.find(claim.taskId);
+      // Whatever the turn led to, the card then goes to the column its reply fits.
+      const place = () => void this.placeByReply(claim.taskId, said, agentId);
       if (kind && current) {
         const waitingOn = { kind, text: tailOf(said, TASK_NOTE_MAX_CHARS), at: this.now() };
-        if (this.commit(workWaiting(current, waitingOn, this.labelOf(agentId))).ok) return;
+        if (this.commit(workWaiting(current, waitingOn, this.labelOf(agentId))).ok) {
+          place();
+          return;
+        }
       }
       this.finishTurn(agentId, claim);
+      place();
     });
   }
 
@@ -734,6 +763,7 @@ export class TaskDesk {
     decider: Decider,
     title: string,
     reply: string,
+    agentId: number,
   ): Promise<'question' | 'blocked' | null> {
     const answers = await decider.ask(
       { card: title, reply: tailOf(reply) },
@@ -748,9 +778,126 @@ export class TaskDesk {
           },
         },
       },
+      { agentId, topic: 'Is the work done?' },
     );
     const ending = confidentChoice(answers?.ending, 'ending');
     return ending === 'question' || ending === 'blocked' ? ending : null;
+  }
+
+  /** The human moves a card to another column of its state ('' = the state's first). */
+  setColumn(taskId: unknown, column: unknown): DeskReply {
+    const task = this.cards.find(taskId);
+    if (!task) return { ok: false, error: NO_CARD };
+    const target = columnsOf(this.columns(), task.state).find((c) => c.id === column);
+    if (column !== '' && !target) {
+      return { ok: false, error: "That column is not part of the card's current state." };
+    }
+    if ((task.column ?? '') === (target?.id ?? '')) return { ok: true, value: task };
+    const reply = this.commit({
+      ok: true,
+      task: {
+        ...task,
+        column: target?.id,
+        log: [
+          ...task.log,
+          {
+            at: this.now(),
+            who: 'You',
+            kind: 'system',
+            text: `Moved to ${target?.name ?? 'the first column'}.`,
+          },
+        ],
+      },
+    });
+    this.publish();
+    return reply;
+  }
+
+  /**
+   * After an agent turn: the decision model reads the reply and moves the card
+   * to the column of its state that fits (only columns open to it, judged by
+   * their descriptions). Unsure: it stays.
+   */
+  private async placeByReply(taskId: string, reply: string, agentId: number): Promise<void> {
+    const decider = this.decider();
+    const task = this.cards.find(taskId);
+    if (!decider || !task || !reply) return;
+    const own = columnsOf(this.columns(), task.state);
+    const open = own.filter((c) => c.laya || c.id === task.column);
+    if (own.length < 2 || open.length < 2) return;
+    const answers = await decider.ask(
+      { card: task.title, reply: tailOf(reply) },
+      {
+        column: {
+          type: 'choice',
+          instructions:
+            "Given the coding agent's latest reply, which column of the board does this card belong in now?",
+          criteria: Object.fromEntries(
+            open.map((c) => [c.id, `${c.name}: ${c.description || c.name}`]),
+          ),
+        },
+      },
+      { agentId, topic: 'Where does my card go?' },
+    );
+    const pick = confidentChoice(answers?.column, 'column');
+    const current = this.cards.find(taskId);
+    const target = open.find((c) => c.id === pick);
+    if (!current || !target || current.state !== task.state || current.column === target.id) return;
+    this.commit({
+      ok: true,
+      task: {
+        ...current,
+        column: target.id,
+        log: [
+          ...current.log,
+          {
+            at: this.now(),
+            who: 'Laya',
+            kind: 'system',
+            text: `Moved it to ${target.name} after reading the agent's reply.`,
+          },
+        ],
+      },
+    });
+    this.publish();
+  }
+
+  /** Card id → when its column was last read mid-turn (Laya is not asked on every reply). */
+  private readonly columnReadAt = new Map<string, number>();
+
+  private readColumnMidTurn(agentId: number, claim: Claim, entry: unknown): void {
+    const e = entry as { role?: unknown; text?: unknown } | undefined;
+    if (e?.role !== 'assistant' || typeof e.text !== 'string' || !e.text.trim()) return;
+    const now = Date.now();
+    if (now - (this.columnReadAt.get(claim.taskId) ?? 0) < DESK_COLUMN_READ_MS) return;
+    this.columnReadAt.set(claim.taskId, now);
+    void this.placeByReply(claim.taskId, e.text, agentId);
+  }
+
+  /** Open steps the reply says are done (the agent did not report them): their indexes. */
+  private async readSteps(decider: Decider, task: DeskTask, reply: string): Promise<number[]> {
+    const steps = task.briefs[task.briefs.length - 1]?.subtasks ?? [];
+    const open = steps
+      .map((step, index) => ({ step, index }))
+      .filter(({ step }) => !step.done && !step.skip && step.kind !== 'gate')
+      .slice(0, TASK_STEP_READ_MAX);
+    if (open.length === 0) return [];
+    const answers = await decider.ask(
+      { card: task.title, reply: tailOf(reply) },
+      Object.fromEntries(
+        open.map(({ step }, n) => [
+          `s${n}`,
+          {
+            type: 'noul' as const,
+            instructions: `Does the agent's reply say it has finished this step: "${step.title}"?`,
+          },
+        ]),
+      ),
+    );
+    if (!answers) return [];
+    return open
+      .filter((_, n) => confidentYes(answers[`s${n}`], 'step') === true)
+      .map((o) => o.index);
   }
 
   private finishTurn(agentId: number, claim: Claim): void {
@@ -791,6 +938,10 @@ export class TaskDesk {
     if (!transition.ok) return transition;
     const task = { ...transition.task, ...extra };
     if (task.claimedBy === undefined) delete task.owner;
+    // A card that changed state lands in the new state's first column.
+    const column = placeCard(task, this.columns());
+    if (column) task.column = column;
+    else delete task.column;
     if (!this.cards.replace(task)) return { ok: false, error: 'The card could not be saved.' };
     this.releaseGates(task);
     return { ok: true, value: this.cards.find(task.id)! };

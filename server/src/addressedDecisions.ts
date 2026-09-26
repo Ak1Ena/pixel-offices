@@ -21,6 +21,8 @@ export async function addressedPartsWithDecisions<K>(
   addressees: Array<Addressee<K>>,
   decider: Decider | null,
   nameOf: (key: K) => string,
+  /** The agent whose reply this is (shown walking over to Laya). */
+  senderId?: number,
 ): Promise<Map<K, string>> {
   const blocks = splitBlocks(text);
   const openers = blocks.map((block) => leadingAddressees(block, addressees));
@@ -46,6 +48,7 @@ export async function addressedPartsWithDecisions<K>(
                 },
               ]),
             ),
+            { agentId: senderId, topic: 'Who is this for?' },
           )
           .then((answers) => {
             if (!answers) return;

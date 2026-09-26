@@ -41,6 +41,7 @@ export function judgeTextReply(
           },
         },
       },
+      { agentId, topic: 'Am I finished?' },
     )
     .then((answers) => {
       // New data cancelled or replaced the timer, or it already fired: the answer is stale.

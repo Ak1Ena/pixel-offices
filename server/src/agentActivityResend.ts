@@ -136,6 +136,7 @@ export function sendOfficeChatState(
   send({ type: 'docEditDefault', mode: runtime.docs.defaultMode });
   send({ ...runtime.laya.snapshot() });
   if (runtime.desk.autopilot) send(runtime.desk.autopilot.snapshot());
+  send({ type: 'deskFlowLoaded', columns: runtime.desk.flow?.list() ?? [] });
   for (const ask of runtime.permissions.snapshot()) send(ask);
   for (const id of runtime.chatSender.sendableSnapshot()) {
     send({ type: 'agentChatSendable', id, sendable: true });

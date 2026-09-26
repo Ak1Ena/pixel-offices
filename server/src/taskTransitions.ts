@@ -402,6 +402,32 @@ export function subtaskDone(task: DeskTask, position: number): Transition {
   return { ok: true, task: { ...task, briefs: withSteps(task, subtasks) } };
 }
 
+/**
+ * Steps the decision model read as done in the agent's reply, which never
+ * reported them: ticked, nothing else changes (no skipping, unlike a report).
+ */
+export function stepsReadDone(task: DeskTask, indexes: number[], at: string): Transition {
+  if (task.state !== 'working') return fail('Nobody is building this card right now.');
+  const steps = stepsOf(task);
+  const fresh = indexes.filter((i) => steps[i] && !steps[i].done && !steps[i].skip);
+  if (fresh.length === 0) return { ok: true, task };
+  const subtasks = steps.map((step, i) => (fresh.includes(i) ? { ...step, done: true } : step));
+  return {
+    ok: true,
+    task: {
+      ...task,
+      briefs: withSteps(task, subtasks),
+      log: logged(
+        task,
+        'system',
+        'Laya',
+        `Read step${fresh.length === 1 ? '' : 's'} ${fresh.map((i) => i + 1).join(', ')} as done in the agent's reply.`,
+        at,
+      ),
+    },
+  };
+}
+
 /** The building agent reached gate step `position`: it waits for the human. */
 export function gateOpened(
   task: DeskTask,
