@@ -25,6 +25,8 @@ export interface NewCard {
   teamId?: string;
   /** Workflow id, '' = none. */
   workflowId?: string;
+  /** Model picker label for agents started for this card, '' = the usual model. */
+  model?: string;
   /** Absolute paths of attached files (the whole list). */
   attachments?: string[];
 }
@@ -48,6 +50,8 @@ export interface TaskDeskState {
   /** Answer an agent waiting at a gate step (1-based). */
   answerGate: (taskId: string, step: number, decision: GateDecision, note?: string) => void;
   setPickup: (agentId: number, enabled: boolean) => void;
+  /** Answer the agent building a card that waits on you: typed into its session like any chat message. */
+  reply: (agentId: number, text: string) => void;
 }
 
 /**
@@ -103,6 +107,11 @@ export function useTaskDesk(): TaskDeskState {
     transport.send({ type: 'setAgentPickup', id: agentId, enabled });
   }, []);
 
+  const reply = useCallback((agentId: number, text: string) => {
+    setNotice(null);
+    transport.send({ type: 'sendChatMessage', id: agentId, text });
+  }, []);
+
   return {
     tasks,
     agents,
@@ -114,5 +123,6 @@ export function useTaskDesk(): TaskDeskState {
     editSteps,
     answerGate,
     setPickup,
+    reply,
   };
 }

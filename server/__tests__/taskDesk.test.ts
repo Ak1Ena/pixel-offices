@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DeskTask } from '../../core/src/messages.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { TASK_MAX_LOOK_ATTEMPTS } from '../src/constants.js';
+import type { Decider } from '../src/decisions.js';
 import { createHttpServer } from '../src/httpServer.js';
 import type { ServerConfig } from '../src/serverConfig.js';
 import { runTaskCommand } from '../src/taskCli.js';
@@ -31,7 +32,7 @@ interface AgentInit {
   displayName?: string;
 }
 
-function setup(opts: { owner?: string; ownerAlive?: boolean } = {}) {
+function setup(opts: { owner?: string; ownerAlive?: boolean; decider?: Decider } = {}) {
   const store = new AgentStateStore();
   const sent: Array<[number, string]> = [];
   const unreachable = new Set<number>();
@@ -52,6 +53,7 @@ function setup(opts: { owner?: string; ownerAlive?: boolean } = {}) {
     },
     owner: opts.owner ?? '111',
     isOwnerAlive: () => opts.ownerAlive ?? true,
+    decider: () => opts.decider ?? null,
   });
   const addAgent = (id: number, init: AgentInit = {}) =>
     store.set(id, {
@@ -340,6 +342,92 @@ describe('the loop from brief to done', () => {
     expect(t.card(task).value).toMatchObject({ state: 'result' });
     expect(t.card(task).value.result?.summary).toContain('without a report');
     t.desk.dispose();
+  });
+
+  describe('with a decision model reading the turn end', () => {
+    /** A decider answering `ending` with the next queued answer; records what it was asked. */
+    function fakeDecider(...answers: Array<{ choice: string; confidence: number } | null>) {
+      const asked: Array<Record<string, string>> = [];
+      const decider: Decider = {
+        ask: async (state) => {
+          asked.push(state);
+          const next = answers.shift();
+          return next === null || next === undefined ? null : { ending: next };
+        },
+      };
+      return { decider, asked };
+    }
+
+    async function building(decider: Decider, reply: string) {
+      const t = setup({ decider });
+      t.addAgent(1);
+      const task = await t.addCard();
+      await t.desk.tick();
+      t.desk.submitBrief(task.num, BRIEF);
+      t.desk.humanCall(task.id, { action: 'do' });
+      await t.desk.tick();
+      t.store.get(1)!.chatLog = [{ role: 'assistant', text: reply } as never];
+      return { t, task };
+    }
+
+    const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+    it('a question keeps the card with the agent, waiting on the human, until it works again', async () => {
+      const { decider, asked } = fakeDecider(
+        { choice: 'question', confidence: 0.93 },
+        { choice: 'finished', confidence: 0.96 },
+      );
+      const { t, task } = await building(decider, 'Keep parseLegacy() or delete it?');
+      t.status(1, 'active');
+      t.status(1, 'waiting');
+      await settle();
+      expect(asked[0]).toMatchObject({
+        card: 'Fix the thing',
+        reply: 'Keep parseLegacy() or delete it?',
+      });
+      expect(t.card(task).value).toMatchObject({
+        state: 'working',
+        claimedBy: 1,
+        waitingOn: { kind: 'question', text: 'Keep parseLegacy() or delete it?' },
+      });
+      // The human answered in its chat: the agent works, the card stops waiting.
+      t.status(1, 'active');
+      expect(t.card(task).value.waitingOn).toBeUndefined();
+      // Its NEXT turn end is read again, and this time it finished.
+      t.store.get(1)!.chatLog = [{ role: 'assistant', text: 'Deleted it. Tests pass.' } as never];
+      t.status(1, 'waiting');
+      await settle();
+      expect(t.card(task).value).toMatchObject({ state: 'result' });
+      expect(t.card(task).value.result?.summary).toContain('Deleted it.');
+      t.desk.dispose();
+    });
+
+    it("an unsure or failed read keeps today's rule: the card goes to result", async () => {
+      for (const answer of [{ choice: 'question', confidence: 0.6 }, null]) {
+        const { decider } = fakeDecider(answer);
+        const { t, task } = await building(decider, 'There are a few ways this could go.');
+        t.status(1, 'active');
+        t.status(1, 'waiting');
+        await settle();
+        expect(t.card(task).value).toMatchObject({ state: 'result' });
+        expect(t.card(task).value.waitingOn).toBeUndefined();
+        t.desk.dispose();
+      }
+    });
+
+    it('ignores the answer when the agent went back to work while the model read', async () => {
+      let answer!: (value: Record<string, { choice: string; confidence: number }>) => void;
+      const decider: Decider = { ask: () => new Promise((resolve) => (answer = resolve)) };
+      const { t, task } = await building(decider, 'Should I also fix the tests?');
+      t.status(1, 'active');
+      t.status(1, 'waiting');
+      t.status(1, 'active');
+      answer({ ending: { choice: 'question', confidence: 0.95 } });
+      await settle();
+      expect(t.card(task).value).toMatchObject({ state: 'working', claimedBy: 1 });
+      expect(t.card(task).value.waitingOn).toBeUndefined();
+      t.desk.dispose();
+    });
   });
 
   it('send back needs a reason and queues the same brief again', async () => {

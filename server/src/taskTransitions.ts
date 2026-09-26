@@ -5,6 +5,7 @@ import type {
   DeskResult,
   DeskSubtask,
   DeskTask,
+  DeskWaitingOn,
 } from '../../core/src/messages.js';
 import {
   TASK_MAX_BRIEFS,
@@ -410,6 +411,28 @@ export function workFinished(task: DeskTask, result: DeskResult, at: string): Tr
       log: logged(task, 'agent', result.by, 'Finished. Waiting for your check.', at),
     },
   };
+}
+
+/**
+ * The build turn ended without a report, and the agent's last reply reads as
+ * a question for the human or as stuck. The card stays with the agent: the
+ * human answers in its chat and the build goes on.
+ */
+export function workWaiting(task: DeskTask, waitingOn: DeskWaitingOn, who: string): Transition {
+  if (task.state !== 'working') return fail('Nobody is building this card right now.');
+  const said = waitingOn.kind === 'question' ? 'Asks you something.' : 'Says it is stuck.';
+  return {
+    ok: true,
+    task: { ...task, waitingOn, log: logged(task, 'agent', who, said, waitingOn.at) },
+  };
+}
+
+/** The agent works on the card again: whatever it waited for is settled. */
+export function workResumed(task: DeskTask): Transition {
+  if (task.state !== 'working' || !task.waitingOn) return fail('The card is not waiting.');
+  const resumed = { ...task };
+  delete resumed.waitingOn;
+  return { ok: true, task: resumed };
 }
 
 /** The building agent vanished mid-build: wait for another one. */

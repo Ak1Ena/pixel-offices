@@ -122,6 +122,8 @@ components:
         - $ref: '#/components/schemas/AgentClearRequests'
         - $ref: '#/components/schemas/DocEdits'
         - $ref: '#/components/schemas/DocEditDefault'
+        - $ref: '#/components/schemas/LayaStatus'
+        - $ref: '#/components/schemas/DeskCardSuggestion'
         - $ref: '#/components/schemas/FilesLoaded'
         - $ref: '#/components/schemas/FileOpened'
         - $ref: '#/components/schemas/AgentPermissionAsk'
@@ -231,6 +233,10 @@ components:
         - $ref: '#/components/schemas/ListPastSessions'
         - $ref: '#/components/schemas/SetDocEditDefault'
         - $ref: '#/components/schemas/UndoDocEdit'
+        - $ref: '#/components/schemas/SetLayaEnabled'
+        - $ref: '#/components/schemas/SetLayaModel'
+        - $ref: '#/components/schemas/UninstallLaya'
+        - $ref: '#/components/schemas/SuggestDeskCard'
         - $ref: '#/components/schemas/OpenOfficeFile'
         - $ref: '#/components/schemas/ForgetOfficeFile'
         - $ref: '#/components/schemas/PinOfficeFile'
@@ -968,6 +974,127 @@ components:
         current:
           type: boolean
           description: The picker marks it as the one in use.
+
+    SuggestDeskCard:
+      description: |
+        Ask the decision model (Laya) which team preset, workflow and model fit
+        a card being written. Answered with deskCardSuggestion to the asker
+        only; nothing is saved. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, requestId, title]
+      properties:
+        type:
+          const: suggestDeskCard
+        requestId:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        kind:
+          type: string
+
+    DeskCardSuggestionConfidence:
+      type: object
+      additionalProperties: false
+      properties:
+        team:
+          type: number
+        workflow:
+          type: number
+        model:
+          type: number
+
+    DeskCardSuggestion:
+      description: |
+        Laya's picks for a card (see suggestDeskCard). A field is present only
+        when it was asked and answered confidently; an empty string means "no
+        team" / "no workflow" / "keep the default model". `error` when no
+        decision model is running or it could not answer.
+      type: object
+      additionalProperties: false
+      required: [type, requestId]
+      properties:
+        type:
+          const: deskCardSuggestion
+        requestId:
+          type: string
+        teamId:
+          type: string
+        workflowId:
+          type: string
+        model:
+          type: string
+          description: A model picker label, as startAgent takes it.
+        confidence:
+          $ref: '#/components/schemas/DeskCardSuggestionConfidence'
+        error:
+          type: string
+
+    LayaModel:
+      description: Laya checkpoint choice — English only, multilingual (100+ languages), or auto (both loaded; Laya's router picks per reply).
+      type: string
+      enum: [english, multilingual, auto]
+
+    LayaState:
+      type: string
+      enum: [absent, installing, stopped, starting, running, uninstalling, error]
+
+    LayaStatus:
+      description: |
+        The office's own Laya decision model (Settings → Decision model):
+        whether it is downloaded and running. Handshake + on change.
+      type: object
+      additionalProperties: false
+      required: [type, state, enabled, model]
+      properties:
+        type:
+          const: layaStatus
+        state:
+          $ref: '#/components/schemas/LayaState'
+        enabled:
+          type: boolean
+        model:
+          $ref: '#/components/schemas/LayaModel'
+        detail:
+          type: string
+        error:
+          type: string
+        external:
+          description: A hand-configured decision endpoint in use instead of the office's own Laya.
+          type: string
+
+    SetLayaEnabled:
+      description: Turn the office's own Laya on (downloads it into ~/.pixel-agents/laya the first time) or off (stops it; the download stays). Privileged; persisted.
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: setLayaEnabled
+        enabled:
+          type: boolean
+
+    SetLayaModel:
+      description: Pick Laya's language checkpoint(s); a running Laya restarts with them. Privileged; persisted.
+      type: object
+      additionalProperties: false
+      required: [type, model]
+      properties:
+        type:
+          const: setLayaModel
+        model:
+          $ref: '#/components/schemas/LayaModel'
+
+    UninstallLaya:
+      description: Stop the office's Laya and delete ~/.pixel-agents/laya (venv + downloaded models). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: uninstallLaya
 
     DocEditMode:
       type: string
@@ -2750,6 +2877,9 @@ components:
         workflowId:
           type: string
           description: Workflow whose steps the brief follows ('' = none). Editable until an agent looks.
+        model:
+          type: string
+          description: Model picker label agents started for this card use ('' = the usual model). Editable until an agent looks.
         attachments:
           type: array
           description: Absolute file paths to attach (replaces the list). Editable until the build starts.
@@ -3449,11 +3579,38 @@ components:
         workflowId:
           type: string
           description: A saved workflow whose steps the looking agent uses as the brief's steps.
+        model:
+          type: string
+          description: Model (picker label) an agent started for this card uses — chosen by the human or suggested by Laya.
         attachments:
           type: array
           description: Files the human attached. Agents get their paths, never their content.
           items:
             $ref: '#/components/schemas/DeskAttachment'
+        waitingOn:
+          $ref: '#/components/schemas/DeskWaitingOn'
+
+    DeskWaitingOn:
+      description: |
+        A build turn ended without a report and a decision model read the
+        agent's last reply as a question for the human, or as stuck. The card
+        stays with the agent (state working) and shows under Needs you until
+        the agent works again. Only set while the card is working.
+      type: object
+      additionalProperties: false
+      required: [kind, text, at]
+      properties:
+        kind:
+          $ref: '#/components/schemas/DeskWaitingKind'
+        text:
+          type: string
+          description: The end of the agent's last reply.
+        at:
+          type: string
+
+    DeskWaitingKind:
+      type: string
+      enum: [question, blocked]
 
     DeskAttachment:
       type: object

@@ -14,9 +14,21 @@ import type {
  * RULES of the desk live on the server; nothing here decides what is allowed.
  */
 
-/** Cards waiting on the human: a brief to judge or a result to check. */
+/** Cards waiting on the human: a brief to judge, a result to check, or a builder's question. */
 export function needsYou(task: DeskTask): boolean {
-  return task.state === 'brief' || task.state === 'result';
+  return task.state === 'brief' || task.state === 'result' || isWaitingOnYou(task);
+}
+
+/** The agent building the card ended its turn asking you something, or stuck. */
+export function isWaitingOnYou(task: DeskTask): boolean {
+  return task.state === 'working' && task.waitingOn !== undefined;
+}
+
+/** The chip a card shows: its state, or what its builder waits for. */
+export function stateLabel(task: DeskTask): string {
+  if (task.state === 'ready' && task.queued) return 'Queued';
+  if (isWaitingOnYou(task)) return task.waitingOn!.kind === 'question' ? 'Asks you' : 'Stuck';
+  return STATE_LABEL[task.state];
 }
 
 export const STATE_LABEL: Record<DeskTaskState, string> = {
@@ -49,7 +61,7 @@ export function deskSections(tasks: DeskTask[]): DeskSections {
     drafts: tasks.filter((t) => t.state === 'draft').sort(byUrgency),
     needsYou: tasks.filter(needsYou).sort(byUrgency),
     inFlight: tasks
-      .filter((t) => FLIGHT_ORDER.includes(t.state))
+      .filter((t) => FLIGHT_ORDER.includes(t.state) && !isWaitingOnYou(t))
       .sort(
         (a, b) => FLIGHT_ORDER.indexOf(a.state) - FLIGHT_ORDER.indexOf(b.state) || byUrgency(a, b),
       ),

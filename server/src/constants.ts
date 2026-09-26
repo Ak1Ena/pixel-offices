@@ -448,3 +448,86 @@ export const ELECTRON_HEALTH_POLL_MS = 5_000;
 /** "Send now" (sendChatMessage.interrupt): how long a message waits for the
  *  stopped turn to end before it is typed anyway. */
 export const CHAT_INTERRUPT_SEND_WAIT_MS = 6_000;
+
+// ── Decision model (decisions.ts): Laya's `laya-serve`, or any Jev-compatible endpoint ──
+/** Base URL of a System One endpoint (POST <url>/v1/systemone). Overrides config.json `decisions.url`. */
+export const DECISIONS_URL_ENV = 'PIXEL_AGENTS_DECISIONS_URL';
+/** Bearer key for that endpoint (laya-serve's LAYA_API_KEY). Overrides config.json `decisions.apiKey`. */
+export const DECISIONS_KEY_ENV = 'PIXEL_AGENTS_DECISIONS_KEY';
+/** One decision request; past this the office acts as if no model were configured. */
+export const DECISION_TIMEOUT_MS = 3_000;
+/** An answer is used only at or above this calibrated confidence; below it, the rule's behavior stays. */
+export const DECISION_MIN_CONFIDENCE = 0.85;
+/**
+ * What a question is for — each has its own calibrated threshold (DECISION_THRESHOLDS).
+ * Laya's `confidence` is not P(answer): on this office's questions its correct
+ * answers mostly score 0.1–0.6, so one global 0.85 threw nearly all of them away.
+ */
+export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card';
+/**
+ * Per Laya checkpoint (the reply's `model`), the lowest confidence used per
+ * question kind. Set where no WRONG answer passed on `scripts/laya-eval.py`
+ * (≈40 labeled cases, 2026-09-26) — re-run it on your own replies and adjust.
+ * A checkpoint not listed (a hosted Jev endpoint) uses DECISION_MIN_CONFIDENCE.
+ * Above 1 = never used (multilingual's yes/no answers were confidently wrong).
+ */
+export const DECISION_THRESHOLDS: Record<string, Record<DecisionKind, number>> = {
+  english: { ending: 0.3, textIdle: 0.2, addressed: 0.8, card: 0.35 },
+  multilingual: { ending: 0.45, textIdle: 0.35, addressed: 1.01, card: 0.5 },
+  'typed-decisions': { ending: 0.15, textIdle: 0.1, addressed: 0.7, card: 0.1 },
+};
+/** Text sent per decision. Laya's English checkpoint reads ~320 tokens of state, so replies keep their END. */
+export const DECISION_STATE_MAX_CHARS = 2_000;
+/** A text-only reply the model reads as "more work coming" waits this long before it counts as idle. */
+export const TEXT_IDLE_CONTINUING_DELAY_MS = 15_000;
+
+// ── Laya managed by the office (layaManager.ts): downloaded, run and removed from Settings ──
+/** Folder under ~/.pixel-agents holding Laya's Python venv, its model weights and its log. */
+export const LAYA_DIR_NAME = 'laya';
+/** What pip installs. `serve` adds laya-serve (FastAPI + uvicorn). */
+export const LAYA_PIP_SPEC = 'laya[serve]';
+/** CPU-only torch wheels for Linux: the default index pulls several GB of CUDA libraries. */
+export const LAYA_LINUX_TORCH_INDEX = 'https://download.pytorch.org/whl/cpu';
+/** Pythons tried in order; the first at 3.10+ builds the venv. Older-but-supported first: torch wheels lag new Pythons. */
+export const LAYA_PYTHON_CANDIDATES = [
+  'python3.12',
+  'python3.11',
+  'python3.13',
+  'python3.10',
+  'python3',
+  'python',
+];
+/** Language choice in Settings → which checkpoints laya-serve preloads (LAYA_MODELS). */
+export const LAYA_MODEL_PRELOAD = {
+  english: 'english',
+  multilingual: 'multilingual',
+  /** Both; no `model` in the request, so Laya's router picks by the reply's script/language. */
+  auto: 'english,multilingual',
+} as const;
+export const LAYA_DEFAULT_MODEL = 'auto';
+/** How long laya-serve may take to answer after spawning (first run downloads the weights). */
+export const LAYA_START_TIMEOUT_MS = 15 * 60_000;
+/** Poll interval while waiting for laya-serve to come up. */
+export const LAYA_START_POLL_MS = 1_000;
+/** While on: how often the office checks that laya-serve still answers, and restarts it if not. */
+export const LAYA_WATCHDOG_MS = 30_000;
+/** One health probe. */
+export const LAYA_PROBE_TIMEOUT_MS = 2_000;
+/** Longest progress line broadcast to the Settings panel. */
+export const LAYA_DETAIL_MAX_CHARS = 200;
+/** Progress broadcasts during download/start: at most one per this interval. */
+export const LAYA_PROGRESS_THROTTLE_MS = 500;
+/** Output kept from pip / laya-serve to explain a failure. */
+export const LAYA_OUTPUT_TAIL_CHARS = 4_000;
+/** One `python -c` version probe while looking for Python 3.10+. */
+export const LAYA_PYTHON_PROBE_TIMEOUT_MS = 5_000;
+
+// ── Card routing (cardRouting.ts): Laya suggests a card's team, workflow and model ──
+/** Options offered per question; the rest are left out (Laya reads a bounded prompt). */
+export const CARD_ROUTING_MAX_OPTIONS = 12;
+/** Text per option (team roles, workflow steps, model detail). */
+export const CARD_ROUTING_OPTION_MAX_CHARS = 240;
+/** Uninstall: how long to wait for laya-serve / pip to exit before deleting their folder. */
+export const LAYA_STOP_WAIT_MS = 5_000;
+/** Uninstall: retries when Windows still holds a file in the folder (EBUSY/EPERM). */
+export const LAYA_RM_RETRIES = 8;

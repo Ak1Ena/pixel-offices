@@ -18,6 +18,7 @@ import {
   TASK_NO_SUCH_CARD_ERROR,
   TASK_NOTE_MAX_CHARS,
 } from './constants.js';
+import { confidentChoice, type Decider, tailOf } from './decisions.js';
 import { type FolderRoot, resolveFolderRoot, sameRoot } from './gitRoot.js';
 import {
   briefFromInput,
@@ -42,6 +43,8 @@ import {
   type Transition,
   workAbandoned,
   workFinished,
+  workResumed,
+  workWaiting,
 } from './taskTransitions.js';
 import type { AgentState } from './types.js';
 
@@ -82,6 +85,8 @@ export interface TaskDeskOptions {
   workflows?: (id: string) => Workflow | undefined;
   /** Team presets a card can be for, and starting them. Absent = no team cards. */
   teams?: DeskTeams;
+  /** Reads a build turn that ended without a report (decisions.ts). Absent or null = today's rule. */
+  decider?: () => Decider | null;
 }
 
 /** What the desk needs to give a card to a team (TeamStore + TeamRuns in the runtime). */
@@ -124,6 +129,7 @@ export class TaskDesk {
   private readonly isOwnerAlive: (owner: string) => boolean;
   private readonly workflowOf: (id: string) => Workflow | undefined;
   private readonly teams: DeskTeams | undefined;
+  private readonly decider: () => Decider | null;
   /** Team cards whose team could not start: not retried until the card is edited. */
   private readonly teamFailed = new Set<string>();
   /** agent id → the card it is looking at or building. */
@@ -150,6 +156,7 @@ export class TaskDesk {
     this.isOwnerAlive = opts.isOwnerAlive ?? pidAlive;
     this.workflowOf = opts.workflows ?? (() => undefined);
     this.teams = opts.teams;
+    this.decider = opts.decider ?? (() => null);
     this.cards = opts.taskStore ?? new TaskStore(() => this.publish());
     this.agents.on('broadcast', this.onBroadcast);
     this.agents.on('agentRemoved', this.onAgentRemoved);
@@ -204,6 +211,7 @@ export class TaskDesk {
     draft?: unknown;
     teamId?: unknown;
     workflowId?: unknown;
+    model?: unknown;
     attachments?: unknown;
   }): Promise<DeskReply> {
     const existing = input.taskId === undefined ? undefined : this.cards.find(input.taskId);
@@ -227,7 +235,9 @@ export class TaskDesk {
     const beforeLook = !existing || existing.state === 'inbox' || existing.state === 'draft';
     let teamId = existing?.teamId;
     let workflowId = existing?.workflowId;
+    let model = existing?.model;
     if (beforeLook) {
+      if (typeof input.model === 'string') model = input.model.trim() || undefined;
       const team = this.pickId(input.teamId, existing?.teamId);
       if (team && !this.teams?.get(team)) {
         return {
@@ -265,6 +275,7 @@ export class TaskDesk {
         draft: input.draft === true,
         teamId,
         workflowId,
+        model,
         attachments,
       });
       if (!created)
@@ -284,6 +295,7 @@ export class TaskDesk {
       folder: folder!,
       teamId,
       workflowId,
+      model,
       attachments,
       // A different team is a different crew.
       crewId: teamId === existing.teamId ? existing.crewId : undefined,
@@ -632,14 +644,84 @@ export class TaskDesk {
       if (message.type === 'agentStatus' && message.status === 'waiting') void this.tick();
       return;
     }
-    if (message.type === 'agentToolStart') claim.sawBusy = true;
-    if (message.type !== 'agentStatus') return;
-    if (message.status === 'active') claim.sawBusy = true;
-    else if (message.status === 'waiting' && claim.sawBusy) this.turnEnded(id, claim);
+    if (
+      message.type === 'agentToolStart' ||
+      (message.type === 'agentStatus' && message.status === 'active')
+    ) {
+      claim.sawBusy = true;
+      this.resumeIfWaiting(claim);
+      return;
+    }
+    if (message.type === 'agentStatus' && message.status === 'waiting' && claim.sawBusy) {
+      this.turnEnded(id, claim);
+    }
   };
 
-  /** The agent's turn for its card is over and it never reported back. */
+  /** The agent works on its card again: it is no longer waiting on the human. */
+  private resumeIfWaiting(claim: Claim): void {
+    const task = this.cards.find(claim.taskId);
+    if (task?.waitingOn && task.owner === this.owner) this.commit(workResumed(task));
+  }
+
+  /**
+   * The agent's turn for its card is over and it never reported back. With a
+   * decision model, a build turn is read first: a question for the human or
+   * "I'm stuck" keeps the card with the agent, waiting on the human (the
+   * claim stays, so its next turn end is read again). Anything else, a failed
+   * or unsure read, or no model: the rule below.
+   */
   private turnEnded(agentId: number, claim: Claim): void {
+    const task = this.cards.find(claim.taskId);
+    const decider = this.decider();
+    const said = this.fullLastReply(agentId);
+    if (
+      !decider ||
+      !said ||
+      task?.state !== 'working' ||
+      task.claimedBy !== agentId ||
+      task.owner !== this.owner
+    ) {
+      this.finishTurn(agentId, claim);
+      return;
+    }
+    // Only a NEW turn may end it again; this one is being read.
+    claim.sawBusy = false;
+    void this.readEnding(decider, task.title, said).then((kind) => {
+      // The agent went back to work (or lost the card) while the model read.
+      if (this.claims.get(agentId) !== claim || claim.sawBusy) return;
+      const current = this.cards.find(claim.taskId);
+      if (kind && current) {
+        const waitingOn = { kind, text: tailOf(said, TASK_NOTE_MAX_CHARS), at: this.now() };
+        if (this.commit(workWaiting(current, waitingOn, this.labelOf(agentId))).ok) return;
+      }
+      this.finishTurn(agentId, claim);
+    });
+  }
+
+  private async readEnding(
+    decider: Decider,
+    title: string,
+    reply: string,
+  ): Promise<'question' | 'blocked' | null> {
+    const answers = await decider.ask(
+      { card: title, reply: tailOf(reply) },
+      {
+        ending: {
+          type: 'choice',
+          instructions: 'How did the coding agent end its turn on this card?',
+          criteria: {
+            finished: 'says the work is done or reports what it changed',
+            question: 'asks the user a question, or asks them to choose or confirm before going on',
+            blocked: 'cannot go on because of an error, a failing command or missing access',
+          },
+        },
+      },
+    );
+    const ending = confidentChoice(answers?.ending, 'ending');
+    return ending === 'question' || ending === 'blocked' ? ending : null;
+  }
+
+  private finishTurn(agentId: number, claim: Claim): void {
     this.claims.delete(agentId);
     const task = this.cards.find(claim.taskId);
     if (!task || task.claimedBy !== agentId || task.owner !== this.owner) return;
@@ -724,10 +806,14 @@ export class TaskDesk {
   }
 
   private lastReply(agentId: number): string {
+    return this.fullLastReply(agentId).slice(0, TASK_NOTE_MAX_CHARS);
+  }
+
+  private fullLastReply(agentId: number): string {
     const log = this.agents.get(agentId)?.chatLog ?? [];
     for (let i = log.length - 1; i >= 0; i--) {
       const entry = log[i];
-      if (entry.role === 'assistant' && entry.text) return entry.text.slice(0, TASK_NOTE_MAX_CHARS);
+      if (entry.role === 'assistant' && entry.text) return entry.text;
     }
     return '';
   }

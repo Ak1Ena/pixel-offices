@@ -1,3 +1,4 @@
+import { addressedPartsWithDecisions } from './addressedDecisions.js';
 import { addressedParts } from './addressedParts.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import {
@@ -6,6 +7,7 @@ import {
   RELAY_TOTAL_LIMIT,
   RELAY_WINDOW_MS,
 } from './constants.js';
+import type { Decider } from './decisions.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -76,6 +78,8 @@ export class MentionRelay {
   constructor(
     private readonly store: AgentStateStore,
     private readonly deliver: (agentId: number, text: string) => void,
+    /** Second reader for mentions the opening-@ rule skips; null = the rule alone. */
+    private readonly decider: () => Decider | null = () => null,
   ) {}
 
   setEnabled(enabled: boolean): void {
@@ -94,7 +98,22 @@ export class MentionRelay {
     const others = [...this.store]
       .filter(([id]) => id !== senderId)
       .map(([id, agent]) => ({ key: id, aliases: agentAliases(id, agent) }));
-    for (const [targetId, part] of addressedParts(text, others)) {
+    const decider = this.decider();
+    if (!decider) {
+      this.pass(senderId, from, addressedParts(text, others), now);
+      return;
+    }
+    const names = new Map(others.map((o) => [o.key, o.aliases[0]]));
+    void addressedPartsWithDecisions(text, others, decider, (id) => names.get(id) ?? `#${id}`).then(
+      (parts) => {
+        // Turned off, or the sender left, while the model was reading.
+        if (this.enabled && this.store.get(senderId)) this.pass(senderId, from, parts, now);
+      },
+    );
+  }
+
+  private pass(senderId: number, from: string, parts: Map<number, string>, now: number): void {
+    for (const [targetId, part] of parts) {
       const pair = `${senderId}>${targetId}`;
       if (this.passes.length >= RELAY_TOTAL_LIMIT) return;
       if (this.passes.filter((p) => p.pair === pair).length >= RELAY_PAIR_LIMIT) continue;

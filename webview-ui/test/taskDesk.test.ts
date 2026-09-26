@@ -20,6 +20,7 @@ import {
   nextStepKind,
   NO_FILTER,
   sameSteps,
+  stateLabel,
   stepsToWorkflow,
   stuckFixes,
   stuckReason,
@@ -331,4 +332,33 @@ test('dropAction: a drop makes only the calls the card buttons make', () => {
   // Agents move cards through looking and working; the human can't drag them there.
   assert.equal(dropAction(task({ state: 'inbox' }), 'looking'), null);
   assert.equal(dropAction(task({ state: 'working' }), 'done'), null);
+});
+
+test('a builder waiting on you puts its working card under Needs you, labelled by what it waits for', () => {
+  const at = '2026-09-26T00:00:00.000Z';
+  const asks = task({
+    id: 'a',
+    state: 'working',
+    waitingOn: { kind: 'question', text: 'Keep it?', at },
+  });
+  const stuck = task({
+    id: 'b',
+    num: 2,
+    state: 'working',
+    waitingOn: { kind: 'blocked', text: 'EACCES', at },
+  });
+  const busy = task({ id: 'c', num: 3, state: 'working' });
+  const sections = deskSections([asks, stuck, busy]);
+  assert.deepEqual(
+    sections.needsYou.map((t) => t.id),
+    ['a', 'b'],
+  );
+  assert.deepEqual(
+    sections.inFlight.map((t) => t.id),
+    ['c'],
+  );
+  assert.equal(stateLabel(asks), 'Asks you');
+  assert.equal(stateLabel(stuck), 'Stuck');
+  assert.equal(stateLabel(busy), 'Working');
+  assert.equal(stateLabel(task({ state: 'ready', queued: true })), 'Queued');
 });

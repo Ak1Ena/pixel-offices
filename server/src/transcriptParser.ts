@@ -8,6 +8,7 @@ import { recordChat } from './chatLog.js';
 import { TEXT_IDLE_DELAY_MS, TOOL_DONE_DELAY_MS } from './constants.js';
 import { updateContextUsage } from './contextUsage.js';
 import { hasInlineTeammates, hasPromotedBackgroundAgent } from './teamUtils.js';
+import { judgeTextReply } from './textIdleJudge.js';
 import {
   cancelPermissionTimer,
   cancelWaitingTimer,
@@ -266,12 +267,18 @@ export function processTranscriptLine(
         // Skip when hooks are active — Stop hook handles this exactly.
         if (!agent.hookDelivered) {
           startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers);
+          const text = blocks
+            .map((b) => (b.type === 'text' ? (b as { text?: unknown }).text : undefined))
+            .filter((t): t is string => typeof t === 'string')
+            .join('\n');
+          judgeTextReply(agentId, text, agents, waitingTimers);
         }
       }
     } else if (record.type === 'assistant' && typeof assistantContent === 'string') {
       // Text-only assistant response (content is a string, not an array)
       if (!agent.hadToolsInTurn && !agent.hookDelivered) {
         startWaitingTimer(agentId, TEXT_IDLE_DELAY_MS, agents, waitingTimers);
+        judgeTextReply(agentId, assistantContent, agents, waitingTimers);
       }
     } else if (record.type === 'assistant' && assistantContent === undefined) {
       // Assistant record with no recognizable content structure

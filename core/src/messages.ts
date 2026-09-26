@@ -44,6 +44,8 @@ export type ServerMessage =
   | AgentClearRequests
   | DocEdits
   | DocEditDefault
+  | LayaStatus
+  | DeskCardSuggestion
   | FilesLoaded
   | FileOpened
   | AgentPermissionAsk
@@ -144,6 +146,10 @@ export type ClientMessage =
   | ListPastSessions
   | SetDocEditDefault
   | UndoDocEdit
+  | SetLayaEnabled
+  | SetLayaModel
+  | UninstallLaya
+  | SuggestDeskCard
   | OpenOfficeFile
   | ForgetOfficeFile
   | PinOfficeFile
@@ -513,6 +519,37 @@ export interface DocEditDefault {
   mode: DocEditMode;
 }
 
+export interface LayaStatus {
+  type: 'layaStatus';
+  state: LayaState;
+  enabled: boolean;
+  model: LayaModel;
+  detail?: string;
+  error?: string;
+  external?: string;
+}
+
+export type LayaState =
+  'absent' | 'installing' | 'stopped' | 'starting' | 'running' | 'uninstalling' | 'error';
+
+export type LayaModel = 'english' | 'multilingual' | 'auto';
+
+export interface DeskCardSuggestion {
+  type: 'deskCardSuggestion';
+  requestId: string;
+  teamId?: string;
+  workflowId?: string;
+  model?: string;
+  confidence?: DeskCardSuggestionConfidence;
+  error?: string;
+}
+
+export interface DeskCardSuggestionConfidence {
+  team?: number;
+  workflow?: number;
+  model?: number;
+}
+
 export interface FilesLoaded {
   type: 'filesLoaded';
   files: OfficeFile[];
@@ -843,7 +880,9 @@ export interface DeskTask {
   teamId?: string;
   crewId?: string;
   workflowId?: string;
+  model?: string;
   attachments?: DeskAttachment[];
+  waitingOn?: DeskWaitingOn;
 }
 
 export type DeskTaskKind = 'task' | 'issue' | 'feature';
@@ -912,6 +951,14 @@ export interface DeskAttachment {
   path: string;
   name: string;
 }
+
+export interface DeskWaitingOn {
+  kind: DeskWaitingKind;
+  text: string;
+  at: string;
+}
+
+export type DeskWaitingKind = 'question' | 'blocked';
 
 export interface DeskAgent {
   id: number;
@@ -1316,6 +1363,7 @@ export interface SaveDeskTask {
   draft?: boolean;
   teamId?: string;
   workflowId?: string;
+  model?: string;
   attachments?: string[];
 }
 
@@ -1448,6 +1496,28 @@ export interface SetDocEditDefault {
 export interface UndoDocEdit {
   type: 'undoDocEdit';
   editId: string;
+}
+
+export interface SetLayaEnabled {
+  type: 'setLayaEnabled';
+  enabled: boolean;
+}
+
+export interface SetLayaModel {
+  type: 'setLayaModel';
+  model: LayaModel;
+}
+
+export interface UninstallLaya {
+  type: 'uninstallLaya';
+}
+
+export interface SuggestDeskCard {
+  type: 'suggestDeskCard';
+  requestId: string;
+  title: string;
+  body?: string;
+  kind?: string;
 }
 
 export interface OpenOfficeFile {

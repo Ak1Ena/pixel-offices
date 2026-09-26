@@ -1,9 +1,11 @@
 import * as crypto from 'crypto';
 
 import type { TeamPreset, TeamRun } from '../../core/src/messages.js';
+import { addressedPartsWithDecisions } from './addressedDecisions.js';
 import { addressedParts } from './addressedParts.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { TEAM_ADOPT_WAIT_MS, TEAM_CALL_MAX_CHARS, TEAM_MAX_RUNS } from './constants.js';
+import type { Decider } from './decisions.js';
 import { firstMessage, leadOf } from './teamFile.js';
 
 /** Starts and stops agents for the office (OfficeSessions in the standalone office). */
@@ -24,6 +26,8 @@ export interface TeamRunHooks {
   /** Start the run the member was told about, once its agent exists. */
   attachWorkflow(agentId: number, workflowId: string, runId: string): void;
   setRelay(enabled: boolean): void;
+  /** Second reader for call-ins the opening-@ rule skips; absent or null = the rule alone. */
+  decider?(): Decider | null;
 }
 
 /**
@@ -117,6 +121,27 @@ export class TeamRuns {
     return { ok: true, run: structuredClone(run) };
   }
 
+  /** Start the benched members `parts` address. False when nobody new was called. */
+  private callIn(
+    run: TeamRun,
+    team: TeamPreset,
+    starter: AgentStarter,
+    parts: Map<number, string>,
+  ): boolean {
+    // The model may answer after the run stopped or a member was already called.
+    if (run.state !== 'running') return false;
+    let changed = false;
+    for (const [i, part] of parts) {
+      if (!run.members[i]?.benched) continue;
+      delete run.members[i].benched;
+      changed = true;
+      const task =
+        part.length > TEAM_CALL_MAX_CHARS ? `${part.slice(0, TEAM_CALL_MAX_CHARS)}…` : part;
+      this.startMember(run, i, starter, firstMessage(team, team.members[i], run.goal, task));
+    }
+    return changed;
+  }
+
   /**
    * A NEW reply from an agent. When it is a team's lead and a paragraph opens
    * with a benched teammate's `@name`, that teammate starts now with its part as the task.
@@ -137,13 +162,20 @@ export class TeamRuns {
       const benched = run.members.flatMap((m, i) =>
         m.benched ? [{ key: i, aliases: [m.name] }] : [],
       );
-      for (const [i, part] of addressedParts(reply, benched)) {
-        delete run.members[i].benched;
-        changed = true;
-        const task =
-          part.length > TEAM_CALL_MAX_CHARS ? `${part.slice(0, TEAM_CALL_MAX_CHARS)}…` : part;
-        this.startMember(run, i, starter, firstMessage(team, team.members[i], run.goal, task));
+      const decider = this.hooks.decider?.() ?? null;
+      if (!decider) {
+        changed = this.callIn(run, team, starter, addressedParts(reply, benched)) || changed;
+        continue;
       }
+      void addressedPartsWithDecisions(reply, benched, decider, (i) => run.members[i].name).then(
+        (parts) => {
+          const now = this.starter();
+          if (now && this.callIn(run, team, now, parts)) {
+            this.ensureTimer();
+            this.broadcast();
+          }
+        },
+      );
     }
     if (changed) {
       this.ensureTimer();

@@ -16,12 +16,14 @@ import {
   TASK_BODY_MAX_CHARS,
   TASK_DESK_COMMAND_KEY,
   TASK_DESK_FIRST_MESSAGE,
+  TASK_DESK_LAYA_TIMEOUT_MS,
   TASK_DETAILS_EXPANDED_ROWS,
   TASK_DETAILS_ROWS,
   TASK_NOTE_MAX_CHARS,
   TASK_TITLE_MAX_CHARS,
 } from '../constants.js';
 import { canSendChatFiles, uploadChatFiles } from '../fileUpload.js';
+import { decisionModelReady, useLayaStatus } from '../hooks/useLayaStatus.js';
 import type { TaskDeskState } from '../hooks/useTaskDesk.js';
 import {
   agentsInFolder,
@@ -34,11 +36,12 @@ import {
   dropAction,
   filterCards,
   isFiltering,
+  isWaitingOnYou,
   lockedStepCount,
   needsYou,
   NO_FILTER,
   sameSteps,
-  STATE_LABEL,
+  stateLabel,
   stepsToWorkflow,
   stuckFixes,
   stuckReason,
@@ -106,6 +109,68 @@ const chip = 'px-4 text-2xs border leading-tight';
 
 // ── Add a card ───────────────────────────────────────────────
 
+interface LayaPick {
+  teamId?: string;
+  workflowId?: string;
+  model?: string;
+}
+
+/** "Suggest with Laya": one request at a time, the answer fills the form (server: cardRouting.ts). */
+function useLayaSuggestion() {
+  const available = decisionModelReady(useLayaStatus());
+  const [pending, setPending] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const apply = useRef<(pick: LayaPick) => void>(() => {});
+
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => {
+      setPending(null);
+      setNote('Laya did not answer in time.');
+    }, TASK_DESK_LAYA_TIMEOUT_MS);
+    const off = transport.onMessage((msg) => {
+      if (msg.type !== 'deskCardSuggestion' || msg.requestId !== pending) return;
+      clearTimeout(timer);
+      setPending(null);
+      if (msg.error) {
+        setNote(msg.error);
+        return;
+      }
+      const pick: LayaPick = {
+        ...(msg.teamId !== undefined ? { teamId: msg.teamId } : {}),
+        ...(msg.workflowId !== undefined ? { workflowId: msg.workflowId } : {}),
+        ...(msg.model !== undefined ? { model: msg.model } : {}),
+      };
+      apply.current(pick);
+      const filled = Object.keys(pick);
+      setNote(
+        filled.length === 0
+          ? 'Laya was not sure about any of them; nothing changed.'
+          : `Laya picked the ${filled
+              .map((k) => (k === 'teamId' ? 'team' : k === 'workflowId' ? 'workflow' : 'model'))
+              .join(', ')}. Check and save.`,
+      );
+    });
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [pending]);
+
+  const ask = (
+    card: { title: string; body: string; kind: string },
+    onPick: (p: LayaPick) => void,
+  ) => {
+    const requestId = Math.random().toString(36).slice(2);
+    apply.current = onPick;
+    setNote(null);
+    setPending(requestId);
+    transport.send({ type: 'suggestDeskCard', requestId, ...card });
+  };
+
+  return { available, pending: pending !== null, note, ask };
+}
+
 function CardForm({
   desk,
   canBrowseFolders,
@@ -127,11 +192,19 @@ function CardForm({
   );
   const [teamId, setTeamId] = useState(editing?.teamId ?? '');
   const [workflowId, setWorkflowId] = useState(editing?.workflowId ?? '');
+  const [model, setModel] = useState(editing?.model ?? '');
   const [files, setFiles] = useState<string[]>(editing?.attachments?.map((a) => a.path) ?? []);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const extras = useContext(DeskExtrasContext);
   const deskWorkflows = useContext(DeskWorkflowsContext);
   const canAdd = title.trim().length > 0 && folder.trim().length > 0;
+  const suggest = useLayaSuggestion();
+  const askLaya = () =>
+    suggest.ask({ title, body, kind }, (pick) => {
+      if (pick.teamId !== undefined && extras.teams) setTeamId(pick.teamId);
+      if (pick.workflowId !== undefined && deskWorkflows) setWorkflowId(pick.workflowId);
+      if (pick.model !== undefined) setModel(pick.model);
+    });
   const save = (draft: boolean) => {
     if (!canAdd) return;
     desk.saveCard({
@@ -142,6 +215,7 @@ function CardForm({
       folder,
       teamId,
       workflowId,
+      model,
       attachments: files,
       ...(editing ? { taskId: editing.id } : { draft }),
     });
@@ -281,6 +355,31 @@ function CardForm({
             ))}
           </select>
         </label>
+      )}
+      <label className="flex flex-col gap-2 text-sm">
+        Model for agents started for this card
+        <ModelSelect
+          options={extras.modelOptions}
+          value={model}
+          onChange={setModel}
+          className={fieldClass}
+        />
+      </label>
+      {suggest.available && (
+        <div className="flex flex-col gap-2" data-testid="desk-card-laya">
+          <Button
+            type="button"
+            size="sm"
+            variant={title.trim() && !suggest.pending ? 'default' : 'disabled'}
+            disabled={!title.trim() || suggest.pending}
+            onClick={askLaya}
+            title="Laya reads the title and details and picks the team, workflow and model that fit. You still save."
+            data-testid="desk-card-laya-suggest"
+          >
+            {suggest.pending ? 'Laya is reading…' : 'Suggest team, workflow and model (Laya)'}
+          </Button>
+          {suggest.note && <span className="text-2xs text-text-muted">{suggest.note}</span>}
+        </div>
       )}
       <CardFiles files={files} onChange={setFiles} />
       <div className="flex gap-6 justify-end">
@@ -439,7 +538,7 @@ function BriefView({ brief }: { brief: DeskBrief }) {
   );
 }
 
-function StartAgentHere({ folder }: { folder: string }) {
+function StartAgentHere({ folder, cardModel }: { folder: string; cardModel?: string }) {
   const [command, setCommand] = useState(() => {
     try {
       return localStorage.getItem(TASK_DESK_COMMAND_KEY) || 'claude';
@@ -447,7 +546,7 @@ function StartAgentHere({ folder }: { folder: string }) {
       return 'claude';
     }
   });
-  const [model, setModel] = useState('');
+  const [model, setModel] = useState(cardModel ?? '');
   const { modelOptions } = useContext(DeskExtrasContext);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -599,7 +698,7 @@ function WhoMayLook({
 function CardLinks({ task }: { task: DeskTask }) {
   const { teams } = useContext(DeskExtrasContext);
   const deskWorkflows = useContext(DeskWorkflowsContext);
-  if (!task.teamId && !task.workflowId && !task.attachments?.length) return null;
+  if (!task.teamId && !task.workflowId && !task.model && !task.attachments?.length) return null;
   const team = task.teamId ? teams?.find((t) => t.id === task.teamId) : undefined;
   const workflow = task.workflowId
     ? deskWorkflows?.list.find((w) => w.id === task.workflowId)
@@ -619,6 +718,12 @@ function CardLinks({ task }: { task: DeskTask }) {
           {workflow ? `${workflow.title} (${workflow.steps.length} steps)` : task.workflowId}
         </span>
       )}
+      {task.model && (
+        <span>
+          <span className="text-text-muted">Model: </span>
+          {task.model}
+        </span>
+      )}
       {task.attachments && task.attachments.length > 0 && (
         <span className="flex flex-col gap-2">
           <span className="text-text-muted">Files:</span>
@@ -629,6 +734,56 @@ function CardLinks({ task }: { task: DeskTask }) {
           ))}
         </span>
       )}
+    </div>
+  );
+}
+
+/** A builder that ended its turn asking you something (or stuck): what it said, and a reply box. */
+function WaitingOnYou({
+  task,
+  agentId,
+  desk,
+  labelOf,
+}: {
+  task: DeskTask;
+  agentId: number;
+  desk: TaskDeskState;
+  labelOf: (id: number) => string;
+}) {
+  const [text, setText] = useState('');
+  const waiting = task.waitingOn!;
+  const send = () => {
+    if (!text.trim()) return;
+    desk.reply(agentId, text.trim());
+    setText('');
+  };
+  return (
+    <div className="flex flex-col gap-4" data-testid="desk-waiting">
+      <span className={sectionTitle}>
+        {waiting.kind === 'question'
+          ? `${labelOf(agentId)} asks you`
+          : `${labelOf(agentId)} is stuck`}
+      </span>
+      <p className="m-0 text-sm whitespace-pre-wrap break-words">{waiting.text}</p>
+      <textarea
+        className={`${fieldClass} resize-none`}
+        rows={2}
+        value={text}
+        placeholder="Your answer (typed into its session)"
+        aria-label="Your answer"
+        onChange={(e) => setText(e.target.value)}
+        data-testid="desk-waiting-reply"
+      />
+      <Button
+        size="sm"
+        variant="accent"
+        className="self-start"
+        disabled={!text.trim()}
+        onClick={send}
+        data-testid="desk-waiting-send"
+      >
+        Send
+      </Button>
     </div>
   );
 }
@@ -739,6 +894,10 @@ function CardDetail({
       )}
       <CardLinks task={task} />
 
+      {isWaitingOnYou(task) && task.claimedBy !== undefined && (
+        <WaitingOnYou task={task} agentId={task.claimedBy} desk={desk} labelOf={labelOf} />
+      )}
+
       <div className="flex flex-col gap-4">
         <span className={sectionTitle}>Folder · who may look</span>
         <WhoMayLook
@@ -760,7 +919,7 @@ function CardDetail({
           </Button>
         )}
         {stuck && (noAgentHere || fixes.startAgent) && canStartAgents && (
-          <StartAgentHere folder={task.folder.root} />
+          <StartAgentHere folder={task.folder.root} cardModel={task.model} />
         )}
       </div>
 
@@ -1042,7 +1201,7 @@ function Card({
           <span
             className={`${chip} ${yours ? 'border-status-permission text-status-permission' : 'border-border'}`}
           >
-            {task.state === 'ready' && task.queued ? 'Queued' : STATE_LABEL[task.state]}
+            {stateLabel(task)}
           </span>
           <span className={`${chip} border-border`}>{task.folder.name}</span>
           {task.priority === 'p1' && (

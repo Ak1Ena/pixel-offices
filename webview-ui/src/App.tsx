@@ -57,6 +57,7 @@ import { useExtensionMessages } from './hooks/useExtensionMessages.js';
 import { useFiles } from './hooks/useFiles.js';
 import { useFocusRequests } from './hooks/useFocusRequests.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
+import { useLayaStatus } from './hooks/useLayaStatus.js';
 import { useOfficeChat } from './hooks/useOfficeChat.js';
 import { usePermissionAsks } from './hooks/usePermissionAsks.js';
 import { useProposals } from './hooks/useProposals.js';
@@ -261,6 +262,7 @@ function App() {
   const focus = useFocusRequests();
   const proposals = useProposals();
   const docEdits = useDocEdits();
+  const layaStatus = useLayaStatus();
   const [docEditsSeen, setDocEditsSeen] = useState<ReadonlySet<string>>(() => new Set());
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
@@ -1641,6 +1643,7 @@ function App() {
       <SettingsModal
         docEditDefault={chat.privileged || !isBrowserRuntime ? docEdits.defaultMode : undefined}
         onDocEditDefault={docEdits.setDefaultMode}
+        laya={chat.privileged || !isBrowserRuntime ? layaStatus : undefined}
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         isDebugMode={isDebugMode}

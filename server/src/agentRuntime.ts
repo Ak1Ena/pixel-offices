@@ -19,12 +19,14 @@ import { pruneBackups } from './backups.js';
 import { BoardStore } from './boardStore.js';
 import { setReplyListener } from './chatLog.js';
 import { ChatSender } from './chatSender.js';
+import { readConfig } from './configPersistence.js';
 import {
   AGENT_NAME_MAX_CHARS,
   DEFAULT_MAX_CONTEXT_TOKENS,
   TOKEN_BURN_TICK_MS,
 } from './constants.js';
 import { ContextClear } from './contextClear.js';
+import { type Decider, decisionsConfig, SystemOneClient } from './decisions.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import { DocEdits } from './docEdits.js';
 import {
@@ -50,6 +52,7 @@ import { HookChatWatch } from './hookChatWatch.js';
 import type { HookEvent } from './hookEventHandler.js';
 import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
+import { LayaManager } from './layaManager.js';
 import { MentionRelay } from './mentionRelay.js';
 import { OfficeFiles } from './officeFiles.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
@@ -64,6 +67,7 @@ import { TaskDesk } from './taskDesk.js';
 import type { AgentStarter } from './teamRuns.js';
 import { TeamRuns } from './teamRuns.js';
 import { TeamStore } from './teamStore.js';
+import { setTextIdleDecider } from './textIdleJudge.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
 import { tickTokenBurn } from './tokenUsage.js';
 import {
@@ -170,7 +174,12 @@ export class AgentRuntime {
     this.hookChat = new HookChatWatch(store);
     setSubagentWatch(this.subagentWatch);
     this.chatSender = new ChatSender(store);
-    this.relay = new MentionRelay(store, (id, text) => this.chatSender.send(id, text));
+    this.relay = new MentionRelay(
+      store,
+      (id, text) => this.chatSender.send(id, text),
+      () => this.decisions,
+    );
+    setTextIdleDecider(() => this.decisions);
     this.permissions = new PermissionBroker(store);
     this.contextClear = new ContextClear(store, this.chatSender);
     setReplyListener((id, text) => {
@@ -1010,6 +1019,7 @@ export class AgentRuntime {
         if (!result.ok) console.warn(`[Pixel Agents] Team workflow not attached: ${result.error}`);
       },
       setRelay: (enabled) => this.relay.setEnabled(enabled),
+      decider: () => this.decisions,
     });
     return this.teamRuns;
   }
@@ -1045,6 +1055,35 @@ export class AgentRuntime {
     return { ok: true };
   }
 
+  // ── Decision model ──
+
+  private manualDecider: SystemOneClient | null | undefined;
+  private layaManager: LayaManager | undefined;
+
+  /**
+   * The optional decision model (decisions.ts). A hand-set endpoint
+   * (PIXEL_AGENTS_DECISIONS_URL or config.json `decisions`, read once) wins;
+   * else the office's own Laya while it runs (Settings → Decision model).
+   * null = every rule works alone, as before.
+   */
+  get decisions(): Decider | null {
+    if (this.manualDecider === undefined) {
+      const config = decisionsConfig(readConfig().decisions);
+      this.manualDecider = config ? new SystemOneClient(config) : null;
+      if (config) console.log(`[Pixel Agents] Decision model: ${config.url}`);
+    }
+    return this.manualDecider ?? this.laya.decider();
+  }
+
+  /** Laya run by the office (layaManager.ts). Created on first use; starts itself when config says on. */
+  get laya(): LayaManager {
+    this.layaManager ??= new LayaManager({
+      broadcast: (msg) => this.store.broadcast({ ...msg }),
+      externalUrl: () => decisionsConfig(readConfig().decisions)?.url,
+    });
+    return this.layaManager;
+  }
+
   // ── Task desk ──
 
   /** The task desk. Like the whiteboard, created on first use: a runtime that
@@ -1055,6 +1094,7 @@ export class AgentRuntime {
       chatSender: this.chatSender,
       defaultPickup: (agentId) => this.deskDefaultPickup(agentId),
       workflows: (id) => this.workflows.get(id),
+      decider: () => this.decisions,
       teams: {
         get: (teamId) => this.teams.get(teamId),
         start: (team, folder, goal) => {
@@ -1088,6 +1128,7 @@ export class AgentRuntime {
     this.teamStore?.dispose();
     this.teamRuns?.dispose();
     this.taskDesk?.dispose();
+    this.layaManager?.dispose();
 
     if (this.projectScanTimer.current) {
       clearInterval(this.projectScanTimer.current);

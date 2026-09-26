@@ -38,6 +38,7 @@ import {
 } from '../../server/src/configPersistence.js';
 import { handleContextClearMessage } from '../../server/src/contextClearMessages.js';
 import { setFolderNameResolver, setTerminalAdapter } from '../../server/src/fileWatcher.js';
+import { handleLayaMessage } from '../../server/src/layaMessages.js';
 import type { LayoutWatcher } from '../../server/src/layoutPersistence.js';
 import {
   readLayoutFromFile,
@@ -529,6 +530,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       } else if (
         handleWorkflowMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
         handleContextClearMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
+        handleLayaMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
         handleOfficeFileMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
         handleTeamMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true) ||
         handleProposalMessage(message, (m) => this.sendOrBuffer(m), this.runtime, true)

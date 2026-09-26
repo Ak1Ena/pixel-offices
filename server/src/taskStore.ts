@@ -15,10 +15,12 @@ import type {
   DeskTaskKind,
   DeskTaskPriority,
   DeskTaskState,
+  DeskWaitingOn,
 } from '../../core/src/messages.js';
 import {
   LAYOUT_FILE_DIR,
   LAYOUT_FILE_POLL_INTERVAL_MS,
+  MODEL_LABEL_MAX_CHARS,
   TASK_BODY_MAX_CHARS,
   TASK_BRIEF_SHORT_MAX_CHARS,
   TASK_BRIEF_TEXT_MAX_CHARS,
@@ -273,6 +275,14 @@ function sanitizeLog(raw: unknown): DeskLogEntry | null {
   };
 }
 
+function sanitizeWaitingOn(raw: unknown): DeskWaitingOn | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const w = raw as Record<string, unknown>;
+  if (w.kind !== 'question' && w.kind !== 'blocked') return null;
+  const text = cleanText(w.text, TASK_NOTE_MAX_CHARS);
+  return text ? { kind: w.kind, text, at: stamp(w.at) } : null;
+}
+
 /** A well-formed, bounded copy of `raw`, or null when it isn't a card. */
 export function sanitizeTask(raw: unknown): DeskTask | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -287,6 +297,8 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
   if (!title || !folder) return null;
   const result = sanitizeResult(t.result);
   const attachments = sanitizeAttachments(t.attachments);
+  // Only a card still being built can be waiting on the human's answer.
+  const waitingOn = t.state === 'working' ? sanitizeWaitingOn(t.waitingOn) : null;
   const allow = Array.isArray(t.allow)
     ? [...new Set(t.allow.filter((id): id is number => Number.isInteger(id)))].slice(0, ALLOW_MAX)
     : [];
@@ -316,7 +328,11 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
     ...(typeof t.workflowId === 'string' && PRESET_ID_RE.test(t.workflowId)
       ? { workflowId: t.workflowId }
       : {}),
+    ...(typeof t.model === 'string' && t.model.trim()
+      ? { model: t.model.trim().slice(0, MODEL_LABEL_MAX_CHARS) }
+      : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...(waitingOn ? { waitingOn } : {}),
   };
 }
 
@@ -330,6 +346,7 @@ export interface NewTaskInput {
   draft?: boolean;
   teamId?: unknown;
   workflowId?: unknown;
+  model?: unknown;
   attachments?: unknown;
 }
 
@@ -397,6 +414,7 @@ export class TaskStore {
       createdAt: new Date().toISOString(),
       teamId: input.teamId,
       workflowId: input.workflowId,
+      model: input.model,
       attachments: input.attachments,
     });
     if (!task) return null;

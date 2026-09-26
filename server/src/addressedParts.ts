@@ -23,7 +23,7 @@ const CONTINUATION_RE = /^\s*(?:[-*•]\s|\d+[.)]\s|```|\s{2,}\S|\|)/;
 const SEPARATOR_RE = /^(?:[\s,&/*_]|and\s)*/;
 
 /** Blank-line separated blocks, keeping fenced code in one piece. */
-function blocks(text: string): string[] {
+export function splitBlocks(text: string): string[] {
   const out: string[] = [];
   let open = '';
   for (const part of text.split(/\n\s*\n/)) {
@@ -37,7 +37,8 @@ function blocks(text: string): string[] {
   return out;
 }
 
-function leadingAddressees<K>(block: string, addressees: Array<Addressee<K>>): K[] {
+/** Who a block OPENS by addressing (the rule above); empty = nobody. */
+export function leadingAddressees<K>(block: string, addressees: Array<Addressee<K>>): K[] {
   let line = block.split('\n', 1)[0].toLowerCase();
   for (let prev = ''; prev !== line;) {
     prev = line;
@@ -69,17 +70,48 @@ function leadingAddressees<K>(block: string, addressees: Array<Addressee<K>>): K
   return found;
 }
 
-/** The text each addressee should get; absent = not addressed. */
-export function addressedParts<K>(text: string, addressees: Array<Addressee<K>>): Map<K, string> {
+/** Addressees `@`-mentioned anywhere in `block` (whole names, any case). */
+export function mentionedIn<K>(block: string, addressees: Array<Addressee<K>>): K[] {
+  const lower = block.toLowerCase();
+  const found: K[] = [];
+  for (const a of addressees) {
+    const hit = a.aliases.some((alias) => {
+      const needle = `@${alias.toLowerCase()}`;
+      if (needle === '@') return false;
+      for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+        const next = lower[at + needle.length];
+        if (next === undefined || !/[a-z0-9_-]/.test(next)) return true;
+      }
+      return false;
+    });
+    if (hit && !found.includes(a.key)) found.push(a.key);
+  }
+  return found;
+}
+
+/**
+ * Parts per addressee from blocks and who each block opens to. Lists and code
+ * right after an addressed block (or after one ending in ":") stay with it.
+ */
+export function assignParts<K>(blocks: string[], openers: K[][]): Map<K, string> {
   const parts = new Map<K, string[]>();
   let current: K[] = [];
   let openEnded = false;
-  for (const block of blocks(text)) {
-    const to = leadingAddressees(block, addressees);
+  blocks.forEach((block, i) => {
+    const to = openers[i] ?? [];
     if (to.length > 0) current = to;
     else if (!(current.length > 0 && (openEnded || CONTINUATION_RE.test(block)))) current = [];
     for (const key of current) parts.set(key, [...(parts.get(key) ?? []), block]);
     openEnded = current.length > 0 && /:\s*$/.test(block);
-  }
+  });
   return new Map([...parts].map(([key, list]) => [key, list.join('\n\n')]));
+}
+
+/** The text each addressee should get; absent = not addressed. */
+export function addressedParts<K>(text: string, addressees: Array<Addressee<K>>): Map<K, string> {
+  const blocks = splitBlocks(text);
+  return assignParts(
+    blocks,
+    blocks.map((block) => leadingAddressees(block, addressees)),
+  );
 }

@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { CONFIG_FILE_NAME, LAYOUT_FILE_DIR } from './constants.js';
+import { type DecisionsConfig, parseDecisionsConfig } from './decisions.js';
 
 export interface AdapterSettings {
   soundEnabled: boolean;
@@ -56,9 +57,17 @@ export interface PixelAgentsConfig {
   /** What an agent's document edits do unless the agent has its own setting.
    *  Machine-global: it guards the user's files whichever surface is open. */
   docEditDefault: DocEditModeSetting;
+  /** Optional decision model endpoint (decisions.ts). Absent = every rule works alone. Set by hand. */
+  decisions?: DecisionsConfig;
+  /** Laya run by the office itself (layaManager.ts), turned on from Settings. Absent = never asked. */
+  laya?: { enabled: boolean; model?: LayaModelSetting };
 }
 
 export type DocEditModeSetting = 'ask' | 'auto' | 'off';
+
+/** Laya checkpoint choice: one language model, or both with Laya's router picking. */
+export type LayaModelSetting = 'english' | 'multilingual' | 'auto';
+const LAYA_MODEL_SETTINGS: readonly string[] = ['english', 'multilingual', 'auto'];
 const DOC_EDIT_DEFAULT: DocEditModeSetting = 'ask';
 
 function parseDocEditMode(raw: unknown): DocEditModeSetting {
@@ -173,6 +182,8 @@ export function readConfig(): PixelAgentsConfig {
     }
     const raw = fs.readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(raw) as Partial<PixelAgentsConfig>;
+    const decisions = parseDecisionsConfig(parsed.decisions);
+    const laya = parseLayaConfig(parsed.laya);
     return {
       vscode: parseAdapterSettings(parsed.vscode),
       standalone: parseAdapterSettings(parsed.standalone),
@@ -182,6 +193,8 @@ export function readConfig(): PixelAgentsConfig {
       hooksConsent: parseHooksConsent(parsed.hooksConsent),
       hooksEnabled: parseHooksEnabled(parsed.hooksEnabled),
       docEditDefault: parseDocEditMode(parsed.docEditDefault),
+      ...(decisions ? { decisions } : {}),
+      ...(laya ? { laya } : {}),
     };
   } catch (err) {
     console.error('[Pixel Agents] Failed to read config file:', err);
@@ -323,4 +336,40 @@ export function setDocEditDefault(mode: DocEditModeSetting): void {
   if (cfg.docEditDefault === mode) return;
   cfg.docEditDefault = mode;
   writeConfig(cfg);
+}
+
+// ── Laya (layaManager.ts) ───────────────────────────────────
+
+/** Whether the office should run its own Laya. Machine-global, like the hooks preference. */
+export function getLayaEnabled(): boolean {
+  return readConfig().laya?.enabled === true;
+}
+
+export function setLayaEnabled(enabled: boolean): void {
+  const cfg = readConfig();
+  if (cfg.laya?.enabled === enabled) return;
+  cfg.laya = { ...cfg.laya, enabled };
+  writeConfig(cfg);
+}
+
+export function getLayaModel(): LayaModelSetting | undefined {
+  return readConfig().laya?.model;
+}
+
+export function setLayaModel(model: LayaModelSetting): void {
+  const cfg = readConfig();
+  if (cfg.laya?.model === model) return;
+  cfg.laya = { enabled: cfg.laya?.enabled ?? false, model };
+  writeConfig(cfg);
+}
+
+export function isLayaModelSetting(value: unknown): value is LayaModelSetting {
+  return typeof value === 'string' && LAYA_MODEL_SETTINGS.includes(value);
+}
+
+function parseLayaConfig(raw: unknown): PixelAgentsConfig['laya'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.enabled !== 'boolean') return undefined;
+  return { enabled: r.enabled, ...(isLayaModelSetting(r.model) ? { model: r.model } : {}) };
 }
