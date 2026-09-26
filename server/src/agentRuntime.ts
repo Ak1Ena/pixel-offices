@@ -27,6 +27,7 @@ import {
 } from './constants.js';
 import { ContextClear } from './contextClear.js';
 import { type Decider, decisionsConfig, SystemOneClient } from './decisions.js';
+import { DeskAutopilot } from './deskAutopilot.js';
 import { DismissalTracker } from './dismissalTracker.js';
 import { DocEdits } from './docEdits.js';
 import {
@@ -54,6 +55,7 @@ import { HookEventHandler } from './hookEventHandler.js';
 import { LauncherHub } from './launcherHub.js';
 import { LayaManager } from './layaManager.js';
 import { MentionRelay } from './mentionRelay.js';
+import { ModelCatalog } from './modelOptions.js';
 import { OfficeFiles } from './officeFiles.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
@@ -1095,6 +1097,16 @@ export class AgentRuntime {
       defaultPickup: (agentId) => this.deskDefaultPickup(agentId),
       workflows: (id) => this.workflows.get(id),
       decider: () => this.decisions,
+      autopilot: new DeskAutopilot({
+        store: this.store,
+        decider: () => this.decisions,
+        starter: () => this.agentStarter,
+        routing: () => ({
+          teams: this.teams.list(),
+          workflows: this.workflows.list(),
+          models: new ModelCatalog().get('claude'),
+        }),
+      }),
       teams: {
         get: (teamId) => this.teams.get(teamId),
         start: (team, folder, goal) => {

@@ -15,6 +15,8 @@ export interface AgentStarter {
     name?: string;
     command?: string;
     firstMessage?: string;
+    /** A model picker label, chosen before the first message. */
+    model?: string;
   }): { ok: true; sessionId: string } | { ok: false; error: string };
   agentIdFor(sessionId: string): number | undefined;
   stopSession(sessionId: string): boolean;

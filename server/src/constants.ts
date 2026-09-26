@@ -463,7 +463,7 @@ export const DECISION_MIN_CONFIDENCE = 0.85;
  * Laya's `confidence` is not P(answer): on this office's questions its correct
  * answers mostly score 0.1–0.6, so one global 0.85 threw nearly all of them away.
  */
-export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card';
+export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card' | 'plan';
 /**
  * Per Laya checkpoint (the reply's `model`), the lowest confidence used per
  * question kind. Set where no WRONG answer passed on `scripts/laya-eval.py`
@@ -472,9 +472,11 @@ export type DecisionKind = 'ending' | 'textIdle' | 'addressed' | 'card';
  * Above 1 = never used (multilingual's yes/no answers were confidently wrong).
  */
 export const DECISION_THRESHOLDS: Record<string, Record<DecisionKind, number>> = {
-  english: { ending: 0.3, textIdle: 0.2, addressed: 0.8, card: 0.35 },
-  multilingual: { ending: 0.45, textIdle: 0.35, addressed: 1.01, card: 0.5 },
-  'typed-decisions': { ending: 0.15, textIdle: 0.1, addressed: 0.7, card: 0.1 },
+  // `plan` (autopilot: may a brief be built without the human?) has no measurements yet:
+  // it borrows `ending`'s values, and only a confident "ask the human" is acted on.
+  english: { ending: 0.3, textIdle: 0.2, addressed: 0.8, card: 0.35, plan: 0.3 },
+  multilingual: { ending: 0.45, textIdle: 0.35, addressed: 1.01, card: 0.5, plan: 0.45 },
+  'typed-decisions': { ending: 0.15, textIdle: 0.1, addressed: 0.7, card: 0.1, plan: 0.15 },
 };
 /** Text sent per decision. Laya's English checkpoint reads ~320 tokens of state, so replies keep their END. */
 export const DECISION_STATE_MAX_CHARS = 2_000;
@@ -531,3 +533,21 @@ export const CARD_ROUTING_OPTION_MAX_CHARS = 240;
 export const LAYA_STOP_WAIT_MS = 5_000;
 /** Uninstall: retries when Windows still holds a file in the folder (EBUSY/EPERM). */
 export const LAYA_RM_RETRIES = 8;
+
+// ── Desk autopilot (deskAutopilot.ts): the desk routes, staffs and starts cards by itself ──
+/** Defaults for Settings → Autopilot. */
+export const AUTOPILOT_DEFAULT_MAX_AGENTS = 3;
+export const AUTOPILOT_DEFAULT_IDLE_MINUTES = 10;
+export const AUTOPILOT_DEFAULT_COMMAND = 'claude';
+/** Bounds the Settings fields are clamped to. */
+export const AUTOPILOT_MAX_AGENTS_LIMIT = 8;
+export const AUTOPILOT_IDLE_MINUTES_MAX = 240;
+/** A started agent not adopted by then no longer counts as "on its way". */
+export const AUTOPILOT_SPAWN_TIMEOUT_MS = 120_000;
+/** The first prompt of an agent autopilot starts: the card follows through the usual hand-out. */
+export const AUTOPILOT_FIRST_MESSAGE =
+  'You were started by the Pixel Office task desk (autopilot). A card will follow. Reply with just: ready';
+/** Who autopilot's entries on a card's log are by. */
+export const AUTOPILOT_LOG_NAME = 'Autopilot';
+/** A member name shorter than this is never matched without `@` ("ui", "qa" hide inside ordinary text). */
+export const ADDRESS_BARE_NAME_MIN_CHARS = 3;

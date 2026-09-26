@@ -2,7 +2,15 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { CONFIG_FILE_NAME, LAYOUT_FILE_DIR } from './constants.js';
+import {
+  AUTOPILOT_DEFAULT_COMMAND,
+  AUTOPILOT_DEFAULT_IDLE_MINUTES,
+  AUTOPILOT_DEFAULT_MAX_AGENTS,
+  AUTOPILOT_IDLE_MINUTES_MAX,
+  AUTOPILOT_MAX_AGENTS_LIMIT,
+  CONFIG_FILE_NAME,
+  LAYOUT_FILE_DIR,
+} from './constants.js';
 import { type DecisionsConfig, parseDecisionsConfig } from './decisions.js';
 
 export interface AdapterSettings {
@@ -61,9 +69,22 @@ export interface PixelAgentsConfig {
   decisions?: DecisionsConfig;
   /** Laya run by the office itself (layaManager.ts), turned on from Settings. Absent = never asked. */
   laya?: { enabled: boolean; model?: LayaModelSetting };
+  /** Desk autopilot (deskAutopilot.ts). Absent = off. */
+  autopilot?: AutopilotSettings;
 }
 
 export type DocEditModeSetting = 'ask' | 'auto' | 'off';
+
+/** Settings → Autopilot. Machine-global: the desk and tasks.json are. */
+export interface AutopilotSettings {
+  enabled: boolean;
+  /** Agents autopilot may run at once (its own; agents you started never count or get closed). */
+  maxAgents: number;
+  /** An agent autopilot started is closed after this long idle with no card. */
+  idleMinutes: number;
+  /** What it runs to start an agent (an alias works when it runs Claude). */
+  command: string;
+}
 
 /** Laya checkpoint choice: one language model, or both with Laya's router picking. */
 export type LayaModelSetting = 'english' | 'multilingual' | 'auto';
@@ -184,6 +205,7 @@ export function readConfig(): PixelAgentsConfig {
     const parsed = JSON.parse(raw) as Partial<PixelAgentsConfig>;
     const decisions = parseDecisionsConfig(parsed.decisions);
     const laya = parseLayaConfig(parsed.laya);
+    const autopilot = parsed.autopilot ? parseAutopilot(parsed.autopilot) : undefined;
     return {
       vscode: parseAdapterSettings(parsed.vscode),
       standalone: parseAdapterSettings(parsed.standalone),
@@ -195,6 +217,7 @@ export function readConfig(): PixelAgentsConfig {
       docEditDefault: parseDocEditMode(parsed.docEditDefault),
       ...(decisions ? { decisions } : {}),
       ...(laya ? { laya } : {}),
+      ...(autopilot ? { autopilot } : {}),
     };
   } catch (err) {
     console.error('[Pixel Agents] Failed to read config file:', err);
@@ -372,4 +395,44 @@ function parseLayaConfig(raw: unknown): PixelAgentsConfig['laya'] {
   const r = raw as Record<string, unknown>;
   if (typeof r.enabled !== 'boolean') return undefined;
   return { enabled: r.enabled, ...(isLayaModelSetting(r.model) ? { model: r.model } : {}) };
+}
+
+// ── Desk autopilot (deskAutopilot.ts) ───────────────────────
+
+function clampInt(raw: unknown, min: number, max: number, fallback: number): number {
+  return typeof raw === 'number' && Number.isFinite(raw)
+    ? Math.min(max, Math.max(min, Math.round(raw)))
+    : fallback;
+}
+
+/** Any stored or requested value → valid settings (missing fields take the defaults). */
+export function parseAutopilot(raw: unknown, base?: AutopilotSettings): AutopilotSettings {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const b = base ?? {
+    enabled: false,
+    maxAgents: AUTOPILOT_DEFAULT_MAX_AGENTS,
+    idleMinutes: AUTOPILOT_DEFAULT_IDLE_MINUTES,
+    command: AUTOPILOT_DEFAULT_COMMAND,
+  };
+  const command =
+    typeof r.command === 'string' ? r.command.replace(/[\x00-\x1f\x7f]/g, '').trim() : '';
+  return {
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : b.enabled,
+    maxAgents: clampInt(r.maxAgents, 1, AUTOPILOT_MAX_AGENTS_LIMIT, b.maxAgents),
+    idleMinutes: clampInt(r.idleMinutes, 1, AUTOPILOT_IDLE_MINUTES_MAX, b.idleMinutes),
+    command: command.slice(0, 200) || b.command,
+  };
+}
+
+export function getAutopilot(): AutopilotSettings {
+  return readConfig().autopilot ?? parseAutopilot(undefined);
+}
+
+/** Merge a change into the stored settings; returns the result. */
+export function setAutopilot(change: unknown): AutopilotSettings {
+  const cfg = readConfig();
+  const next = parseAutopilot(change, cfg.autopilot ?? parseAutopilot(undefined));
+  cfg.autopilot = next;
+  writeConfig(cfg);
+  return next;
 }

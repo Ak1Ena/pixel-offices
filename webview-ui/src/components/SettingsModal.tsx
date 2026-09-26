@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
 
-import type { DocEditMode, LayaStatus } from '../../../core/src/messages.js';
+import type { AutopilotState, DocEditMode, LayaStatus } from '../../../core/src/messages.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { AdvancedSettings } from './AdvancedSettings.js';
+import { AutopilotSettings } from './AutopilotSettings.js';
 import { LayaSettings } from './LayaSettings.js';
 import { TextSettings } from './TextSettings.js';
 import { Button } from './ui/Button.js';
@@ -56,6 +57,8 @@ interface SettingsModalProps {
   onDocEditDefault?: (mode: DocEditMode) => void;
   /** The office's own Laya; absent = not offered (unprivileged viewer, or no status yet). */
   laya?: LayaStatus | null;
+  /** Desk autopilot; absent = not offered (unprivileged viewer). */
+  autopilot?: AutopilotState | null;
 }
 
 export function SettingsModal({
@@ -86,6 +89,7 @@ export function SettingsModal({
   docEditDefault,
   onDocEditDefault,
   laya,
+  autopilot,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -304,6 +308,7 @@ export function SettingsModal({
         </div>
       )}
       {laya && <LayaSettings status={laya} />}
+      {autopilot && <AutopilotSettings state={autopilot} laya={laya} />}
       <div className="mt-4 pt-8 pb-6 px-10 border-t border-border" data-testid="settings-text">
         <div className="text-base mb-6">Text</div>
         <TextSettings />

@@ -3,6 +3,7 @@ import {
   assignParts,
   leadingAddressees,
   mentionedIn,
+  namedIn,
   splitBlocks,
 } from './addressedParts.js';
 import { confidentYes, type Decider, tailOf } from './decisions.js';
@@ -11,7 +12,8 @@ import { confidentYes, type Decider, tailOf } from './decisions.js';
  * `addressedParts`, with a decision model as a second reader. The rule stays
  * first and final wherever it finds an opening `@name`. A block the rule gives
  * to nobody but that mentions someone later ("can you check the limits,
- * @scout?") is asked about: "is this a request to X?". Only a confident yes
+ * @scout?"), or names them without `@` ("scout, can you check…"), is asked
+ * about: "is this a request to X?". Only a confident yes
  * addresses it; a failure or an unsure answer leaves the rule's result.
  */
 export async function addressedPartsWithDecisions<K>(
@@ -26,7 +28,10 @@ export async function addressedPartsWithDecisions<K>(
     const asks: Array<Promise<void>> = [];
     blocks.forEach((block, i) => {
       if (openers[i].length > 0) return;
-      const candidates = mentionedIn(block, addressees);
+      // `@name` later in the block, or the bare name ("scout, can you…").
+      const candidates = [
+        ...new Set([...mentionedIn(block, addressees), ...namedIn(block, addressees)]),
+      ];
       if (candidates.length === 0) return;
       asks.push(
         decider

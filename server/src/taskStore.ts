@@ -328,6 +328,7 @@ export function sanitizeTask(raw: unknown): DeskTask | null {
     ...(typeof t.workflowId === 'string' && PRESET_ID_RE.test(t.workflowId)
       ? { workflowId: t.workflowId }
       : {}),
+    ...(t.autoRouted === true ? { autoRouted: true } : {}),
     ...(typeof t.model === 'string' && t.model.trim()
       ? { model: t.model.trim().slice(0, MODEL_LABEL_MAX_CHARS) }
       : {}),

@@ -1,3 +1,5 @@
+import { ADDRESS_BARE_NAME_MIN_CHARS } from './constants.js';
+
 /**
  * Which parts of an agent's reply are addressed to whom. A paragraph is for
  * `@name` when it OPENS with the mention ("@scout — check the API",
@@ -81,6 +83,31 @@ export function mentionedIn<K>(block: string, addressees: Array<Addressee<K>>): 
       for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
         const next = lower[at + needle.length];
         if (next === undefined || !/[a-z0-9_-]/.test(next)) return true;
+      }
+      return false;
+    });
+    if (hit && !found.includes(a.key)) found.push(a.key);
+  }
+  return found;
+}
+
+/**
+ * Addressees a block names WITHOUT `@` ("scout, check the limits"): a whole
+ * word, any case. Only ever a candidate for the decision model — a bare name
+ * is too often just a mention for the rule to act on.
+ */
+export function namedIn<K>(block: string, addressees: Array<Addressee<K>>): K[] {
+  const lower = block.toLowerCase();
+  const found: K[] = [];
+  for (const a of addressees) {
+    const hit = a.aliases.some((alias) => {
+      const needle = alias.toLowerCase();
+      if (needle.length < ADDRESS_BARE_NAME_MIN_CHARS) return false;
+      for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+        const before = lower[at - 1];
+        const after = lower[at + needle.length];
+        const edge = (c: string | undefined) => c === undefined || !/[a-z0-9_@-]/.test(c);
+        if (edge(before) && edge(after)) return true;
       }
       return false;
     });

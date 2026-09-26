@@ -68,6 +68,13 @@ addr_cases = [
  ("Plan: I'll do the API, and @dev handles the UI later.", "dev", False),
  ("Thanks to @tester's fix, the suite is green now.", "tester", False),
  ("I merged what @reviewer approved yesterday.", "reviewer", False),
+ # Bare names (no @): only the decision model reads these.
+ ("Scout, can you check the rate limits in server/api.ts?", "scout", True),
+ ("Tester please add e2e tests for the checkout flow.", "tester", True),
+ ("Reviewer, what do you think about moving this to zod?", "reviewer", True),
+ ("I asked scout earlier; the search found nothing new.", "scout", False),
+ ("The tester role is not needed for this card.", "tester", False),
+ ("Once reviewer approved it, I merged the branch.", "reviewer", False),
 ]
 TEAMS = {"solo": "one agent alone is enough; the card is small or focused",
  "frontend-crew": "Frontend crew — UI work. Members: lead (plans), designer (CSS and layout), dev (React components)",

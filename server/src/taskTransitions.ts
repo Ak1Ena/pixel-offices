@@ -144,6 +144,34 @@ export function applyHumanCall(task: DeskTask, call: HumanCall, at: string): Tra
   }
 }
 
+/**
+ * Autopilot starts the build of a brief nobody has to answer: the human's
+ * "Do the task", logged as autopilot's so the card says who decided.
+ */
+export function autopilotBuild(task: DeskTask, who: string, why: string, at: string): Transition {
+  if (task.state !== 'brief') return fail('Only a card with a new brief can be started.');
+  if (task.briefs.length === 0) return fail('This card has no brief to build from.');
+  return {
+    ok: true,
+    task: { ...task, state: 'ready', queued: true, log: logged(task, 'verified', who, why, at) },
+  };
+}
+
+/** Autopilot filled in who and how works on a card (team, workflow, model). */
+export function autopilotRouted(
+  task: DeskTask,
+  pick: { teamId?: string; workflowId?: string; model?: string },
+  who: string,
+  text: string,
+  at: string,
+): Transition {
+  if (task.state !== 'inbox') return fail('The card is not in the inbox.');
+  return {
+    ok: true,
+    task: { ...task, ...pick, autoRouted: true, log: logged(task, 'system', who, text, at) },
+  };
+}
+
 /** A free agent takes an inbox card to look at it. */
 export function claimForLook(task: DeskTask, agentId: number): Transition {
   if (task.state !== 'inbox') return fail('The card is not in the inbox.');

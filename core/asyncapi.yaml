@@ -124,6 +124,7 @@ components:
         - $ref: '#/components/schemas/DocEditDefault'
         - $ref: '#/components/schemas/LayaStatus'
         - $ref: '#/components/schemas/DeskCardSuggestion'
+        - $ref: '#/components/schemas/AutopilotState'
         - $ref: '#/components/schemas/FilesLoaded'
         - $ref: '#/components/schemas/FileOpened'
         - $ref: '#/components/schemas/AgentPermissionAsk'
@@ -237,6 +238,7 @@ components:
         - $ref: '#/components/schemas/SetLayaModel'
         - $ref: '#/components/schemas/UninstallLaya'
         - $ref: '#/components/schemas/SuggestDeskCard'
+        - $ref: '#/components/schemas/SetAutopilot'
         - $ref: '#/components/schemas/OpenOfficeFile'
         - $ref: '#/components/schemas/ForgetOfficeFile'
         - $ref: '#/components/schemas/PinOfficeFile'
@@ -1030,6 +1032,50 @@ components:
         confidence:
           $ref: '#/components/schemas/DeskCardSuggestionConfidence'
         error:
+          type: string
+
+    AutopilotState:
+      description: |
+        Settings → Autopilot: the desk routes new cards (team, workflow,
+        model — by the decision model when one runs), starts briefs that need
+        nobody, starts agents for cards nobody can take and closes its own
+        idle ones. Handshake + on change.
+      type: object
+      additionalProperties: false
+      required: [type, enabled, maxAgents, idleMinutes, command, canStartAgents, running]
+      properties:
+        type:
+          const: autopilotState
+        enabled:
+          type: boolean
+        maxAgents:
+          type: integer
+        idleMinutes:
+          type: integer
+        command:
+          type: string
+        canStartAgents:
+          description: This office can start agents (standalone with node-pty). Without it autopilot only routes and approves.
+          type: boolean
+        running:
+          description: Agents autopilot started that are still open.
+          type: integer
+
+    SetAutopilot:
+      description: Change Settings → Autopilot; omitted fields keep their value. Privileged; persisted in config.json.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: setAutopilot
+        enabled:
+          type: boolean
+        maxAgents:
+          type: integer
+        idleMinutes:
+          type: integer
+        command:
           type: string
 
     LayaModel:
@@ -3582,6 +3628,9 @@ components:
         model:
           type: string
           description: Model (picker label) an agent started for this card uses — chosen by the human or suggested by Laya.
+        autoRouted:
+          type: boolean
+          description: Autopilot has chosen this card's team / workflow / model (once; the human can still change them).
         attachments:
           type: array
           description: Files the human attached. Agents get their paths, never their content.

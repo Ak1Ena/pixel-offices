@@ -176,6 +176,26 @@ describe('addressedPartsWithDecisions', () => {
     expect((await addressedPartsWithDecisions(text, SCOUT, failing, String)).size).toBe(0);
   });
 
+  it('asks about a bare name (no @), and never matches it inside another word', async () => {
+    const decider = yesWhen('check');
+    const text =
+      'Scout, can you check the limits?\n\nThe scouting report and @scouts are unrelated.';
+    const parts = await addressedPartsWithDecisions(text, SCOUT, decider, String);
+    expect(parts.get('scout')).toBe('Scout, can you check the limits?');
+    expect(decider.asked).toEqual(['Scout, can you check the limits?']);
+  });
+
+  it('never matches a bare name shorter than three letters', async () => {
+    const decider = yesWhen('check');
+    await addressedPartsWithDecisions(
+      'qa, check this',
+      [{ key: 'qa', aliases: ['qa'] }],
+      decider,
+      String,
+    );
+    expect(decider.asked).toEqual([]);
+  });
+
   it('keeps a list that follows an addressed paragraph with it, like the rule does', async () => {
     const text = 'Can you check these for me, @scout:\n\n- a.ts\n- b.ts';
     const parts = await addressedPartsWithDecisions(text, SCOUT, yesWhen('check'), String);

@@ -19,6 +19,7 @@ import {
   TASK_NOTE_MAX_CHARS,
 } from './constants.js';
 import { confidentChoice, type Decider, tailOf } from './decisions.js';
+import type { AutopilotDesk, DeskAutopilot } from './deskAutopilot.js';
 import { type FolderRoot, resolveFolderRoot, sameRoot } from './gitRoot.js';
 import {
   briefFromInput,
@@ -87,6 +88,8 @@ export interface TaskDeskOptions {
   teams?: DeskTeams;
   /** Reads a build turn that ended without a report (decisions.ts). Absent or null = today's rule. */
   decider?: () => Decider | null;
+  /** Settings → Autopilot (deskAutopilot.ts). Absent = the human drives every card. */
+  autopilot?: DeskAutopilot;
 }
 
 /** What the desk needs to give a card to a team (TeamStore + TeamRuns in the runtime). */
@@ -130,6 +133,7 @@ export class TaskDesk {
   private readonly workflowOf: (id: string) => Workflow | undefined;
   private readonly teams: DeskTeams | undefined;
   private readonly decider: () => Decider | null;
+  readonly autopilot: DeskAutopilot | undefined;
   /** Team cards whose team could not start: not retried until the card is edited. */
   private readonly teamFailed = new Set<string>();
   /** agent id → the card it is looking at or building. */
@@ -157,6 +161,7 @@ export class TaskDesk {
     this.workflowOf = opts.workflows ?? (() => undefined);
     this.teams = opts.teams;
     this.decider = opts.decider ?? (() => null);
+    this.autopilot = opts.autopilot;
     this.cards = opts.taskStore ?? new TaskStore(() => this.publish());
     this.agents.on('broadcast', this.onBroadcast);
     this.agents.on('agentRemoved', this.onAgentRemoved);
@@ -495,8 +500,10 @@ export class TaskDesk {
           this.rerun = false;
           await this.refreshRoots();
           this.releaseLostClaims();
+          this.autopilot?.plan(this.autopilotView);
           this.startTeams();
           this.assign();
+          this.autopilot?.staff(this.autopilotView);
           this.publish();
         } while (this.rerun);
       } finally {
@@ -551,7 +558,7 @@ export class TaskDesk {
   private startTeams(): void {
     if (!this.teams) return;
     for (const task of this.cards.getTasks()) {
-      if (!task.teamId) continue;
+      if (!task.teamId || this.autopilot?.holds(task.id)) continue;
       if (task.state !== 'inbox' && !(task.state === 'ready' && task.queued)) continue;
       if (task.crewId && this.teams.leadOf(task.crewId) !== null) continue;
       if (this.teamFailed.has(task.id)) continue;
@@ -582,7 +589,7 @@ export class TaskDesk {
   private assign(): void {
     const byUrgency = (a: DeskTask, b: DeskTask) =>
       a.priority === b.priority ? a.num - b.num : a.priority === 'p1' ? -1 : 1;
-    const open = this.cards.getTasks();
+    const open = this.cards.getTasks().filter((t) => !this.autopilot?.holds(t.id));
     // Builds the human already asked for go before new looks.
     const builds = open.filter((t) => t.state === 'ready' && t.queued).sort(byUrgency);
     const looks = open.filter((t) => t.state === 'inbox').sort(byUrgency);
@@ -606,6 +613,15 @@ export class TaskDesk {
       this.chat.send(agent.id, lookPrompt(reply.value));
     }
   }
+
+  /** The desk as autopilot sees it. */
+  private readonly autopilotView: AutopilotDesk = {
+    cards: () => this.cards.getTasks(),
+    commit: (transition) => this.commit(transition),
+    hasFreeAgent: (task) => this.freeAgentsFor(task).length > 0,
+    holding: (agentId) => this.claims.has(agentId),
+    tick: () => void this.tick(),
+  };
 
   private freeAgentsFor(task: DeskTask): AgentState[] {
     const free: AgentState[] = [];

@@ -23,7 +23,8 @@ export function handleLayaMessage(
     type !== 'setLayaEnabled' &&
     type !== 'setLayaModel' &&
     type !== 'uninstallLaya' &&
-    type !== 'suggestDeskCard'
+    type !== 'suggestDeskCard' &&
+    type !== 'setAutopilot'
   ) {
     return false;
   }
@@ -41,6 +42,12 @@ export function handleLayaMessage(
     case 'suggestDeskCard':
       void suggestDeskCard(msg, send, runtime);
       break;
+    case 'setAutopilot': {
+      const { type: _type, ...change } = msg;
+      runtime.desk.autopilot?.configure(change);
+      void runtime.desk.tick();
+      break;
+    }
   }
   return true;
 }

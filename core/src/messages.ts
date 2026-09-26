@@ -46,6 +46,7 @@ export type ServerMessage =
   | DocEditDefault
   | LayaStatus
   | DeskCardSuggestion
+  | AutopilotState
   | FilesLoaded
   | FileOpened
   | AgentPermissionAsk
@@ -150,6 +151,7 @@ export type ClientMessage =
   | SetLayaModel
   | UninstallLaya
   | SuggestDeskCard
+  | SetAutopilot
   | OpenOfficeFile
   | ForgetOfficeFile
   | PinOfficeFile
@@ -550,6 +552,16 @@ export interface DeskCardSuggestionConfidence {
   model?: number;
 }
 
+export interface AutopilotState {
+  type: 'autopilotState';
+  enabled: boolean;
+  maxAgents: number;
+  idleMinutes: number;
+  command: string;
+  canStartAgents: boolean;
+  running: number;
+}
+
 export interface FilesLoaded {
   type: 'filesLoaded';
   files: OfficeFile[];
@@ -881,6 +893,7 @@ export interface DeskTask {
   crewId?: string;
   workflowId?: string;
   model?: string;
+  autoRouted?: boolean;
   attachments?: DeskAttachment[];
   waitingOn?: DeskWaitingOn;
 }
@@ -1518,6 +1531,14 @@ export interface SuggestDeskCard {
   title: string;
   body?: string;
   kind?: string;
+}
+
+export interface SetAutopilot {
+  type: 'setAutopilot';
+  enabled?: boolean;
+  maxAgents?: number;
+  idleMinutes?: number;
+  command?: string;
 }
 
 export interface OpenOfficeFile {

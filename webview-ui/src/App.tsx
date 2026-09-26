@@ -50,6 +50,7 @@ import { isDocProposal, openProposalFor } from './docSuggestions.js';
 import type { DocRef } from './docViewer.js';
 import { fileBaseName, refText, samePath, withRefs } from './docViewer.js';
 import { canSendChatFiles } from './fileUpload.js';
+import { useAutopilotState } from './hooks/useAutopilotState.js';
 import { lastEditKeyFor, useDocEdits } from './hooks/useDocEdits.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
@@ -263,6 +264,7 @@ function App() {
   const proposals = useProposals();
   const docEdits = useDocEdits();
   const layaStatus = useLayaStatus();
+  const autopilotState = useAutopilotState();
   const [docEditsSeen, setDocEditsSeen] = useState<ReadonlySet<string>>(() => new Set());
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [proposalsLater, setProposalsLater] = useState<ReadonlySet<string>>(() => new Set());
@@ -1644,6 +1646,7 @@ function App() {
         docEditDefault={chat.privileged || !isBrowserRuntime ? docEdits.defaultMode : undefined}
         onDocEditDefault={docEdits.setDefaultMode}
         laya={chat.privileged || !isBrowserRuntime ? layaStatus : undefined}
+        autopilot={chat.privileged || !isBrowserRuntime ? autopilotState : undefined}
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         isDebugMode={isDebugMode}
