@@ -345,6 +345,30 @@ export function BuildPanel({
               {tool === EditTool.ROOM ? 'Drawing…' : 'Draw'}
             </Button>
           </div>
+          {(layout.areas ?? [])
+            .filter((a) => a.teamRoom)
+            .map((a) => (
+              <div
+                key={a.label}
+                className="flex items-center gap-10 p-10 border border-border rounded-ui"
+                data-testid="build-room"
+              >
+                <div className="flex-1 min-w-0">
+                  <b className="block truncate">{a.label}</b>
+                  <span className="text-2xs text-text-muted">
+                    In this office · removing keeps its furniture (Undo brings it back)
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => editor.handleRemoveArea(a.label)}
+                  aria-label={`Remove room ${a.label}`}
+                  data-testid="build-room-remove"
+                >
+                  Remove
+                </Button>
+              </div>
+            ))}
           {ROOM_TEMPLATES.map((t) => (
             <div
               key={t.id}

@@ -105,7 +105,10 @@ export default function Office3DView({
   const dropRef = useRef({ onPinDrop, onWorkflowDrop, onCardDrop, onClick });
   const overlayRef = useRef<OverlayItem[]>([]);
   /** Seconds to the next stand-up, or the meeting on now (for the clock). */
-  const nextMeetRef = useRef<{ now: string | null; inSec: number }>({ now: null, inSec: 0 });
+  const nextMeetRef = useRef<{ now: string | null; inSec: number | null }>({
+    now: null,
+    inSec: null,
+  });
   const [nightMode, setNightMode] = useState<NightMode>(() => {
     try {
       const v = localStorage.getItem(OFFICE3D_NIGHT_KEY);
@@ -1254,6 +1257,15 @@ function MeetingPanel({
             </p>
           </>
         )}
+        <label className="flex items-center gap-8 pt-8 border-t border-border text-2xs text-text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            checked={d?.auto ?? false}
+            onChange={(e) => d?.setAuto(e.target.checked)}
+            data-testid="office3d-meeting-auto"
+          />
+          Hold stand-ups and team catch-ups by themselves
+        </label>
       </div>
     </section>
   );
@@ -1267,7 +1279,7 @@ function ClockPanel({
 }: {
   nightMode: NightMode;
   onCycle: () => void;
-  nextMeetRef: React.RefObject<{ now: string | null; inSec: number }>;
+  nextMeetRef: React.RefObject<{ now: string | null; inSec: number | null }>;
 }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -1276,8 +1288,8 @@ function ClockPanel({
   }, []);
   const night = nightWanted(nightMode);
   const meet = nextMeetRef.current;
-  const mins = Math.floor(meet.inSec / 60),
-    secs = Math.floor(meet.inSec % 60);
+  const mins = Math.floor((meet.inSec ?? 0) / 60),
+    secs = Math.floor((meet.inSec ?? 0) % 60);
   return (
     <button
       type="button"
@@ -1294,11 +1306,13 @@ function ClockPanel({
         {nightMode === 'auto' ? ' · follows the clock' : ' · set by you'} ·{' '}
         {now.toLocaleDateString([], { weekday: 'long' })}
       </span>
-      <span className="text-2xs text-accent">
-        {meet.now
-          ? `Now: ${meet.now}`
-          : `Next stand-up in ${mins}:${String(secs).padStart(2, '0')}`}
-      </span>
+      {(meet.now || meet.inSec !== null) && (
+        <span className="text-2xs text-accent">
+          {meet.now
+            ? `Now: ${meet.now}`
+            : `Next stand-up in ${mins}:${String(secs).padStart(2, '0')}`}
+        </span>
+      )}
     </button>
   );
 }

@@ -515,6 +515,8 @@ export const DOC_READ_HINT =
   '(Read these places with: pixel-office doc read <file> --para A-B | --slide N | --cell RANGE)';
 /** localStorage key: the command the desk last started an agent with (`claude`, or an alias of it). */
 export const TASK_DESK_COMMAND_KEY = 'pixel-agents.deskLaunchCommand';
+/** "Suggest with Laya" on a card: give up waiting after this (the server's own call times out at 3 s). */
+export const TASK_DESK_LAYA_TIMEOUT_MS = 10_000;
 /** The first prompt of an agent the desk starts. It needs one: the office only
  *  sees a session once its transcript exists, and that starts with a prompt. */
 export const TASK_DESK_FIRST_MESSAGE =
@@ -661,6 +663,9 @@ export const OFFICE3D_MEET_SPEAK_SEC = 4;
 export const OFFICE3D_TEAM_MEET_AFTER_SEC = 20;
 /** localStorage key: the 3D office's day/night choice ('day' | 'night' | 'auto'). */
 export const OFFICE3D_NIGHT_KEY = 'pixel-agents.office3dNight';
+/** localStorage key: '1' = hold stand-ups and team catch-ups by themselves. Off unless the viewer turns it on;
+ *  the Meeting panel still starts one on demand. */
+export const OFFICE3D_AUTO_MEET_KEY = 'pixel-agents.office3dAutoMeetings';
 /** 'auto' night hours (local time). */
 export const OFFICE3D_NIGHT_FROM_HOUR = 19;
 export const OFFICE3D_NIGHT_TO_HOUR = 7;

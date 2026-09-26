@@ -7,11 +7,15 @@
  *   the agents' real states — nothing is sent to the agents.
  * - Stand-up: now and then, a few free agents with no team meet anyway.
  *
+ * Both happen by themselves only while `auto` is on (off by default — per
+ * viewer, OFFICE3D_AUTO_MEET_KEY); the Meeting panel starts one any time.
+ *
  * A meeting only ever moves free agents (not working, not asking), and ends
  * the moment any attendee gets work: `OfficeState` walks them to their desk.
  */
 
 import {
+  OFFICE3D_AUTO_MEET_KEY,
   OFFICE3D_MEET_EVERY_SEC,
   OFFICE3D_MEET_LENGTH_SEC,
   OFFICE3D_MEET_SPEAK_SEC,
@@ -45,12 +49,24 @@ function free(ch: Character): boolean {
   );
 }
 
+function loadAutoMeetings(): boolean {
+  try {
+    return localStorage.getItem(OFFICE3D_AUTO_MEET_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export class MeetingDirector {
   meeting: Meeting | null = null;
   private freeSince = new Map<string, number>();
   private lastTeamMeet = new Map<string, number>();
   private nextStandup = OFFICE3D_MEET_EVERY_SEC * 0.5;
   private time = 0;
+  /** Hold meetings by themselves. */
+  auto = loadAutoMeetings();
+  /** e2e: one stand-up at the next tick, even with `auto` off. */
+  private forceStandup = false;
 
   private readonly os: OfficeState;
 
@@ -85,6 +101,7 @@ export class MeetingDirector {
       return;
     }
     if (!office || office.tables.length === 0) return;
+    if (!this.auto && !this.forceStandup) return;
     const chars = [...this.os.characters.values()].filter((c) => !leaving.has(c.id));
 
     // Team meetings: every member free for a while, not met recently.
@@ -113,7 +130,8 @@ export class MeetingDirector {
     }
 
     // Stand-ups: free agents with no team, now and then.
-    if (this.time < this.nextStandup) return;
+    if (this.time < this.nextStandup && !this.forceStandup) return;
+    this.forceStandup = false;
     this.nextStandup = this.time + OFFICE3D_MEET_EVERY_SEC * (0.8 + Math.random() * 0.6);
     const loose = chars.filter((c) => free(c) && !c.teamName);
     if (loose.length < 2) return;
@@ -188,14 +206,25 @@ export class MeetingDirector {
     }
   }
 
-  /** Seconds until the next stand-up is due. */
-  nextIn(): number {
-    return Math.max(0, this.nextStandup - this.time);
+  /** Seconds until the next stand-up is due; null while they are off. */
+  nextIn(): number | null {
+    return this.auto ? Math.max(0, this.nextStandup - this.time) : null;
+  }
+
+  /** Turn automatic meetings on or off (remembered for this viewer). Turning it on waits a full interval. */
+  setAuto(on: boolean): void {
+    this.auto = on;
+    if (on) this.nextStandup = this.time + OFFICE3D_MEET_EVERY_SEC;
+    try {
+      localStorage.setItem(OFFICE3D_AUTO_MEET_KEY, on ? '1' : '0');
+    } catch {
+      /* remembered only when storage is available */
+    }
   }
 
   /** e2e: hold a stand-up at the next tick. */
   standupNow(): void {
-    this.nextStandup = 0;
+    this.forceStandup = true;
   }
 
   end(): void {
